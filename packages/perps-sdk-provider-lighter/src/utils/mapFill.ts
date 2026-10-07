@@ -2,6 +2,7 @@ import {
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
+  isDecimalString,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
@@ -20,17 +21,20 @@ import { isPlaceholderTxHash } from './txHash.js'
  * The product keeps the sign of both inputs. A rebate tick therefore maps to a
  * negative amount, which `Fee.amount` permits and the Ondo mapper already emits
  * when a rebate exceeds the fee, so this helper never clamps the sign. A zero
- * notional charges a zero fee at every tick.
+ * notional charges a zero fee at every tick. A malformed notional gives
+ * `undefined`.
  */
 const tickToFeeAmount = (
   notional: string,
   ownTick: number,
   integratorTick: number | undefined
-): string =>
-  new Big(notional)
-    .times(new Big(ownTick).plus(integratorTick ?? 0))
-    .div(LIGHTER_FEE_TICK_SCALE)
-    .toFixed()
+): string | undefined =>
+  isDecimalString(notional)
+    ? new Big(notional)
+        .times(new Big(ownTick).plus(integratorTick ?? 0))
+        .div(LIGHTER_FEE_TICK_SCALE)
+        .toFixed()
+    : undefined
 
 /**
  * Display leverage the viewer had set on the market when the trade executed,
@@ -43,8 +47,9 @@ const leverageFromTradeImf = (imf: number | undefined): number | undefined =>
 /**
  * Realized PnL on a position-reducing fill, derived from the pre-trade entry
  * basis. Returns `undefined` for opens/increases (nothing closes) or when the
- * entry-quote snapshot is absent, and `null` when the closed portion realizes
- * exactly zero — mirroring the Hyperliquid mapper's `null`-for-zero convention.
+ * entry-quote snapshot is absent or an input is malformed, and `null` when the
+ * closed portion realizes exactly zero — mirroring the Hyperliquid mapper's
+ * `null`-for-zero convention.
  */
 const deriveRealizedPnl = (
   startPosition: string,
@@ -53,7 +58,12 @@ const deriveRealizedPnl = (
   fillPrice: string,
   isBuyer: boolean
 ): string | null | undefined => {
-  if (entryQuoteBefore === undefined) {
+  if (
+    entryQuoteBefore === undefined ||
+    ![startPosition, entryQuoteBefore, fillSize, fillPrice].every(
+      isDecimalString
+    )
+  ) {
     return undefined
   }
   const start = new Big(startPosition)
@@ -111,6 +121,10 @@ export const mapFill = (
   const imfBefore = isMaker
     ? trade.maker_initial_margin_fraction_before
     : trade.taker_initial_margin_fraction_before
+  const feeAmount =
+    feeTick === undefined
+      ? undefined
+      : tickToFeeAmount(trade.usd_amount, feeTick, integratorFeeTick)
 
   return {
     id: trade.trade_id.toString(),
@@ -123,16 +137,9 @@ export const mapFill = (
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Lighter charges the fill fee in the market's quote asset.
     fee:
-      feeTick === undefined
+      feeAmount === undefined
         ? undefined
-        : {
-            amount: tickToFeeAmount(
-              trade.usd_amount,
-              feeTick,
-              integratorFeeTick
-            ),
-            asset: market.quoteAsset.displaySymbol,
-          },
+        : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
     leverage: leverageFromTradeImf(imfBefore),
     realizedPnl: deriveRealizedPnl(
       startPosition,

@@ -436,14 +436,15 @@ const functionExportsFrom = (from: (specifier: string) => boolean): string[] =>
     .sort()
 
 describe('compare gives booleans', () => {
-  it('exports isDecimalStringGreaterThan from decimal/compare.ts', () => {
+  it('exports isDecimalStringGreaterThan and isDecimalStringZero from decimal/compare.ts', () => {
     expect(
       functionExportsFrom((from) => from === './decimal/compare.js')
-    ).toEqual(['isDecimalStringGreaterThan'])
+    ).toEqual(['isDecimalStringGreaterThan', 'isDecimalStringZero'])
   })
 
   it('gives a boolean, never a Big', () => {
     expect(sdk.isDecimalStringGreaterThan('1.0000000000000001', '1')).toBe(true)
+    expect(sdk.isDecimalStringZero('0.0')).toBe(true)
   })
 })
 

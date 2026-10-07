@@ -1,3 +1,4 @@
+import { isDecimalStringZero } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import Big from 'big.js'
@@ -10,7 +11,7 @@ import type { HlAssetPosition } from '../types/index.js'
  * @public
  */
 export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
-  Number.parseFloat(ap.position.szi) !== 0
+  !isDecimalStringZero(ap.position.szi)
 
 /**
  * Map a non-zero Hyperliquid position payload to the SDK's normalized

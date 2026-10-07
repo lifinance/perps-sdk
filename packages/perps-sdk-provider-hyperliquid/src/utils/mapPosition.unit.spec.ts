@@ -6,7 +6,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlAssetPosition } from '../types/index.js'
-import { mapPosition } from './mapPosition.js'
+import { isOpenAssetPosition, mapPosition } from './mapPosition.js'
 
 const BTC_MARKET: PerpsMarketDisplay = {
   providerId: 'hyperliquid',
@@ -166,5 +166,20 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.entryPrice).toBe('0')
     expect(result.liquidationPrice).toBe('0')
+  })
+})
+
+describe('isOpenAssetPosition', () => {
+  it.each(['0', '0.0', '-0.0'])('gives false for a zero szi %j', (szi) => {
+    expect(isOpenAssetPosition(makeAp({ szi }))).toBe(false)
+  })
+
+  it.each([
+    '0.1',
+    '-0.1',
+    '0.00000000000000000001',
+    '10oops',
+  ])('gives true for szi %j', (szi) => {
+    expect(isOpenAssetPosition(makeAp({ szi }))).toBe(true)
   })
 })

@@ -1,6 +1,6 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { isDecimalStringGreaterThan } from './compare.js'
+import { isDecimalStringGreaterThan, isDecimalStringZero } from './compare.js'
 
 describe('isDecimalStringGreaterThan', () => {
   it.each([
@@ -29,5 +29,29 @@ describe('isDecimalStringGreaterThan', () => {
     expect(() => isDecimalStringGreaterThan(a, b)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
+  })
+})
+
+describe('isDecimalStringZero', () => {
+  it.each([
+    '0',
+    '0.0',
+    '-0',
+    '0.000000000000000000',
+  ])('gives true for %j', (value) => {
+    expect(isDecimalStringZero(value)).toBe(true)
+  })
+
+  it.each([
+    '1',
+    '-0.5',
+    '0.0000000000000000001',
+    'abc',
+    '10oops',
+    '0e0',
+    '',
+    '$0',
+  ])('gives false for %j', (value) => {
+    expect(isDecimalStringZero(value)).toBe(false)
   })
 })

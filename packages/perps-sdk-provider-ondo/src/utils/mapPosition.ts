@@ -1,3 +1,4 @@
+import { isDecimalStringZero } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import type { OndoPosition } from '../types/wire.js'
@@ -29,6 +30,14 @@ export const mapPosition = (
 })
 
 /**
+ * True when the Ondo position row is not neutral and has a non-zero quantity.
+ * A malformed quantity keeps the row.
+ * @public
+ */
+export const isOpenPosition = (p: OndoPosition): boolean =>
+  p.direction !== 'neutral' && !isDecimalStringZero(p.netQuantity)
+
+/**
  * Map raw Ondo positions to open {@link Position}s, dropping neutral and
  * zero-quantity rows. Only valid for payloads carrying the full position
  * set — dropping zeros from a partial frame would make closes unobservable.
@@ -40,7 +49,5 @@ export const mapOpenPositions = (
   resolveMarket: (market: string) => PerpsMarketDisplay
 ): Position[] =>
   positions
-    .filter(
-      (p) => p.direction !== 'neutral' && Number.parseFloat(p.netQuantity) !== 0
-    )
+    .filter(isOpenPosition)
     .map((p) => mapPosition(p, resolveMarket(p.market)))

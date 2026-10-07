@@ -57,6 +57,7 @@ import type {
 import { LIGHTER_RETRY_DEFAULTS, LighterApiClient } from '../utils/apiClient.js'
 import {
   fetchDetailedAccount,
+  isOpenPosition,
   mapFill,
   mapMarketContext,
   mapOrderUpdates,
@@ -900,13 +901,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       this.positionsByAddress.set(address, state)
     }
     for (const p of raw) {
-      if (Number.parseFloat(p.position) === 0) {
-        state.delete(p.market_id)
-      } else {
+      if (isOpenPosition(p)) {
         const market = this.registry?.get(String(p.market_id))
         if (market) {
           state.set(p.market_id, mapPosition(p, toPerpsMarketDisplay(market)))
         }
+      } else {
+        state.delete(p.market_id)
       }
     }
     this.emit(`positions:${address}`, {

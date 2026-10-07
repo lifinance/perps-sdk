@@ -1,10 +1,5 @@
 import type { MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  LiquidityRole,
-  OrderSide,
-  PerpsErrorCode,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { OndoFill } from '../types/wire.js'
 import { mapFill } from './mapFill.js'
@@ -84,14 +79,14 @@ describe('mapFill', () => {
     }
   })
 
-  it('falls back to side-based classification when direction is absent', () => {
+  it('classifies by side alone when direction is absent', () => {
     expect(
       mapFill(fillFixture({ direction: undefined }), MARKET).classification
-    ).toBe(FillClassification.OPENED_LONG)
+    ).toBe(FillClassification.BUY)
     expect(
       mapFill(fillFixture({ direction: undefined, side: 'sell' }), MARKET)
         .classification
-    ).toBe(FillClassification.OPENED_SHORT)
+    ).toBe(FillClassification.SELL)
   })
 
   it('nets the fee against a rebate', () => {
@@ -142,13 +137,10 @@ describe('mapFill', () => {
   it.each([
     'fee',
     'feeRebate',
-  ] as const)('rejects a non-numeric %s with an SDKError naming the field', (field) => {
-    expect(() => mapFill(fillFixture({ [field]: 'abc' }), MARKET)).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.SDKError,
-        message: `Ondo field \`${field}\` is not a valid decimal: 'abc'`,
-        tool: 'ondo',
-      })
-    )
+  ] as const)('maps the fill without a fee when %s is malformed', (field) => {
+    const mapped = mapFill(fillFixture({ [field]: '10oops' }), MARKET)
+    expect(mapped.fee).toBeUndefined()
+    expect(mapped.id).toBe(fillFixture().id)
+    expect(mapped.classification).toBe(FillClassification.OPENED_LONG)
   })
 })
