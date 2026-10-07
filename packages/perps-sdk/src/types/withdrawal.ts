@@ -2,22 +2,22 @@ import type {
   ActionType,
   Asset,
   DecimalString,
-  WithdrawalRoute,
+  WithdrawalAssetRef,
+  WithdrawalType,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 
-export type { WithdrawalRoute }
-
 /**
- * One withdrawable `(asset, route)` selection as the provider reports it, keyed
- * by provider-native asset id and awaiting the core asset-metadata join.
+ * One withdrawable `(asset, category)` selection as the provider reports it,
+ * keyed by provider-native asset id and awaiting the core asset-metadata join.
  *
  * @public
  */
 export interface ProviderWithdrawableBalance {
   /** Provider-native `Asset.id`; never a display symbol. */
   assetId: string
-  route: WithdrawalRoute
+  /** The provider category the row draws from; the same value as `Balance.categoryId`. */
+  categoryId: string
   /** Withdrawable amount in the asset's own units. Always greater than zero. */
   available: DecimalString
   /**
@@ -41,7 +41,7 @@ export interface ProviderWithdrawableBalance {
 }
 
 /**
- * One withdrawable `(asset, route)` selection a caller can act on: the amount
+ * One withdrawable `(asset, category)` selection a caller can act on: the amount
  * clears the asset's venue minimum, and `asset` carries the precision and
  * minimum needed to scale and validate the withdrawal.
  *
@@ -49,7 +49,8 @@ export interface ProviderWithdrawableBalance {
  */
 export interface WithdrawableBalance {
   asset: Asset
-  route: WithdrawalRoute
+  /** The provider category the row draws from; the same value as `Balance.categoryId`. */
+  categoryId: string
   /** Withdrawable amount in the asset's own units. */
   available: DecimalString
   /**
@@ -75,6 +76,32 @@ export interface WithdrawableBalance {
    * `true`.
    */
   isFeeDeducted?: boolean
+}
+
+/**
+ * One way a venue can settle a withdrawal from a holding.
+ *
+ * @public
+ */
+export interface WithdrawalTypeOption {
+  type: WithdrawalType
+  /** Largest `amount` this type accepts from the holding, in the asset's own units. */
+  max: DecimalString
+  /**
+   * Provider-specific options to pass unchanged as
+   * `WithdrawalParams.withdrawalOptions` when the user picks this type.
+   */
+  withdrawalOptions: Record<string, unknown>
+}
+
+/**
+ * The withdrawal types a venue offers for one holding.
+ *
+ * @public
+ */
+export interface WithdrawalSourceTypes {
+  source: WithdrawalAssetRef
+  options: WithdrawalTypeOption[]
 }
 
 /**

@@ -1,4 +1,6 @@
 import type { AcceptTermsParams } from './acceptTerms.js'
+import type { Balance } from './account.js'
+import type { Asset } from './asset.js'
 import type { DecimalString } from './decimal.js'
 import type {
   ActionType,
@@ -434,14 +436,14 @@ export interface UpdateAssetCollateralParams {
 }
 
 /**
- * Which of a venue's two balance routes a withdrawal is drawn from. Lighter's
- * own vocabulary, carried in the signed tx as `AssetRouteType` (`perps` = 0,
- * `spot` = 1); an account's mode changes what the two balances mean, never
- * which route the tx names.
+ * The identity part of a {@link Balance}: the category a withdrawal draws from
+ * and the asset it withdraws. A `Balance` is assignable to it.
  *
  * @public
  */
-export type WithdrawalRoute = 'perps' | 'spot'
+export type WithdrawalAssetRef = Pick<Balance, 'categoryId'> & {
+  asset: Pick<Asset, 'id'>
+}
 
 /**
  * Parameters for withdrawing a decimal-string amount to an EVM address.
@@ -451,14 +453,18 @@ export type WithdrawalRoute = 'perps' | 'spot'
 export interface WithdrawalParams {
   destination: Address
   amount: DecimalString
-  /** Lighter: provider-native `Asset.id` to withdraw. Omitted withdraws the quote asset. */
-  assetId?: string
-  /** Lighter: balance route to draw from. Omitted is `perps`. */
-  route?: WithdrawalRoute
+  /** The holding to withdraw from. Omitted withdraws from the venue's default holding. */
+  source?: WithdrawalAssetRef
   /**
-   * The venue-native account identifier, as a string. The provider plugin
-   * supplies it; callers omit it. A string because Ondo's 20-digit accountID
-   * exceeds `Number.MAX_SAFE_INTEGER`.
+   * Provider-specific withdrawal options, taken unchanged from
+   * `PerpsClient.getWithdrawalTypes`. The backend validates them per provider.
+   * Omitted uses the venue's default withdrawal.
+   */
+  withdrawalOptions?: Record<string, unknown>
+  /**
+   * The venue account id when it differs from the wallet address, as a
+   * string. The provider plugin sets it; callers omit it. A string because
+   * Ondo's 20-digit accountID exceeds `Number.MAX_SAFE_INTEGER`.
    */
   accountId?: string
 }
