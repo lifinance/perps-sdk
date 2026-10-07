@@ -1144,46 +1144,29 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
+      const user = key.slice('orderUpdates:'.length)
       const mapped = await Promise.all(
         data.map(async (update) => {
           const basic = update.order
-          if (assetIsOutcome(basic.coin)) {
+          if (
+            assetIsOutcome(basic.coin) ||
+            this.registry?.get(basic.coin) === undefined
+          ) {
             return undefined
           }
-          const market = this.registry?.get(basic.coin)
-          if (market === undefined) {
-            return undefined
-          }
-          const response = await infoRequest<HlOrderStatusResponse>(
-            this.orderApiUrl,
-            {
-              type: 'orderStatus',
-              user: key.slice('orderUpdates:'.length),
-              oid: basic.oid,
-            },
-            hlInfoOptions(client)
-          )
-          if (response.status !== 'order') {
-            throw new PerpsError(
-              PerpsErrorCode.OrderNotFound,
-              `Hyperliquid order metadata not found: ${basic.oid}`
+          let detail: HlOrderDetail
+          try {
+            detail = await this.readOrderDetail(user, client, update)
+          } catch (error) {
+            if (!(error instanceof PerpsError)) {
+              throw error
+            }
+            wsLog.droppedRow(
+              this.providerKey,
+              'order',
+              `${basic.oid}: ${error.message}`
             )
-          }
-          // REST supplies execution metadata; the stream owns this event's lifecycle and quantities.
-          const detail: HlOrderDetail = {
-            status: update.status,
-            statusTimestamp: update.statusTimestamp,
-            order: {
-              ...response.order.order,
-              coin: basic.coin,
-              side: basic.side,
-              limitPx: basic.limitPx,
-              sz: basic.sz,
-              oid: basic.oid,
-              timestamp: basic.timestamp,
-              origSz: basic.origSz,
-              cloid: basic.cloid ?? response.order.order.cloid,
-            },
+            return undefined
           }
           return mapOrderRow(basic.coin, this.registry, (resolved) =>
             mapOrder(detail, resolved)
@@ -1206,6 +1189,41 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })
+  }
+
+  // REST supplies execution metadata; the stream owns this event's lifecycle and quantities.
+  private async readOrderDetail(
+    user: string,
+    client: PerpsSDKClient,
+    update: HlWsOrder
+  ): Promise<HlOrderDetail> {
+    const basic = update.order
+    const response = await infoRequest<HlOrderStatusResponse>(
+      this.orderApiUrl,
+      { type: 'orderStatus', user, oid: basic.oid },
+      hlInfoOptions(client)
+    )
+    if (response.status !== 'order') {
+      throw new PerpsError(
+        PerpsErrorCode.OrderNotFound,
+        `Hyperliquid order metadata not found: ${basic.oid}`
+      )
+    }
+    return {
+      status: update.status,
+      statusTimestamp: update.statusTimestamp,
+      order: {
+        ...response.order.order,
+        coin: basic.coin,
+        side: basic.side,
+        limitPx: basic.limitPx,
+        sz: basic.sz,
+        oid: basic.oid,
+        timestamp: basic.timestamp,
+        origSz: basic.origSz,
+        cloid: basic.cloid ?? response.order.order.cloid,
+      },
+    }
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
