@@ -18,14 +18,38 @@ export {
 export { PerpsClient } from './client/PerpsClient.js'
 export { requireProvider } from './client/requireProvider.js'
 export {
+  absDecimalString,
+  addDecimalString,
+  divideDecimalString,
+  divideDecimalStringRoundDown,
+  multiplyDecimalString,
+  safeAbsDecimalString,
+  safeAddDecimalString,
+  safeDivideDecimalString,
+  safeDivideDecimalStringRoundDown,
+  safeMultiplyDecimalString,
+  safeSubtractDecimalString,
+  subtractDecimalString,
+} from './decimal/arithmetic.js'
+export {
+  compareDecimalStrings,
   isDecimalStringGreaterThan,
   isDecimalStringZero,
+  safeCompareDecimalStrings,
+  safeIsDecimalStringGreaterThan,
+  safeIsDecimalStringZero,
 } from './decimal/compare.js'
-export type { BaseUnitsRounding } from './decimal/convert.js'
+export type { DecimalRounding } from './decimal/convert.js'
 export {
-  baseUnitsToDecimal,
-  decimalToBaseUnits,
+  decimalStringToScaledInteger,
   numberToDecimalString,
+  roundDecimalString,
+  safeDecimalStringToScaledInteger,
+  safeNumberToDecimalString,
+  safeRoundDecimalString,
+  safeScaledIntegerToDecimalString,
+  safeTruncateDecimal,
+  scaledIntegerToDecimalString,
   truncateDecimal,
 } from './decimal/convert.js'
 export type { FormatOptions, RoundingMode } from './decimal/format.js'
@@ -38,12 +62,10 @@ export {
   formatUsd,
 } from './decimal/format.js'
 export {
-  asDecimalString,
   decimalStringToNumber,
-  formattedStringToNumber,
   isDecimalString,
-  requireVenueDecimal,
-  validateDecimalString,
+  safeDecimalStringToNumber,
+  unknownToDecimalString,
 } from './decimal/parse.js'
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
@@ -54,7 +76,6 @@ export {
 } from './math/fills.js'
 export type { ExpectedPnl } from './math/order.js'
 export {
-  applySlippage,
   applySlippageToPrice,
   buildQuote,
   calculateExpectedPnl,
@@ -66,6 +87,17 @@ export {
   estimateRealizedPnl,
   findMatchingPosition,
   resolveCloseSize,
+  safeApplySlippageToPrice,
+  safeBuildQuote,
+  safeCalculateExpectedPnl,
+  safeCalculateRealizedPnlPercent,
+  safeCalculateSize,
+  safeCalculateTriggerPercent,
+  safeCalculateTriggerPrice,
+  safeEstimateFees,
+  safeEstimateRealizedPnl,
+  safeResolveCloseSize,
+  safeWalkOrderbook,
   walkOrderbook,
 } from './math/order.js'
 export {
@@ -83,6 +115,19 @@ export {
   estimateUnrealizedPnl,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
+  safeCalculateEffectiveLeverage,
+  safeCalculateLiquidationDistance,
+  safeCalculateNotionalValue,
+  safeCalculateRealizedPnl,
+  safeCalculateRequiredMargin,
+  safeCalculateRoe,
+  safeCalculateUnrealizedPnl,
+  safeEstimateAverageEntryPrice,
+  safeEstimateLiquidationPrice,
+  safeEstimateLiquidationPriceAtMarketRate,
+  safeEstimateNewLeverage,
+  safeEstimateUnrealizedPnl,
+  safeWouldImmediatelyLiquidate,
   wouldImmediatelyLiquidate,
 } from './math/position.js'
 // Registries
@@ -261,7 +306,6 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
-export { asIsoTimestamp } from './utils/isoTimestamp.js'
 export {
   ACTIVE_ORDER_STATUSES,
   isActiveOrderStatus,
@@ -281,6 +325,10 @@ export {
   signTypedData,
   signTypedDataWithSigner,
 } from './utils/signTypedData.js'
+export {
+  safeTimestampToIsoString,
+  timestampToIsoString,
+} from './utils/timestampToIsoString.js'
 export { createWarnOnce, warnSkippedVenueRow } from './utils/warnOnce.js'
 // Version
 export { name, version } from './version.js'

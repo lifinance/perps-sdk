@@ -1,9 +1,10 @@
 import {
   calculateWithdrawMax,
+  isDecimalStringGreaterThan,
   type ProviderWithdrawableBalance,
-  requireVenueDecimal,
+  subtractDecimalString,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
-import Big from 'big.js'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type {
   HlAbstractionMode,
@@ -24,6 +25,8 @@ import { assetIsOutcome } from './assetId.js'
  * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
  *   quote-asset row. Hyperliquid deducts it from the requested amount. Absent
  *   leaves every row without a fee.
+ * @throws {PerpsError} `SDKError` when the fee or a venue figure is not a
+ * decimal.
  * @public
  */
 export const hyperliquidWithdrawableBalances = (
@@ -37,13 +40,11 @@ export const hyperliquidWithdrawableBalances = (
   const fee =
     withdrawalFee === undefined
       ? undefined
-      : new Big(
-          requireVenueDecimal(
-            withdrawalFee,
-            'providers.withdrawalFeeUsd',
-            PROVIDER_KEY
-          )
-        ).toFixed()
+      : unknownToDecimalString(
+          withdrawalFee,
+          'providers.withdrawalFeeUsd',
+          PROVIDER_KEY
+        )
   const feeFor = (
     assetId: string
   ): Pick<ProviderWithdrawableBalance, 'withdrawalFee' | 'isFeeDeducted'> =>
@@ -56,19 +57,20 @@ export const hyperliquidWithdrawableBalances = (
       if (assetIsOutcome(balance.coin)) {
         continue
       }
-      const spot = new Big(
-        requireVenueDecimal(balance.total, 'spotBalance.total', PROVIDER_KEY)
-      ).minus(
-        new Big(
-          requireVenueDecimal(balance.hold, 'spotBalance.hold', PROVIDER_KEY)
-        )
+      const spot = subtractDecimalString(
+        unknownToDecimalString(
+          balance.total,
+          'spotBalance.total',
+          PROVIDER_KEY
+        ),
+        unknownToDecimalString(balance.hold, 'spotBalance.hold', PROVIDER_KEY)
       )
-      if (spot.gt(0)) {
+      if (isDecimalStringGreaterThan(spot, '0')) {
         const assetId = String(balance.token)
         const row = {
           assetId,
           categoryId: SPOT_MARKET_ID,
-          available: spot.toFixed(),
+          available: spot,
           ...feeFor(assetId),
         }
         rows.push({ ...row, max: calculateWithdrawMax(row) })
@@ -76,18 +78,16 @@ export const hyperliquidWithdrawableBalances = (
     }
   }
 
-  const perps = new Big(
-    requireVenueDecimal(
-      state.withdrawable,
-      'clearinghouseState.withdrawable',
-      PROVIDER_KEY
-    )
+  const perps = unknownToDecimalString(
+    state.withdrawable,
+    'clearinghouseState.withdrawable',
+    PROVIDER_KEY
   )
-  if (perps.gt(0)) {
+  if (isDecimalStringGreaterThan(perps, '0')) {
     const row = {
       assetId: quoteAssetId,
       categoryId: PROVIDER_KEY,
-      available: perps.toFixed(),
+      available: perps,
       ...feeFor(quoteAssetId),
     }
     rows.push({ ...row, max: calculateWithdrawMax(row) })

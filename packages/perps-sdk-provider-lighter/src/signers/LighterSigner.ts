@@ -1,6 +1,9 @@
-import { decimalToBaseUnits, PerpsError } from '@lifi/perps-sdk'
+import {
+  decimalStringToScaledInteger,
+  isDecimalStringGreaterThan,
+  PerpsError,
+} from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
@@ -622,7 +625,7 @@ export class LighterSigner {
         const symbol = stringField(p, 'symbol')
         const amount = stringField(p, 'amount')
         const minimum = stringField(p, 'min_withdrawal_amount')
-        if (new Big(amount).lt(new Big(minimum))) {
+        if (isDecimalStringGreaterThan(minimum, amount)) {
           throw new PerpsError(
             PerpsErrorCode.ValidationError,
             `Lighter WITHDRAWAL of ${amount} ${symbol} is below the venue ` +
@@ -632,7 +635,11 @@ export class LighterSigner {
         return wasm.SignWithdraw(
           numberField(p, 'asset_index'),
           routeType,
-          decimalToBaseUnits(amount, numberField(p, 'decimals'), 'truncate'),
+          decimalStringToScaledInteger(
+            amount,
+            numberField(p, 'decimals'),
+            'truncate'
+          ),
           SKIP_NONCE_DISABLED,
           nonce,
           ctx.apiKeyIndex,

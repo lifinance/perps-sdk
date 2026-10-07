@@ -2,7 +2,7 @@ import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 import type Big from 'big.js'
 import { DivBig } from '../decimal/big.js'
 import { BASE_UNITS_PATTERN } from '../decimal/convert.js'
-import { requireDecimal } from '../decimal/requireDecimal.js'
+import { decimalStringToBig } from '../decimal/decimalStringToBig.js'
 import { PerpsError } from '../errors/PerpsError.js'
 
 /**
@@ -67,8 +67,8 @@ export function calculateRefuelAmount(
     'recommendedAmount'
   )
   const balance = requireBaseUnits(input.nativeBalance, 'nativeBalance')
-  const recommendedUsd = requireDecimal(input.recommendedUsd, 'recommendedUsd')
-  const priceUsd = requireDecimal(input.priceUsd, 'priceUsd')
+  const recommendedUsd = decimalStringToBig(input.recommendedUsd)
+  const priceUsd = decimalStringToBig(input.priceUsd)
   const deficit = recommended.minus(balance)
   if (
     !recommended.gt(0) ||

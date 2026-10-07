@@ -56,7 +56,7 @@ describe('mapPosition', () => {
       liquidationPrice: '182.3',
       unrealizedPnl: '15.5',
       accruedFunding: '-0.12',
-      leverage: 5,
+      leverage: '5',
       marginUsed: '401',
       initialMarginRequirement: '401',
       marginMode: MarginMode.CROSS,
@@ -85,29 +85,56 @@ describe('mapPosition', () => {
     ).toBe(netFundingSinceNeutral)
   })
 
-  it('parses fractional leverage', () => {
+  it('keeps fractional leverage as the venue string', () => {
     expect(
-      mapPosition(positionFixture({ leverage: '3.7' }), MARKET)?.leverage
-    ).toBe(3.7)
+      mapPosition(positionFixture({ leverage: '3.70' }), MARKET)?.leverage
+    ).toBe('3.70')
   })
+
+  it('spells out an exponent-form netQuantity as the size magnitude', () => {
+    expect(
+      mapPosition(
+        positionFixture({ direction: 'short', netQuantity: '-2.5e1' }),
+        MARKET
+      )?.size
+    ).toBe('25')
+  })
+
   it.each([
-    ['netQuantity', { netQuantity: 'abc' }, 'abc'],
-    ['leverage', { leverage: 'n/a' }, 'n/a'],
-    ['averageEntryPrice', { averageEntryPrice: 'x' }, 'x'],
-    ['markPrice', { markPrice: '' }, ''],
-    ['liquidationPrice', { liquidationPrice: 'NaN' }, 'NaN'],
-    ['unrealizedPnl', { unrealizedPnl: '1,0' }, '1,0'],
-    ['netFundingSinceNeutral', { netFundingSinceNeutral: '?' }, '?'],
-    ['usedMargin', { usedMargin: 'none' }, 'none'],
-  ] as const)('skips the row and warns when %s is invalid', (field, overrides, value) => {
+    'abc',
+    '',
+    '1,0',
+  ])('skips the row and warns once when netQuantity is %j', (netQuantity) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    expect(mapPosition(positionFixture(overrides), MARKET)).toBeUndefined()
+    expect(
+      mapPosition(positionFixture({ netQuantity }), MARKET)
+    ).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        `[ondo] skipping position row: \`${field}\` is not a valid decimal: '${value}'`
+        `[ondo] skipping position row: \`netQuantity\` is not a valid decimal: '${netQuantity}'`
       )
     )
+    warn.mockRestore()
+  })
+
+  it.each([
+    ['leverage', { leverage: 'n/a' }],
+    ['entryPrice', { averageEntryPrice: 'x' }],
+    ['markPrice', { markPrice: '' }],
+    ['liquidationPrice', { liquidationPrice: 'NaN' }],
+    ['unrealizedPnl', { unrealizedPnl: '1,0' }],
+    ['accruedFunding', { netFundingSinceNeutral: '?' }],
+    ['marginUsed', { usedMargin: 'none' }],
+  ] as const)('keeps the row with the raw venue string when %s is invalid', (field, overrides) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const [value] = Object.values(overrides)
+
+    const mapped = mapPosition(positionFixture(overrides), MARKET)
+    expect(mapped?.size).toBe('10')
+    expect(mapped?.[field]).toBe(value)
+    expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
 })

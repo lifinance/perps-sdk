@@ -86,13 +86,23 @@ describe('calculateRefuelAmount', () => {
   it.each<[keyof RefuelAmountInput, Partial<RefuelAmountInput>]>([
     ['recommendedAmount', { recommendedAmount: '1.5' }],
     ['nativeBalance', { nativeBalance: '1e3' }],
-    ['recommendedUsd', { recommendedUsd: '4e0' }],
-    ['priceUsd', { priceUsd: '$1' }],
-  ])('rejects a malformed `%s`', (field, overrides) => {
+  ])('rejects a malformed `%s`, naming the field', (field, overrides) => {
     expect(() => calculateRefuelAmount(input(overrides))).toThrow(
       expect.objectContaining({
         code: PerpsErrorCode.ValidationError,
         message: expect.stringContaining(`\`${field}\``),
+      })
+    )
+  })
+
+  it.each<[string, Partial<RefuelAmountInput>]>([
+    ['4e0', { recommendedUsd: '4e0' }],
+    ['abc', { priceUsd: 'abc' }],
+  ])('rejects the malformed USD value %s, naming the value', (value, overrides) => {
+    expect(() => calculateRefuelAmount(input(overrides))).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(`'${value}'`),
       })
     )
   })

@@ -1,6 +1,4 @@
 import {
-  asDecimalString,
-  asIsoTimestamp,
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
@@ -15,6 +13,7 @@ import {
 } from '@lifi/perps-types'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Re-export the shared fill-position classifier used by Hyperliquid mappings. @public */
 export { classifyFillFromPosition }
@@ -22,24 +21,15 @@ export { classifyFillFromPosition }
 /**
  * Spot-ness comes from the resolved market's category, not the coin string —
  * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`. A fill with
- * an invalid size, price or time gives `undefined`.
+ * an invalid time gives `undefined`.
  * @public
  */
 export const mapFill = (
   fill: HlUserFill,
   market: MarketDisplay
 ): Fill | undefined => {
-  const size = asDecimalString(fill.sz)
-  if (size === undefined) {
-    warnSkippedVenueRow(PROVIDER_KEY, 'fill', 'sz', fill.sz)
-    return undefined
-  }
-  const price = asDecimalString(fill.px)
-  if (price === undefined) {
-    warnSkippedVenueRow(PROVIDER_KEY, 'fill', 'px', fill.px)
-    return undefined
-  }
-  const createdAt = asIsoTimestamp(fill.time)
+  const size = fill.sz
+  const createdAt = rowTimestampToIsoStringOrUndefined(fill.time)
   if (createdAt === undefined) {
     warnSkippedVenueRow(PROVIDER_KEY, 'fill', 'time', fill.time, 'timestamp')
     return undefined
@@ -63,7 +53,7 @@ export const mapFill = (
     // which the payload can't distinguish, so the type is left undefined.
     type: fill.crossed ? undefined : OrderType.LIMIT,
     size,
-    price,
+    price: fill.px,
     liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
     filledSize: size,
     fee: {

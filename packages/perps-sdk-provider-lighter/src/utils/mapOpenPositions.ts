@@ -1,4 +1,4 @@
-import { isDecimalStringZero, PerpsError } from '@lifi/perps-sdk'
+import { PerpsError, safeIsDecimalStringZero } from '@lifi/perps-sdk'
 import {
   PerpsErrorCode,
   type PerpsMarketDisplay,
@@ -14,7 +14,7 @@ import { mapPosition } from './mapPosition.js'
  * @public
  */
 export const isOpenPosition = (p: LtAccountPosition): boolean =>
-  !isDecimalStringZero(p.position)
+  safeIsDecimalStringZero(p.position) !== true
 
 /**
  * Map raw Lighter account positions to open {@link Position}s, dropping

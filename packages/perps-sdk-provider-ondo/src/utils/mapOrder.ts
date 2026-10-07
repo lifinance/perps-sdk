@@ -1,9 +1,11 @@
 import {
   ACTIVE_ORDER_STATUSES,
-  asDecimalString,
-  asIsoTimestamp,
+  isDecimalStringGreaterThan,
   PerpsError,
+  safeDivideDecimalString,
+  subtractDecimalString,
   triggerConditionFor,
+  unknownToDecimalString,
   warnSkippedVenueRow,
   wsLog,
 } from '@lifi/perps-sdk'
@@ -17,9 +19,9 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
+import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
 
 const skipOrder = (
   field: string,
@@ -28,6 +30,14 @@ const skipOrder = (
 ): undefined => {
   warnSkippedVenueRow(ONDO_PROVIDER_KEY, 'order', field, value, expected)
   return undefined
+}
+
+const orderSizeOrSkip = (field: string, value: unknown): string | undefined => {
+  try {
+    return unknownToDecimalString(value, field, ONDO_PROVIDER_KEY)
+  } catch {
+    return skipOrder(field, value)
+  }
 }
 
 /** Map supported Ondo lifecycle states; unsupported states fail explicitly. */
@@ -82,8 +92,8 @@ const mapTimeInForce = (tif: string): TimeInForce => {
 
 /**
  * Map Ondo regular, trigger and TWAP rows to the shared order union. A row with
- * an invalid size, time, limit price or trigger price gives `undefined`. An
- * invalid `filledCost` or `avgFilledPrice` omits `averagePrice`.
+ * an invalid size or time gives `undefined`. Prices are the raw venue strings;
+ * an invalid `filledCost` omits `averagePrice`.
  */
 export const mapOrder = (
   order: OndoOrder | OndoTwapOrder,
@@ -91,57 +101,62 @@ export const mapOrder = (
   parentOrderId?: string
 ): Order | undefined => {
   const twap = 'twapId' in order
-  const filledDecimal = asDecimalString(order.filledSize)
-  if (filledDecimal === undefined) {
-    return skipOrder('filledSize', order.filledSize)
+  const filledSize = orderSizeOrSkip('filledSize', order.filledSize)
+  if (filledSize === undefined) {
+    return undefined
   }
-  const [sizeField, sizeValue] = twap
-    ? (['totalSize', order.totalSize] as const)
-    : (['size', order.size] as const)
-  const totalSizeDecimal = asDecimalString(sizeValue)
-  if (totalSizeDecimal === undefined) {
-    return skipOrder(sizeField, sizeValue)
+  const sizeValue = twap
+    ? orderSizeOrSkip('totalSize', order.totalSize)
+    : orderSizeOrSkip('size', order.size)
+  if (sizeValue === undefined) {
+    return undefined
   }
-  const filled = new Big(filledDecimal)
-  const totalSize = new Big(totalSizeDecimal)
-  const filledCost = twap ? undefined : asDecimalString(order.filledCost)
+  const isPartlyFilled = isDecimalStringGreaterThan(filledSize, '0')
   const status = twap
     ? twapStatus(order.orderStatus)
     : mapOrderStatus(order.status)
   const [createdField, createdValue] = twap
     ? (['startTime', order.startTime] as const)
     : (['createdAt', order.createdAt] as const)
-  const createdAt = asIsoTimestamp(createdValue)
+  const createdAt = rowTimestampToIsoStringOrWarn(
+    'order',
+    createdField,
+    createdValue
+  )
   if (createdAt === undefined) {
-    return skipOrder(createdField, createdValue, 'timestamp')
+    return undefined
   }
   const updatedValue = twap
     ? (order.finishTime ?? order.startTime)
     : (order.canceledAt ?? order.filledAt ?? order.createdAt)
-  const updatedAt = asIsoTimestamp(updatedValue)
+  const updatedAt = rowTimestampToIsoStringOrWarn(
+    'order',
+    'updatedAt',
+    updatedValue
+  )
   if (updatedAt === undefined) {
-    return skipOrder('updatedAt', updatedValue, 'timestamp')
+    return undefined
   }
   const averagePrice = twap
-    ? asDecimalString(order.avgFilledPrice)
-    : filledCost === undefined || filled.eq(0)
-      ? undefined
-      : new Big(filledCost).div(filled).toFixed()
+    ? order.avgFilledPrice
+    : isPartlyFilled
+      ? safeDivideDecimalString(order.filledCost, filledSize)
+      : undefined
   const base: OrderBase = {
     orderId: twap ? order.twapId : order.orderId,
     market,
     side: order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
     status:
-      status === OrderStatus.OPEN && filled.gt(0)
+      status === OrderStatus.OPEN && isPartlyFilled
         ? OrderStatus.PARTIALLY_FILLED
         : status,
-    originalSize: totalSize.toFixed(),
-    remainingSize: totalSize.minus(filled).toFixed(),
-    filledSize: filledDecimal,
+    originalSize: sizeValue,
+    remainingSize: subtractDecimalString(sizeValue, filledSize),
+    filledSize,
     reduceOnly: order.reduceOnly ?? false,
     createdAt,
     updatedAt,
-    ...(filled.gt(0) && averagePrice !== undefined ? { averagePrice } : {}),
+    ...(isPartlyFilled && averagePrice !== undefined ? { averagePrice } : {}),
   }
   if (parentOrderId !== undefined) {
     base.parentOrderId = parentOrderId
@@ -183,15 +198,7 @@ export const mapOrder = (
         `Incomplete Ondo trigger order: ${order.orderId}`
       )
     }
-    const triggerPrice = asDecimalString(order.triggerPrice)
-    if (triggerPrice === undefined) {
-      return skipOrder('triggerPrice', order.triggerPrice)
-    }
     const limit = order.type === 'limit'
-    const limitPrice = limit ? asDecimalString(order.price) : undefined
-    if (limit && limitPrice === undefined) {
-      return skipOrder('price', order.price)
-    }
     const type =
       stopOrderType === 'takeProfit'
         ? limit
@@ -203,20 +210,16 @@ export const mapOrder = (
     return {
       ...base,
       type,
-      triggerPrice,
+      triggerPrice: order.triggerPrice,
       triggerCondition: triggerConditionFor(type, base.side),
-      ...(limitPrice !== undefined ? { limitPrice } : {}),
+      ...(limit ? { limitPrice: order.price } : {}),
     }
   }
   const marketOrder = order.type === 'market'
-  const price = asDecimalString(order.price)
-  if (!marketOrder && price === undefined) {
-    return skipOrder('price', order.price)
-  }
   return {
     ...base,
     type: marketOrder ? OrderType.MARKET : OrderType.LIMIT,
-    ...(price !== undefined ? { price } : {}),
+    price: order.price,
     // Ondo market orders execute immediately and omit timeInForce on reads.
     timeInForce:
       order.timeInForce === undefined
@@ -251,7 +254,11 @@ export const mapOrderUpdates = (
       if (!(error instanceof PerpsError)) {
         throw error
       }
-      wsLog.droppedRow(ONDO_PROVIDER_KEY, 'order', error.message)
+      wsLog.droppedRow(
+        ONDO_PROVIDER_KEY,
+        'order',
+        `${row.orderId}: ${error.message}`
+      )
       continue
     }
     if (!ACTIVE_ORDER_STATUSES.has(status)) {

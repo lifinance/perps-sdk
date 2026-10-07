@@ -1,4 +1,3 @@
-import Big from 'big.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { LtPnLEntry } from '../types/pnl.js'
 import { mapPortfolioHistory } from './mapPortfolioHistory.js'
@@ -36,7 +35,7 @@ describe('mapPortfolioHistory', () => {
         snapshot({ timestamp: 2, trade_pnl: Number.NaN }),
         snapshot({ timestamp: 3, trade_pnl: 4, volume: 30 }),
       ],
-      new Big('100')
+      '100'
     )
 
     expect(result.points.map((p) => p.timestamp)).toEqual([1_000, 3_000])
@@ -76,7 +75,7 @@ describe('mapPortfolioHistory', () => {
       }),
     ]
 
-    expect(mapPortfolioHistory('7d', snapshots, new Big('562.25'))).toEqual({
+    expect(mapPortfolioHistory('7d', snapshots, '562.25')).toEqual({
       range: '7d',
       points: [
         { timestamp: 1_700_000_000_000, accountValue: '588.5', pnl: '0' },
@@ -101,7 +100,7 @@ describe('mapPortfolioHistory', () => {
       snapshot({ timestamp: 1_700_003_600, ...cumulative }),
     ]
 
-    expect(mapPortfolioHistory('24h', snapshots, new Big('6.02'))).toEqual({
+    expect(mapPortfolioHistory('24h', snapshots, '6.02')).toEqual({
       range: '24h',
       points: [
         { timestamp: 1_700_000_000_000, accountValue: '6.02', pnl: '0' },
@@ -118,9 +117,7 @@ describe('mapPortfolioHistory', () => {
       snapshot({ timestamp: 1_700_000_000, trade_pnl: 1 }),
     ]
 
-    expect(
-      mapPortfolioHistory('24h', snapshots, new Big('100')).points
-    ).toEqual([
+    expect(mapPortfolioHistory('24h', snapshots, '100').points).toEqual([
       { timestamp: 1_700_000_000_000, accountValue: '96', pnl: '0' },
       { timestamp: 1_700_003_600_000, accountValue: '100', pnl: '4' },
     ])
@@ -139,7 +136,7 @@ describe('mapPortfolioHistory', () => {
             volume: 2_000,
           }),
         ],
-        new Big('250')
+        '250'
       )
     ).toEqual({
       range: '24h',
@@ -171,9 +168,7 @@ describe('mapPortfolioHistory', () => {
       snapshot({ timestamp: 1_764_979_200, trade_pnl: 7, ...transfer }),
     ]
 
-    expect(
-      mapPortfolioHistory('all', snapshots, new Big('5000')).points
-    ).toEqual([
+    expect(mapPortfolioHistory('all', snapshots, '5000').points).toEqual([
       {
         timestamp: 1_764_892_800_000,
         accountValue: earlierValue,
@@ -184,7 +179,7 @@ describe('mapPortfolioHistory', () => {
   })
 
   it('returns no totalPnl and zero volume without snapshots', () => {
-    expect(mapPortfolioHistory('all', [], new Big('100'))).toEqual({
+    expect(mapPortfolioHistory('all', [], '100')).toEqual({
       range: 'all',
       points: [],
       volume: '0',

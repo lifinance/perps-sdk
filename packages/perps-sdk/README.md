@@ -257,17 +257,15 @@ size field shows.
 
 `truncateDecimal(value, decimals)` rounds a decimal string down and pads it to
 exactly `decimals` places, which seeds a fixed-decimal input field.
+`roundDecimalString(value, decimals, rounding)` rounds to `decimals` places,
+with `'truncate'` or `'round'` (half-up), and keeps no trailing zeros.
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
-a plain decimal string, so `1e-7` becomes `'0.0000001'`. `truncateDecimal` and
-`decimalToBaseUnits` throw `PerpsError(ValidationError)` for a string that is
-not a `DecimalString`, such as `'1e-8'`. `isDecimalString(value)` tests a
-value against the same rule.
+a plain decimal string, so `1e-7` becomes `'0.0000001'`.
 
 A provider plugin implements the same two rules for its own venue:
 `snapOrderPrice(market: Market, price: DecimalString): DecimalString` and
 `snapOrderSize(market: Market, size: DecimalString): DecimalString`.
-`estimateLiquidationPrice()` stays on `number`, in and out: it is a
-display-tier estimate for a screen, not a wire amount.
+`estimateLiquidationPrice()` takes and gives a decimal string.
 
 ### Account-side wire helpers
 
@@ -289,44 +287,66 @@ passes through a `number`:
   wallet already holds the recommendation, or when the recommendation, its
   USD value or the price is not greater than zero.
 
-Each one throws `PerpsError(ValidationError)`, naming the field, when an
-input is not a `DecimalString`. `calculateRefuelAmount` also throws when a
+Each one throws `PerpsError(ValidationError)` when an input is not a decimal
+string. `calculateRefuelAmount` also throws when a
 base-unit input is not an integer string.
 
 ## Numbers
 
-### The `DecimalString` contract
+### Decimal strings
 
-Every monetary or quantity value that crosses a package, provider or network
-boundary is a `DecimalString` from `@lifi/perps-types`. It matches
-`DECIMAL_PATTERN`: an optional leading `-`, digits, and an optional `.` with
-digits. It has no grouping, exponent, currency sign or whitespace. `'0.5'` and
-`'-1250'` are `DecimalString`s; `'1e-7'`, `'1,000'`, `'.5'` and `'$1'` are not.
+Every monetary or quantity value is a decimal string (`DecimalString` is an
+alias of `string`). Inside the SDK every calculation uses `big.js`; no exported
+signature carries a `Big` or does float math on an amount.
 
-- `isDecimalString(value)` tests a value against the pattern.
-- `truncateDecimal`, `decimalToBaseUnits` and the account-side `wire/`
-  helpers throw `PerpsError(ValidationError)` for a string that fails the
-  pattern. `calculateOrderAmounts` gives `null` for one.
-- `baseUnitsToDecimal` throws `PerpsError(ValidationError)` for an amount that
-  is not an integer string, such as `'1.5'` or `'1e3'`.
-- No exported signature carries a `Big`. The SDK and the providers compute
-  with `big.js` internally, and give back a `DecimalString` or a `number`.
-- A `number` is for display math and small integers only, such as leverage,
-  decimals, percentages and chart values. A `number` never goes to a venue.
+- Display shows the venue string unchanged. The SDK tests a string only where
+  it sorts or calculates with it.
+- To read a string for a calculation, the SDK removes `$`, `%`, `,` and
+  whitespace, then tests `DECIMAL_PATTERN` (an optional `-`, digits, and an
+  optional `.` with digits), then reads it with `big.js`. So
+  `addDecimalString('$4', '$6')` gives `'10'`. An exponent form such as
+  `'1e-7'` fails the test.
+- `isDecimalString(value)` tests a value against `DECIMAL_PATTERN` with no
+  cleaning. It never throws.
+- `decimalStringToNumber` is for chart and pixel values only. A `number` holds
+  about 15 significant digits.
+
+### `X` and `safeX`
+
+Each fallible function has two forms:
+
+- `X(...)` throws `PerpsError(ValidationError)` on an input that is not a
+  decimal string, or on a zero divisor.
+- `safeX(...)` calls `X`, catches any error, logs a `console.warn` with the
+  function name and the error, and gives `undefined`. It has no default: the
+  caller writes `?? fallback`.
+
+The usage of a value sets the form. A money-path value becomes, or limits, a
+user action sent to a venue: order size, price, margin, fees, slippage, close
+size, TP/SL, and withdraw, transfer or deposit amounts. It uses `X`. A display
+value already exists: position, order and fill rows, PnL, history, account
+totals and WebSocket updates. It uses `safeX`, and the row stays.
+
+| Group      | Functions                                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arithmetic | `addDecimalString`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
+| Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
+| Convert    | `roundDecimalString`, `truncateDecimal`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `timestampToIsoString` |
+| Formulas   | every `calculate*`, `estimate*`, `apply*`, `walkOrderbook`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`       |
+
+`format*` is display only. It formats with `big.js`, shows a string that is not
+a decimal unchanged, and shows the placeholder for `null` or `undefined`. It
+never throws and has no `safe` form.
 
 ### Three tiers
 
-| Tier       | Holds                                                    | In → out                                  | Rule                                                        |
-| ---------- | -------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------- |
-| `decimal/` | `asDecimalString`, `<a>To<B>` conversions, `format*`     | representation → representation           | No domain words. See the vocabulary for each failure mode.  |
-| `math/`    | display-tier formulas (`calculate*`, `estimate*`, …)     | `number` → `number`                       | Results are for `format*`. Never send one to a venue.       |
-| `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers   | `DecimalString` → `DecimalString`         | Venue-ready values, snapped by the market's own provider.   |
+| Tier       | Holds                                                         | In → out          | Rule                                                       |
+| ---------- | ------------------------------------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `decimal/` | arithmetic, compare, `<a>To<B>` conversions, `format*`        | string → string   | No domain words. See the vocabulary for each failure mode. |
+| `math/`    | trading formulas (`calculate*`, `estimate*`, …)               | string → string   | Estimates for a screen or a preview.                       |
+| `wire/`    | `calculateOrderAmounts`, `snapOrder*`, account helpers        | string → string   | Venue-ready values, snapped by the market's own provider.  |
 
-A value for a venue comes from `wire/` or from a provider field. A value for a
-screen goes through `decimalStringToNumber`, then `math/`, then `format*`. A
-mapper reads a venue value with `asDecimalString`, which never throws; account
-math that must not go on with a bad total uses `requireVenueDecimal`, which
-throws.
+A value for a venue comes from `wire/` or from a provider field.
 
 ### Vocabulary
 
@@ -335,12 +355,12 @@ One verb names one kind of transformation.
 | Verb                        | Input → output                                     | Fallible                          | Example                                                    |
 | --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
 | `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseStoredRecord`                                        |
-| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `baseUnits`, `decimal`, `decimalString`, `formattedString` or `number` | throws on invalid, never guesses; a `<a>ToNumber` for display gives `undefined` | `decimalToBaseUnits`, `numberToDecimalString`, `decimalStringToNumber`, `formattedStringToNumber` |
-| `format<X>`                 | value → human string (grouped, localised)          | no; renders a placeholder         | `formatUsd`, `formatNumber`                                |
+| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `scaledInteger`, `decimalString`, `number`, `timestamp` or `isoString` | throws on invalid; `safe<a>To<B>` gives `undefined` | `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber` |
+| `format<X>`                 | value → human string (grouped, localised)          | no; renders the value or a placeholder | `formatUsd`, `formatNumber`                                |
 | `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`, `truncateDecimal`       |
-| `calculate<X>`              | values → exact result by formula                   | no                                | `calculateNotionalValue`, `calculateOrderAmounts`          |
-| `estimate<X>`               | values → approximation or forward-looking value    | no                                | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
-| `resolve<X>`                | candidates and rules → the one to use              | no                                | `resolveCloseSize`, `resolveQuote`                         |
+| `calculate<X>`              | values → exact result by formula                   | throws; `safe` form               | `calculateNotionalValue`, `calculateOrderAmounts`          |
+| `estimate<X>`               | values → approximation or forward-looking value    | throws; `safe` form               | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
+| `resolve<X>`                | candidates and rules → the one to use              | throws; `safe` form               | `resolveCloseSize`, `resolveQuote`                         |
 | `validate<X>`               | values → ok or error result                        | —                                 | —                                                          |
 | `is<X>` `would<X>` `has<X>` | → `boolean`                                        | —                                 | `isDecimalString`, `wouldImmediatelyLiquidate`             |
 | `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |

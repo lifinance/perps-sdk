@@ -19,11 +19,10 @@ import {
   type TriggerOrder,
   type TwapOrder,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
-  applySlippage,
   applySlippageToPrice,
   buildQuote,
   calculateExpectedPnl,
@@ -35,126 +34,115 @@ import {
   estimateRealizedPnl,
   findMatchingPosition,
   resolveCloseSize,
+  safeApplySlippageToPrice,
+  safeBuildQuote,
+  safeCalculateExpectedPnl,
+  safeCalculateRealizedPnlPercent,
+  safeCalculateSize,
+  safeCalculateTriggerPercent,
+  safeCalculateTriggerPrice,
+  safeEstimateFees,
+  safeEstimateRealizedPnl,
+  safeResolveCloseSize,
+  safeWalkOrderbook,
   walkOrderbook,
 } from './order.js'
 
 describe('calculateSize', () => {
   it('should calculate size from margin, leverage, and price', () => {
     // $1000 margin, 10x leverage, BTC at $50,000 = 0.2 BTC
-    expect(calculateSize(1000, 10, 50000)).toBe(0.2)
+    expect(calculateSize('1000', '10', '50000')).toBe('0.2')
   })
 
   it('should scale linearly with leverage', () => {
-    const size1x = calculateSize(1000, 1, 50000)
-    const size10x = calculateSize(1000, 10, 50000)
-    expect(size10x).toBe(size1x * 10)
+    expect(calculateSize('1000', '1', '50000')).toBe('0.02')
+    expect(calculateSize('1000', '10', '50000')).toBe('0.2')
   })
 
   it('should handle small margin amounts', () => {
-    expect(calculateSize(10, 5, 100000)).toBe(0.0005)
+    expect(calculateSize('10', '5', '100000')).toBe('0.0005')
   })
 
   it('should handle very high prices', () => {
-    expect(calculateSize(1000, 1, 1_000_000)).toBe(0.001)
+    expect(calculateSize('1000', '1', '1000000')).toBe('0.001')
   })
 
   it('should handle very low prices', () => {
     // $100 margin, 2x, price $0.001 = 200,000 units
-    expect(calculateSize(100, 2, 0.001)).toBe(200000)
+    expect(calculateSize('100', '2', '0.001')).toBe('200000')
   })
 
-  it('should return Infinity when price is zero', () => {
-    expect(calculateSize(1000, 10, 0)).toBe(Infinity)
+  it('throws a ValidationError when price is zero', () => {
+    expect(() => calculateSize('1000', '10', '0')).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 
   it('should return zero when margin is zero', () => {
-    expect(calculateSize(0, 10, 50000)).toBe(0)
+    expect(calculateSize('0', '10', '50000')).toBe('0')
   })
 })
 
 describe('estimateFees', () => {
   it('should calculate fee from size and rate', () => {
     // $10,000 size at 0.035% (taker) = $3.50
-    expect(estimateFees(10000, 0.00035)).toBe(3.5)
+    expect(estimateFees('10000', '0.00035')).toBe('3.5')
   })
 
   it('should return zero for zero size', () => {
-    expect(estimateFees(0, 0.00035)).toBe(0)
+    expect(estimateFees('0', '0.00035')).toBe('0')
   })
 
   it('should return zero for zero fee rate', () => {
-    expect(estimateFees(10000, 0)).toBe(0)
+    expect(estimateFees('10000', '0')).toBe('0')
   })
 
   it('should handle maker fee rate', () => {
     // $10,000 size at 0.01% (maker) = $1.00
-    expect(estimateFees(10000, 0.0001)).toBe(1)
+    expect(estimateFees('10000', '0.0001')).toBe('1')
   })
 
   it('should scale linearly with size', () => {
-    const fee1 = estimateFees(10000, 0.00035)
-    const fee2 = estimateFees(20000, 0.00035)
-    expect(fee2).toBe(fee1 * 2)
-  })
-})
-
-describe('applySlippage', () => {
-  it('should increase price for buy orders', () => {
-    // 0.5% slippage on $100 buy = $100.50
-    expect(applySlippage(100, 0.5, true)).toBe(100.5)
-  })
-
-  it('should decrease price for sell orders', () => {
-    // 100 / 1.005, divided at 40 dp then narrowed to the nearest double.
-    expect(applySlippage(100, 0.5, false)).toBe(99.50248756218906)
-  })
-
-  it('should return original price with zero slippage', () => {
-    expect(applySlippage(50000, 0, true)).toBe(50000)
-    expect(applySlippage(50000, 0, false)).toBe(50000)
-  })
-
-  it('should handle large slippage percentage', () => {
-    // 5% slippage on buy
-    expect(applySlippage(100, 5, true)).toBe(105)
-  })
-
-  it('should be asymmetric (buy slippage > sell slippage in absolute terms)', () => {
-    const buyPrice = applySlippage(100, 1, true)
-    const sellPrice = applySlippage(100, 1, false)
-    // Buy: 100 * 1.01 = 101, difference = 1
-    // Sell: 100 / 1.01 ≈ 99.0099, difference ≈ 0.99
-    expect(buyPrice - 100).toBeGreaterThan(100 - sellPrice)
-  })
-
-  it('should handle very small prices', () => {
-    const result = applySlippage(0.00001, 0.5, true)
-    expect(result).toBeGreaterThan(0.00001)
+    expect(estimateFees('10000', '0.00035')).toBe('3.5')
+    expect(estimateFees('20000', '0.00035')).toBe('7')
   })
 })
 
 describe('applySlippageToPrice', () => {
   it('raises a buy price by the exact percentage', () => {
-    expect(applySlippageToPrice('100', 0.5, true)).toBe('100.5')
-    expect(applySlippageToPrice('0.07', 10, true)).toBe('0.077')
+    expect(applySlippageToPrice('100', '0.5', true)).toBe('100.5')
+    expect(applySlippageToPrice('100', '5', true)).toBe('105')
+    expect(applySlippageToPrice('0.07', '10', true)).toBe('0.077')
   })
 
   it('divides a sell price without rounding', () => {
-    expect(applySlippageToPrice('110', 10, false)).toBe('100')
-    expect(applySlippageToPrice('100', 0.5, false)).toBe(
+    expect(applySlippageToPrice('110', '10', false)).toBe('100')
+    expect(applySlippageToPrice('100', '0.5', false)).toBe(
       '99.5024875621890547263681592039800995024876'
     )
   })
 
   it('keeps more digits than a float can hold', () => {
-    expect(applySlippageToPrice('12345678901234567.89', 1, true)).toBe(
+    expect(applySlippageToPrice('12345678901234567.89', '1', true)).toBe(
       '12469135690246913.5689'
     )
   })
 
   it('returns the price unchanged for zero slippage', () => {
-    expect(applySlippageToPrice('50000', 0, true)).toBe('50000')
-    expect(applySlippageToPrice('50000', 0, false)).toBe('50000')
+    expect(applySlippageToPrice('50000', '0', true)).toBe('50000')
+    expect(applySlippageToPrice('50000', '0', false)).toBe('50000')
+  })
+
+  it('moves a buy further from the price than a sell', () => {
+    // Buy: 100 × 1.01 = 101. Sell: 100 ÷ 1.01 ≈ 99.0099.
+    expect(applySlippageToPrice('100', '1', true)).toBe('101')
+    expect(applySlippageToPrice('100', '1', false)).toBe(
+      '99.0099009900990099009900990099009900990099'
+    )
+  })
+
+  it('raises a very small buy price', () => {
+    expect(applySlippageToPrice('0.00001', '0.5', true)).toBe('0.00001005')
   })
 
   it.each([
@@ -162,16 +150,17 @@ describe('applySlippageToPrice', () => {
     '1e-7',
     '',
   ])('throws a ValidationError for the price %j', (price) => {
-    expect(() => applySlippageToPrice(price, 1, true)).toThrow(
+    expect(() => applySlippageToPrice(price, '1', true)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
   })
 
   it.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    -100,
-    -150,
+    'NaN',
+    'Infinity',
+    'abc',
+    '-100',
+    '-150',
   ])('throws a ValidationError for the slippage %s', (slippage) => {
     expect(() => applySlippageToPrice('100', slippage, false)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
@@ -182,20 +171,20 @@ describe('applySlippageToPrice', () => {
 describe('calculateRealizedPnlPercent', () => {
   it('should calculate positive PnL percentage', () => {
     // $50 profit on 1 unit at $500 = 10%
-    expect(calculateRealizedPnlPercent(50, 1, 500)).toBe(10)
+    expect(calculateRealizedPnlPercent('50', '1', '500')).toBe('10')
   })
 
   it('should calculate negative PnL percentage', () => {
-    expect(calculateRealizedPnlPercent(-25, 0.5, 1000)).toBe(-5)
+    expect(calculateRealizedPnlPercent('-25', '0.5', '1000')).toBe('-5')
   })
 
   it('should return zero for zero position value', () => {
-    expect(calculateRealizedPnlPercent(100, 0, 1000)).toBe(0)
-    expect(calculateRealizedPnlPercent(100, 1, 0)).toBe(0)
+    expect(calculateRealizedPnlPercent('100', '0', '1000')).toBe('0')
+    expect(calculateRealizedPnlPercent('100', '1', '0')).toBe('0')
   })
 
   it('should use absolute size for negative sizes', () => {
-    expect(calculateRealizedPnlPercent(50, -1, 500)).toBe(10)
+    expect(calculateRealizedPnlPercent('50', '-1', '500')).toBe('10')
   })
 })
 
@@ -212,43 +201,43 @@ const bids: OrderbookLevel[] = [
 
 describe('walkOrderbook', () => {
   it('fills entirely within the best level', () => {
-    const walk = walkOrderbook(asks, 50)
-    expect(walk.filledNotional).toBe(50)
-    expect(walk.baseSize).toBe(0.5)
-    expect(walk.vwap).toBe(100)
+    const walk = walkOrderbook(asks, '50')
+    expect(walk.filledNotional).toBe('50')
+    expect(walk.baseSize).toBe('0.5')
+    expect(walk.vwap).toBe('100')
     expect(walk.insufficientLiquidity).toBe(false)
   })
 
   it('walks across levels and computes the VWAP', () => {
     // 100 USD @100 (1 base) + 101 USD @101 (1 base) = 201 USD, 2 base.
-    const walk = walkOrderbook(asks, 201)
-    expect(walk.filledNotional).toBe(201)
-    expect(walk.baseSize).toBe(2)
-    expect(walk.vwap).toBe(100.5)
+    const walk = walkOrderbook(asks, '201')
+    expect(walk.filledNotional).toBe('201')
+    expect(walk.baseSize).toBe('2')
+    expect(walk.vwap).toBe('100.5')
     expect(walk.insufficientLiquidity).toBe(false)
   })
 
   it('flags insufficient liquidity and returns the best obtainable fill', () => {
     // Total book notional = 100 + 202 + 510 = 812; request 1000.
-    const walk = walkOrderbook(asks, 1000)
-    expect(walk.filledNotional).toBe(812)
-    expect(walk.baseSize).toBe(8)
+    const walk = walkOrderbook(asks, '1000')
+    expect(walk.filledNotional).toBe('812')
+    expect(walk.baseSize).toBe('8')
     expect(walk.insufficientLiquidity).toBe(true)
   })
 
   it('returns a zero fill for an empty book', () => {
-    const walk = walkOrderbook([], 100)
-    expect(walk.baseSize).toBe(0)
-    expect(walk.filledNotional).toBe(0)
-    expect(walk.vwap).toBe(0)
+    const walk = walkOrderbook([], '100')
+    expect(walk.baseSize).toBe('0')
+    expect(walk.filledNotional).toBe('0')
+    expect(walk.vwap).toBe('0')
     expect(walk.insufficientLiquidity).toBe(true)
   })
 
   it('rejects a level with a non-numeric price instead of returning a NaN fill', () => {
     const malformed: OrderbookLevel[] = [{ price: '', size: '1' }]
-    expect(() => walkOrderbook(malformed, 50)).toThrow(PerpsError)
+    expect(() => walkOrderbook(malformed, '50')).toThrow(PerpsError)
     try {
-      walkOrderbook(malformed, 50)
+      walkOrderbook(malformed, '50')
       throw new Error('expected walkOrderbook to throw')
     } catch (error) {
       expect((error as PerpsError).code).toBe(PerpsErrorCode.ValidationError)
@@ -257,7 +246,7 @@ describe('walkOrderbook', () => {
 
   it('rejects a level with a non-numeric size', () => {
     const malformed: OrderbookLevel[] = [{ price: '100', size: 'not-a-number' }]
-    expect(() => walkOrderbook(malformed, 50)).toThrow(PerpsError)
+    expect(() => walkOrderbook(malformed, '50')).toThrow(PerpsError)
   })
 
   it('does not evaluate a malformed level once remaining notional is filled', () => {
@@ -265,8 +254,8 @@ describe('walkOrderbook', () => {
       { price: '100', size: '1' },
       { price: '', size: '1' },
     ]
-    const walk = walkOrderbook(partiallyMalformed, 50)
-    expect(walk.filledNotional).toBe(50)
+    const walk = walkOrderbook(partiallyMalformed, '50')
+    expect(walk.filledNotional).toBe('50')
     expect(walk.insufficientLiquidity).toBe(false)
   })
 })
@@ -332,7 +321,7 @@ describe('buildQuote', () => {
       symbol: 'BTC',
       type: 'perps',
       side: 'buy',
-      sizeUsd: 201,
+      sizeUsd: '201',
       market: perpsMarket,
       price: perpsPrice,
       bids,
@@ -341,11 +330,11 @@ describe('buildQuote', () => {
       timestamp: 1700000000000,
     })
     expect(quote.expectedFillPrice).toBe('100.5')
-    expect(Number(quote.baseSize)).toBe(2)
+    expect(quote.baseSize).toBe('2')
     // (100.5 - 100) / 100 * 10000 = 50 bps.
-    expect(Number(quote.priceImpactBps)).toBe(50)
+    expect(quote.priceImpactBps).toBe('50')
     // 201 * 0.00045 = 0.09045.
-    expect(Number(quote.feeUsd)).toBe(0.09045)
+    expect(quote.feeUsd).toBe('0.09045')
     expect(quote.isDefaultFeeTier).toBe(true)
     expect(quote.funding).toEqual(perpsPrice.funding)
     expect(quote.insufficientLiquidity).toBe(false)
@@ -357,7 +346,7 @@ describe('buildQuote', () => {
       symbol: 'BTC',
       type: 'perps',
       side: 'sell',
-      sizeUsd: 99,
+      sizeUsd: '99',
       market: perpsMarket,
       price: perpsPrice,
       bids,
@@ -366,7 +355,7 @@ describe('buildQuote', () => {
       timestamp: 1700000000000,
     })
     expect(quote.expectedFillPrice).toBe('99')
-    expect(Number(quote.priceImpactBps)).toBe(100)
+    expect(quote.priceImpactBps).toBe('100')
     expect(quote.feeUsd).toBe('0')
   })
 
@@ -376,7 +365,7 @@ describe('buildQuote', () => {
       symbol: 'PURR',
       type: 'spot',
       side: 'buy',
-      sizeUsd: 50,
+      sizeUsd: '50',
       market: spotMarket,
       price: spotPrice,
       bids,
@@ -394,7 +383,7 @@ describe('buildQuote', () => {
       symbol: 'BTC',
       type: 'perps',
       side: 'buy',
-      sizeUsd: 1000,
+      sizeUsd: '1000',
       market: perpsMarket,
       price: perpsPrice,
       bids,
@@ -413,7 +402,7 @@ describe('buildQuote', () => {
         symbol: 'BTC',
         type: 'perps',
         side: 'buy',
-        sizeUsd: 50,
+        sizeUsd: '50',
         market: perpsMarket,
         price: perpsPrice,
         bids,
@@ -435,7 +424,7 @@ describe('buildQuote decimal spelling', () => {
   ] as const
 
   const quoteOf = (input: {
-    sizeUsd: number
+    sizeUsd: string
     asks?: OrderbookLevel[]
     price?: MarketContext
     feeTier?: FeeTier
@@ -464,7 +453,7 @@ describe('buildQuote decimal spelling', () => {
 
   it('spells a sub-micro fee and price impact without an exponent', () => {
     const quote = quoteOf({
-      sizeUsd: 0.001,
+      sizeUsd: '0.001',
       asks: [{ price: '100.000000001', size: '1' }],
     })
     expect(quote.feeUsd).toBe('0.00000035')
@@ -474,7 +463,7 @@ describe('buildQuote decimal spelling', () => {
   it('spells figures of at least 1e21 without an exponent', () => {
     const price = '10000000000000000000000'
     const quote = quoteOf({
-      sizeUsd: 1e30,
+      sizeUsd: '1000000000000000000000000000000',
       price: { ...perpsPrice, markPrice: price },
       asks: [{ price, size: '10000000000' }],
     })
@@ -484,68 +473,66 @@ describe('buildQuote decimal spelling', () => {
   })
 
   it.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])('rejects a non-finite sizeUsd (%s) instead of spelling it', (sizeUsd) => {
+    'NaN',
+    'Infinity',
+    'abc',
+  ])('rejects a non-decimal sizeUsd (%s) instead of spelling it', (sizeUsd) => {
     expect(() => quoteOf({ sizeUsd })).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
   })
 
-  it('rejects a taker fee that does not parse to a finite number', () => {
+  it('rejects a taker fee that is not a decimal string', () => {
     expect(() =>
-      quoteOf({ sizeUsd: 100, feeTier: { maker: '0', taker: 'abc' } })
+      quoteOf({ sizeUsd: '100', feeTier: { maker: '0', taker: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 
-  it('rejects a mark price that does not parse to a finite number', () => {
+  it('rejects a mark price that is not a decimal string', () => {
     expect(() =>
-      quoteOf({ sizeUsd: 100, price: { ...perpsPrice, markPrice: 'abc' } })
+      quoteOf({ sizeUsd: '100', price: { ...perpsPrice, markPrice: 'abc' } })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })
 
 describe('exact decimal results', () => {
   it('calculateSize lands on the lot boundary', () => {
-    expect(calculateSize(7, 2, 0.07)).toBe(200)
-    expect(calculateSize(7, 3, 0.07)).toBe(300)
-    expect(calculateSize(7, 10, 0.07)).toBe(1000)
+    expect(calculateSize('7', '2', '0.07')).toBe('200')
+    expect(calculateSize('7', '3', '0.07')).toBe('300')
+    expect(calculateSize('7', '10', '0.07')).toBe('1000')
   })
 
   it('estimateFees', () => {
-    expect(estimateFees(0.7, 0.1)).toBe(0.07)
-  })
-
-  it('applySlippage', () => {
-    expect(applySlippage(0.07, 10, true)).toBe(0.077)
-    expect(applySlippage(110, 10, false)).toBe(100)
+    expect(estimateFees('0.7', '0.1')).toBe('0.07')
   })
 
   it('calculateExpectedPnl', () => {
-    expect(calculateExpectedPnl(0.77, 0.7, 3, true, 10)).toEqual({
-      amount: 3,
-      percent: 30,
+    expect(calculateExpectedPnl('0.77', '0.7', '3', true, '10')).toEqual({
+      amount: '3',
+      percent: '30',
     })
-    expect(calculateExpectedPnl(0.63, 0.7, 3, false, 10)?.percent).toBe(30)
+    expect(calculateExpectedPnl('0.63', '0.7', '3', false, '10')?.percent).toBe(
+      '30'
+    )
   })
 
   it('calculateTriggerPrice', () => {
-    expect(calculateTriggerPrice(30, 0.7, 3, true)).toBe(0.77)
+    expect(calculateTriggerPrice('30', '0.7', '3', true)).toBe('0.77')
   })
 
   it('calculateTriggerPercent', () => {
-    expect(calculateTriggerPercent(0.77, 0.7, 3, true)).toBe(30)
+    expect(calculateTriggerPercent('0.77', '0.7', '3', true)).toBe('30')
   })
 
   it('calculateRealizedPnlPercent', () => {
-    expect(calculateRealizedPnlPercent(0.3, 1, 0.1)).toBe(300)
+    expect(calculateRealizedPnlPercent('0.3', '1', '0.1')).toBe('300')
   })
 
   it('walkOrderbook', () => {
-    const walk = walkOrderbook([{ price: '0.1', size: '3' }], 0.3)
-    expect(walk.baseSize).toBe(3)
-    expect(walk.filledNotional).toBe(0.3)
-    expect(walk.vwap).toBe(0.1)
+    const walk = walkOrderbook([{ price: '0.1', size: '3' }], '0.3')
+    expect(walk.baseSize).toBe('3')
+    expect(walk.filledNotional).toBe('0.3')
+    expect(walk.vwap).toBe('0.1')
     expect(walk.insufficientLiquidity).toBe(false)
   })
 
@@ -555,7 +542,7 @@ describe('exact decimal results', () => {
       symbol: 'BTC',
       type: 'perps',
       side: 'buy',
-      sizeUsd: 0.3,
+      sizeUsd: '0.3',
       market: perpsMarket,
       price: perpsPrice,
       bids,
@@ -566,30 +553,92 @@ describe('exact decimal results', () => {
     expect(quote.baseSize).toBe('3')
   })
 
-  it('gives back the nearest number for a non-terminating quotient', () => {
-    expect(calculateTriggerPrice(10, 100, 3, true)).toBe(103.33333333333333)
+  it('keeps 40 decimal places for a non-terminating quotient', () => {
+    expect(calculateTriggerPrice('10', '100', '3', true)).toBe(
+      '103.3333333333333333333333333333333333333333'
+    )
   })
 })
 
-describe('non-finite inputs', () => {
-  const nonFinite = [Number.NaN, Number.POSITIVE_INFINITY]
-
-  it.each(nonFinite)('gives back NaN for %s and does not throw', (bad) => {
-    expect(calculateSize(bad, 2, 1)).toBeNaN()
-    expect(estimateFees(bad, 0.1)).toBeNaN()
-    expect(applySlippage(bad, 1, true)).toBeNaN()
-    expect(calculateExpectedPnl(1, bad, 2, true, 1)).toEqual({
-      amount: Number.NaN,
-      percent: Number.NaN,
+describe('non-decimal inputs', () => {
+  it.each([
+    'NaN',
+    'Infinity',
+    'abc',
+  ])('throws a ValidationError for %s', (bad) => {
+    const validationError = expect.objectContaining({
+      code: PerpsErrorCode.ValidationError,
     })
-    expect(calculateTriggerPrice(bad, 1, 2, true)).toBeNaN()
-    expect(calculateTriggerPercent(bad, 1, 2, true)).toBeNaN()
-    expect(calculateRealizedPnlPercent(bad, 1, 1)).toBeNaN()
-    const walk = walkOrderbook([{ price: '1', size: '1' }], bad)
-    expect(walk.baseSize).toBeNaN()
-    expect(walk.filledNotional).toBeNaN()
-    expect(walk.vwap).toBeNaN()
-    expect(walk.insufficientLiquidity).toBe(true)
+    expect(() => calculateSize(bad, '2', '1')).toThrow(validationError)
+    expect(() => estimateFees(bad, '0.1')).toThrow(validationError)
+    expect(() => calculateExpectedPnl('1', bad, '2', true, '1')).toThrow(
+      validationError
+    )
+    expect(() => calculateTriggerPrice(bad, '1', '2', true)).toThrow(
+      validationError
+    )
+    expect(() => calculateTriggerPercent(bad, '1', '2', true)).toThrow(
+      validationError
+    )
+    expect(() => calculateRealizedPnlPercent(bad, '1', '1')).toThrow(
+      validationError
+    )
+    expect(() => walkOrderbook([{ price: '1', size: '1' }], bad)).toThrow(
+      validationError
+    )
+    expect(() => resolveCloseSize(bad, '1')).toThrow(validationError)
+  })
+})
+
+describe('safe order formulas', () => {
+  it('give the result of the throwing form for a valid input', () => {
+    expect(safeCalculateSize('1000', '10', '50000')).toBe('0.2')
+    expect(safeEstimateFees('10000', '0.00035')).toBe('3.5')
+    expect(safeApplySlippageToPrice('100', '0.5', true)).toBe('100.5')
+    expect(safeCalculateExpectedPnl('0.77', '0.7', '3', true, '10')).toEqual({
+      amount: '3',
+      percent: '30',
+    })
+    expect(safeCalculateTriggerPrice('30', '0.7', '3', true)).toBe('0.77')
+    expect(safeCalculateTriggerPercent('0.77', '0.7', '3', true)).toBe('30')
+    expect(safeCalculateRealizedPnlPercent('50', '1', '500')).toBe('10')
+    expect(safeWalkOrderbook(asks, '50')?.vwap).toBe('100')
+    expect(safeResolveCloseSize('5', '2')).toBe('2')
+  })
+
+  it('give undefined and log a warning in place of a throw', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      expect(safeCalculateSize('1000', '10', '0')).toBeUndefined()
+      expect(safeEstimateFees('abc', '0.1')).toBeUndefined()
+      expect(safeApplySlippageToPrice('100', '-100', true)).toBeUndefined()
+      expect(
+        safeCalculateExpectedPnl('1', 'abc', '2', true, '1')
+      ).toBeUndefined()
+      expect(safeCalculateTriggerPrice('abc', '1', '2', true)).toBeUndefined()
+      expect(safeCalculateTriggerPercent('abc', '1', '2', true)).toBeUndefined()
+      expect(safeCalculateRealizedPnlPercent('abc', '1', '1')).toBeUndefined()
+      expect(safeWalkOrderbook(asks, 'abc')).toBeUndefined()
+      expect(safeResolveCloseSize('abc', '1')).toBeUndefined()
+      expect(
+        safeBuildQuote({
+          provider: 'hyperliquid',
+          symbol: 'BTC',
+          type: 'perps',
+          side: 'buy',
+          sizeUsd: 'abc',
+          market: perpsMarket,
+          price: perpsPrice,
+          bids,
+          asks,
+          feeTier: { maker: '0', taker: '0' },
+          timestamp: 1700000000000,
+        })
+      ).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(10)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 
@@ -600,22 +649,22 @@ describe('walkOrderbook zero-price level', () => {
         { price: '0', size: '5' },
         { price: '100', size: '1' },
       ],
-      50
+      '50'
     )
-    expect(walk.baseSize).toBe(0.5)
-    expect(walk.filledNotional).toBe(50)
-    expect(walk.vwap).toBe(100)
+    expect(walk.baseSize).toBe('0.5')
+    expect(walk.filledNotional).toBe('50')
+    expect(walk.vwap).toBe('100')
   })
 })
 
 describe('resolveCloseSize', () => {
   it('reads a zero order size as closing the whole position', () => {
-    expect(resolveCloseSize(0, 3)).toBe(3)
+    expect(resolveCloseSize('0', '3')).toBe('3')
   })
 
   it('caps the close at the position size', () => {
-    expect(resolveCloseSize(5, 2)).toBe(2)
-    expect(resolveCloseSize(1, 2)).toBe(1)
+    expect(resolveCloseSize('5', '2')).toBe('2')
+    expect(resolveCloseSize('1', '2')).toBe('1')
   })
 })
 
@@ -660,7 +709,7 @@ function position(
     liquidationPrice: '0',
     unrealizedPnl: '0',
     accruedFunding: '0',
-    leverage: 1,
+    leverage: '1',
     marginUsed: '0',
     initialMarginRequirement: '0',
     marginMode: MarginMode.CROSS,
@@ -761,7 +810,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.SELL, remainingSize: '1', price: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(50)
+    expect(r).toBe('50')
   })
 
   it('returns null when nothing remains to fill', () => {
@@ -783,7 +832,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.SELL, remainingSize: '2', price: '80' }),
       position({ side: PositionSide.LONG, size: '2', entryPrice: '100' })
     )
-    expect(r).toBe(-40)
+    expect(r).toBe('-40')
   })
 
   it('computes profit for a BUY order reducing a short', () => {
@@ -792,7 +841,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.BUY, remainingSize: '2', price: '80' }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
-    expect(r).toBe(40)
+    expect(r).toBe('40')
   })
 
   it('computes loss for a BUY order reducing a short above entry', () => {
@@ -800,7 +849,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.BUY, remainingSize: '1', price: '120' }),
       position({ side: PositionSide.SHORT, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(-20)
+    expect(r).toBe('-20')
   })
 
   it('caps order size at the position size', () => {
@@ -809,7 +858,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.SELL, remainingSize: '5', price: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(50)
+    expect(r).toBe('50')
   })
 
   it('projects only the remaining size of a partially filled order', () => {
@@ -825,7 +874,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       }),
       position({ side: PositionSide.LONG, size: '3', entryPrice: '100' })
     )
-    expect(r).toBe(50)
+    expect(r).toBe('50')
   })
 
   it('returns null when the order matches no position', () => {
@@ -859,7 +908,7 @@ describe('estimateRealizedPnl on a regular order', () => {
       openOrder({ side: OrderSide.BUY, remainingSize: '5', price: '80' }),
       position({ side: PositionSide.SHORT, size: '-1', entryPrice: '100' })
     )
-    expect(r).toBe(20) // (100 - 80) * 1 = +20
+    expect(r).toBe('20') // (100 - 80) * 1 = +20
   })
 })
 
@@ -869,7 +918,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       triggerOrder({ remainingSize: '1', triggerPrice: '150' }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(50)
+    expect(r).toBe('50')
   })
 
   it('computes loss for a SL on a long at trigger < entry', () => {
@@ -881,7 +930,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(-10)
+    expect(r).toBe('-10')
   })
 
   it('computes profit for a TP on a short at trigger < entry', () => {
@@ -893,7 +942,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
-    expect(r).toBe(40)
+    expect(r).toBe('40')
   })
 
   it('uses the full position size when originalSize is zero on a reduce-only trigger', () => {
@@ -901,7 +950,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       triggerOrder({ remainingSize: '0', triggerPrice: '150' }),
       position({ side: PositionSide.LONG, size: '3', entryPrice: '100' })
     )
-    expect(r).toBe(150) // (150 - 100) * 3
+    expect(r).toBe('150') // (150 - 100) * 3
   })
 
   it('caps an oversized trigger size at the position size', () => {
@@ -913,7 +962,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       }),
       position({ side: PositionSide.SHORT, size: '2', entryPrice: '100' })
     )
-    expect(r).toBe(40) // capped to 2 short
+    expect(r).toBe('40') // capped to 2 short
   })
 
   it('uses triggerPrice, not the optional limitPrice, as the rPnL price', () => {
@@ -927,7 +976,7 @@ describe('estimateRealizedPnl on a trigger order', () => {
       }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(-10) // priced off triggerPrice (90), not limitPrice (85)
+    expect(r).toBe('-10') // priced off triggerPrice (90), not limitPrice (85)
   })
 
   it('projects an accepted trigger order that waits on no parent order', () => {
@@ -939,7 +988,39 @@ describe('estimateRealizedPnl on a trigger order', () => {
       }),
       position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
     )
-    expect(r).toBe(50)
+    expect(r).toBe('50')
+  })
+
+  it('returns null when the trigger order carries no triggerPrice', () => {
+    const { triggerPrice: _, ...withoutTrigger } = triggerOrder({
+      remainingSize: '1',
+      triggerPrice: '150',
+    })
+    const r = estimateRealizedPnl(
+      withoutTrigger,
+      position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+    )
+    expect(r).toBeNull()
+  })
+
+  it('throws a ValidationError for a trigger price that is not a decimal string', () => {
+    expect(() =>
+      estimateRealizedPnl(
+        triggerOrder({ remainingSize: '1', triggerPrice: 'abc' }),
+        position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+      )
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      expect(
+        safeEstimateRealizedPnl(
+          triggerOrder({ remainingSize: '1', triggerPrice: 'abc' }),
+          position({ side: PositionSide.LONG, size: '1', entryPrice: '100' })
+        )
+      ).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('returns null when the trigger has no matching position', () => {
@@ -1001,7 +1082,7 @@ describe('estimateRealizedPnl dispatch', () => {
       remainingSize: '1',
       triggerPrice: '120',
     })
-    expect(estimateRealizedPnl(limit, long)).toBe(50)
-    expect(estimateRealizedPnl(trigger, long)).toBe(20)
+    expect(estimateRealizedPnl(limit, long)).toBe('50')
+    expect(estimateRealizedPnl(trigger, long)).toBe('20')
   })
 })

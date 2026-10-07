@@ -500,7 +500,8 @@ describe('getAccount', () => {
     expect(error.message).toContain('clearinghouseState.withdrawable')
   })
 
-  it('throws a named error identifying a non-decimal totalMarginUsed', async () => {
+  it('omits marginUsed and warns once when totalMarginUsed is not a decimal', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     ;({ restore } = installInfoFetchMock(
       {
         ...defaultResponses(),
@@ -515,16 +516,44 @@ describe('getAccount', () => {
       HL_MARKETS
     ))
 
-    const error = await getAccount(ctx, { address: ADDRESS }).catch(
-      (cause: unknown) => cause
-    )
+    const result = await getAccount(ctx, { address: ADDRESS })
 
-    expect(error).toBeInstanceOf(PerpsError)
-    if (!(error instanceof PerpsError)) {
-      expect.unreachable('getAccount must throw PerpsError')
-    }
-    expect(error.code).toBe(PerpsErrorCode.SDKError)
-    expect(error.message).toContain('marginSummary.totalMarginUsed')
+    expect(result).not.toHaveProperty('marginUsed')
+    expect(result.unrealizedPnl).toBe('100')
+    expect(result.positions).toHaveLength(1)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('omits unrealizedPnl and keeps the position when a position unrealizedPnl is not a decimal', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const [assetPosition] = HL_CLEARINGHOUSE_STATE.assetPositions
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            {
+              ...assetPosition,
+              position: { ...assetPosition.position, unrealizedPnl: 'n/a' },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result).not.toHaveProperty('unrealizedPnl')
+    expect(result.marginUsed).toBe(
+      HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
+    )
+    expect(result.positions).toHaveLength(1)
+    expect(result.positions[0]?.unrealizedPnl).toBe('n/a')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 
   it('returns standard account margin in fixed-point notation', async () => {

@@ -1,6 +1,5 @@
 import {
   DecodeChain,
-  decimalStringToNumber,
   getMarketRegistry,
   isDecimalString,
   localStorageAdapter,
@@ -13,6 +12,7 @@ import {
   ReconnectingWebSocket,
   resolveSubscribeQuote,
   type StorageAdapter,
+  safeCompareDecimalStrings,
   toMarketDisplay,
   toPerpsMarketDisplay,
   WsProviderBase,
@@ -790,8 +790,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       const toLevels = (levels: OndoBookSnapshot['bids'], direction: 1 | -1) =>
         levels
           .flatMap(([price, size]) => {
-            const priceNum = decimalStringToNumber(price)
-            if (priceNum === undefined) {
+            if (!isDecimalString(price)) {
               wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'price', price)
               return []
             }
@@ -799,10 +798,12 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
               wsLog.skippedRow(this.providerKey, BOOK_LEVEL_ROW, 'size', size)
               return []
             }
-            return [{ price, size, priceNum }]
+            return [{ price, size }]
           })
-          .sort((a, b) => direction * (a.priceNum - b.priceNum))
-          .map(({ price, size }) => ({ price, size }))
+          .sort(
+            (a, b) =>
+              direction * (safeCompareDecimalStrings(a.price, b.price) ?? 0)
+          )
       this.emit(`orderbook:${snap.market}`, {
         channel: 'orderbook',
         data: {

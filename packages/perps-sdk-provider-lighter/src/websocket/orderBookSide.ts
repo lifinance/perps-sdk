@@ -1,21 +1,24 @@
 import {
-  decimalStringToNumber,
+  compareDecimalStrings,
   isDecimalString,
   isDecimalStringZero,
   wsLog,
 } from '@lifi/perps-sdk'
 import type { LtWsOrderBook } from '../types/index.js'
 
-/** Orders two prices: a negative result puts `a` before `b`. */
-export type PriceOrder = (a: number, b: number) => number
+/**
+ * Orders two decimal-string prices: a negative result puts `a` before `b`.
+ *
+ * @throws {PerpsError} `ValidationError` when a price is not a decimal string.
+ */
+export type PriceOrder = (a: string, b: string) => number
 
-export const bidOrder: PriceOrder = (a, b) => b - a
-export const askOrder: PriceOrder = (a, b) => a - b
+export const bidOrder: PriceOrder = (a, b) => compareDecimalStrings(b, a)
+export const askOrder: PriceOrder = (a, b) => compareDecimalStrings(a, b)
 
 interface BookLevel {
   price: string
   size: string
-  priceNum: number
 }
 
 /**
@@ -38,8 +41,7 @@ export class OrderBookSide {
    */
   apply(updates: LtWsOrderBook['bids']): void {
     for (const { price, size } of updates) {
-      const priceNum = decimalStringToNumber(price)
-      if (priceNum === undefined) {
+      if (!isDecimalString(price)) {
         wsLog.skippedRow(this.providerKey, 'order book level', 'price', price)
         continue
       }
@@ -56,12 +58,12 @@ export class OrderBookSide {
       if (existing) {
         existing.size = size
       } else {
-        const level = { price, size, priceNum }
+        const level = { price, size }
         this.byPrice.set(price, level)
         // Upper bound: a new level lands after equal prices, as a stable sort
         // of the map in insertion order would place it.
         this.levels.splice(
-          this.bound(level.priceNum, (c) => c > 0),
+          this.bound(level.price, (c) => c > 0),
           0,
           level
         )
@@ -82,18 +84,18 @@ export class OrderBookSide {
     this.levels.splice(
       this.levels.indexOf(
         existing,
-        this.bound(existing.priceNum, (c) => c >= 0)
+        this.bound(existing.price, (c) => c >= 0)
       ),
       1
     )
   }
 
-  private bound(priceNum: number, isPast: (cmp: number) => boolean): number {
+  private bound(price: string, isPast: (cmp: number) => boolean): number {
     let lo = 0
     let hi = this.levels.length
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if (isPast(this.order(this.levels[mid].priceNum, priceNum))) {
+      if (isPast(this.order(this.levels[mid].price, price))) {
         hi = mid
       } else {
         lo = mid + 1

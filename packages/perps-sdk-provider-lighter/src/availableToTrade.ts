@@ -1,29 +1,34 @@
-import { requireVenueDecimal, toAssetDisplay } from '@lifi/perps-sdk'
+import {
+  addDecimalString,
+  isDecimalStringGreaterThan,
+  toAssetDisplay,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type { AvailableToTrade, Market, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
-import Big from 'big.js'
 import { LIGHTER_PROVIDER_KEY } from './constants.js'
 
-export const atLeastZero = (value: Big): Big =>
-  value.lt(0) ? new Big(0) : value
+export const atLeastZero = (value: string): string =>
+  isDecimalStringGreaterThan('0', value) ? '0' : value
 
 // `availableMargin` is the cross free collateral and holds nothing of an
 // isolated position, so closing one releases its whole equity.
-const releasedOnClose = (position: Position): Big => {
-  const marginUsed = new Big(
-    requireVenueDecimal(position.marginUsed, 'marginUsed', LIGHTER_PROVIDER_KEY)
+const releasedOnClose = (position: Position): string => {
+  const marginUsed = unknownToDecimalString(
+    position.marginUsed,
+    'marginUsed',
+    LIGHTER_PROVIDER_KEY
   )
   if (position.marginMode !== MarginMode.ISOLATED) {
     return marginUsed
   }
   return atLeastZero(
-    marginUsed.plus(
-      new Big(
-        requireVenueDecimal(
-          position.unrealizedPnl,
-          'unrealizedPnl',
-          LIGHTER_PROVIDER_KEY
-        )
+    addDecimalString(
+      marginUsed,
+      unknownToDecimalString(
+        position.unrealizedPnl,
+        'unrealizedPnl',
+        LIGHTER_PROVIDER_KEY
       )
     )
   )
@@ -46,31 +51,30 @@ export const lighterAvailableToTrade = (
   availableMargin: string,
   positions: readonly Position[]
 ): AvailableToTrade => {
-  const available = new Big(
-    requireVenueDecimal(
-      availableMargin,
-      'availableMargin',
-      LIGHTER_PROVIDER_KEY
-    )
+  const available = unknownToDecimalString(
+    availableMargin,
+    'availableMargin',
+    LIGHTER_PROVIDER_KEY
   )
   const adding = atLeastZero(available)
   const position = positions.find((p) => p.market.id === market.id)
   const reducing =
     position === undefined
       ? adding
-      : new Big(
-          requireVenueDecimal(
+      : addDecimalString(
+          unknownToDecimalString(
             position.initialMarginRequirement,
             'initialMarginRequirement',
             LIGHTER_PROVIDER_KEY
-          )
-        ).plus(atLeastZero(available.plus(releasedOnClose(position))))
+          ),
+          atLeastZero(addDecimalString(available, releasedOnClose(position)))
+        )
   const isShort = position?.side === PositionSide.SHORT
   return {
     providerId: market.providerId,
     marketId: market.id,
     asset: toAssetDisplay(market.quoteAsset),
-    buy: (isShort ? reducing : adding).toFixed(),
-    sell: (isShort ? adding : reducing).toFixed(),
+    buy: isShort ? reducing : adding,
+    sell: isShort ? adding : reducing,
   }
 }

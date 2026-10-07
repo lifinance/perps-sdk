@@ -5,10 +5,11 @@ import {
   PositionMarginAdjustment,
   PositionSide,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   type DexMarginSummary,
   perpsTotals,
+  safeSumDecimalStrings,
   sumUnrealizedPnl,
 } from './venueTotals.js'
 
@@ -50,7 +51,7 @@ const position = (unrealizedPnl: string): Position => ({
   liquidationPrice: '4000',
   unrealizedPnl,
   accruedFunding: '0',
-  leverage: 20,
+  leverage: '20',
   marginUsed: '500',
   initialMarginRequirement: '500',
   marginMode: MarginMode.ISOLATED,
@@ -59,16 +60,16 @@ const position = (unrealizedPnl: string): Position => ({
 describe('perpsTotals', () => {
   it('returns zero totals for an account with no perps sub-dex', () => {
     const { accountValue, marginUsed } = perpsTotals([])
-    expect(accountValue.toFixed()).toBe('0')
-    expect(marginUsed.toFixed()).toBe('0')
+    expect(accountValue).toBe('0')
+    expect(marginUsed).toBe('0')
   })
 
   it('returns the venue figures of a single sub-dex unchanged', () => {
     const { accountValue, marginUsed } = perpsTotals([
       dexState('1234.56', '789.01'),
     ])
-    expect(accountValue.toFixed()).toBe('1234.56')
-    expect(marginUsed.toFixed()).toBe('789.01')
+    expect(accountValue).toBe('1234.56')
+    expect(marginUsed).toBe('789.01')
   })
 
   it('sums the venue figures over every sub-dex', () => {
@@ -77,8 +78,8 @@ describe('perpsTotals', () => {
       dexState('250', '100'),
       dexState('7.5', '2.5'),
     ])
-    expect(accountValue.toFixed()).toBe('1257.5')
-    expect(marginUsed.toFixed()).toBe('502.5')
+    expect(accountValue).toBe('1257.5')
+    expect(marginUsed).toBe('502.5')
   })
 
   it('keeps full decimal precision, unlike a float sum', () => {
@@ -86,7 +87,7 @@ describe('perpsTotals', () => {
       dexState('0.1', '0'),
       dexState('0.2', '0'),
     ])
-    expect(accountValue.toFixed()).toBe('0.3')
+    expect(accountValue).toBe('0.3')
   })
 
   it.each([
@@ -103,23 +104,19 @@ describe('perpsTotals', () => {
       dexState('1000', '400'),
       {},
     ])
-    expect(accountValue.toFixed()).toBe('1000')
-    expect(marginUsed.toFixed()).toBe('400')
+    expect(accountValue).toBe('1000')
+    expect(marginUsed).toBe('400')
   })
 })
 
 describe('sumUnrealizedPnl', () => {
   it('returns zero for an account with no position', () => {
-    expect(sumUnrealizedPnl([]).toFixed()).toBe('0')
+    expect(sumUnrealizedPnl([])).toBe('0')
   })
 
   it('adds a profit and a loss at full decimal precision', () => {
     expect(
-      sumUnrealizedPnl([
-        position('0.1'),
-        position('0.2'),
-        position('-0.05'),
-      ]).toFixed()
+      sumUnrealizedPnl([position('0.1'), position('0.2'), position('-0.05')])
     ).toBe('0.25')
   })
 
@@ -127,5 +124,22 @@ describe('sumUnrealizedPnl', () => {
     expect(() => sumUnrealizedPnl([position('NaN')])).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.SDKError })
     )
+  })
+})
+
+describe('safeSumDecimalStrings', () => {
+  it('returns zero for no term', () => {
+    expect(safeSumDecimalStrings([])).toBe('0')
+  })
+
+  it('adds every term at full decimal precision', () => {
+    expect(safeSumDecimalStrings(['0.1', '0.2', '-0.05'])).toBe('0.25')
+  })
+
+  it('returns undefined and warns once when one term is not a decimal', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeSumDecimalStrings(['0.1', 'abc', '0.2'])).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })

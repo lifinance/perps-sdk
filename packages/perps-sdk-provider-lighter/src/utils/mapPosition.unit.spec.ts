@@ -1,3 +1,4 @@
+import { decimalStringToNumber } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -174,24 +175,24 @@ describe('mapPosition (Lighter)', () => {
         MARKET
       )
       // 83.961964 / 0.00106 ≈ 79209.4
-      expect(parseFloat(result.markPrice)).toBeCloseTo(79209.4, 1)
+      expect(Number(result.markPrice)).toBeCloseTo(79209.4, 1)
     })
 
     it('derives fractional leverage from the initial_margin_fraction', () => {
       expect(
         map(basePosition({ initial_margin_fraction: '2.00' }), MARKET).leverage
-      ).toBe(50)
+      ).toBe('50')
       expect(
         map(basePosition({ initial_margin_fraction: '12.50' }), MARKET).leverage
-      ).toBe(8)
+      ).toBe('8')
       // Display leverage rounds to the venue leverage precision. Risk
       // calculations consume the exact IMF separately.
       expect(
         map(basePosition({ initial_margin_fraction: '45.00' }), MARKET).leverage
-      ).toBe(2.22)
+      ).toBe('2.22')
       expect(
         map(basePosition({ initial_margin_fraction: '33.33' }), MARKET).leverage
-      ).toBe(3)
+      ).toBe('3')
       expect(
         map(
           basePosition({
@@ -234,14 +235,6 @@ describe('mapPosition (Lighter)', () => {
       ['initial_margin_fraction', { initial_margin_fraction: 'n/a' }],
       ['position', { position: 'abc' }],
       ['position_value', { position_value: '' }],
-      ['avg_entry_price', { avg_entry_price: 'x' }],
-      ['liquidation_price', { liquidation_price: 'NaN' }],
-      ['unrealized_pnl', { unrealized_pnl: '1,000' }],
-      ['total_funding_paid_out', { total_funding_paid_out: '?' }],
-      [
-        'allocated_margin',
-        { margin_mode: LT_MARGIN_MODE_ISOLATED, allocated_margin: 'none' },
-      ],
     ])('skips the row and warns when %s is invalid (%o)', (field, overrides) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -250,6 +243,24 @@ describe('mapPosition (Lighter)', () => {
         expect.stringContaining(`[lighter] skipping position row: \`${field}\``)
       )
       warn.mockRestore()
+    })
+
+    it.each([
+      ['entryPrice', { avg_entry_price: 'x' }, 'x'],
+      ['liquidationPrice', { liquidation_price: 'NaN' }, 'NaN'],
+      ['unrealizedPnl', { unrealized_pnl: '1,000' }, '1,000'],
+      ['accruedFunding', { total_funding_paid_out: '?' }, '?'],
+      [
+        'marginUsed',
+        { margin_mode: LT_MARGIN_MODE_ISOLATED, allocated_margin: 'none' },
+        'none',
+      ],
+    ] satisfies [
+      keyof ReturnType<typeof map>,
+      Partial<LtAccountPosition>,
+      string,
+    ][])('keeps the row and shows the venue string in %s (%o)', (key, overrides, venueValue) => {
+      expect(map(basePosition(overrides), MARKET)[key]).toBe(venueValue)
     })
   })
 
@@ -284,10 +295,10 @@ describe('mapPosition (Lighter)', () => {
 
 describe('leverageFromScaledImf', () => {
   it('reads a basis-point IMF as display leverage', () => {
-    expect(leverageFromScaledImf(500)).toBe(20)
-    expect(leverageFromScaledImf(200)).toBe(50)
-    expect(leverageFromScaledImf(666)).toBe(15.02)
-    expect(leverageFromScaledImf(3333)).toBe(3)
+    expect(leverageFromScaledImf(500)).toBe('20')
+    expect(leverageFromScaledImf(200)).toBe('50')
+    expect(leverageFromScaledImf(666)).toBe('15.02')
+    expect(leverageFromScaledImf(3333)).toBe('3')
   })
 
   it('is undefined for a non-positive IMF', () => {
@@ -302,19 +313,19 @@ describe('leverageFromScaledImf', () => {
 
 describe('leverageFromImf', () => {
   it.each([
-    ['33.33', 3],
-    ['16.67', 6],
-    ['14.29', 7],
-    ['11.11', 9],
-    ['40.00', 2.5],
+    ['33.33', '3'],
+    ['16.67', '6'],
+    ['14.29', '7'],
+    ['11.11', '9'],
+    ['40.00', '2.5'],
   ])('reads IMF %s back as %s', (imf, leverage) => {
     expect(leverageFromImf(imf)).toBe(leverage)
   })
 
   it('rounds half up at the third decimal place', () => {
-    expect(leverageFromImf('8')).toBe(12.5)
-    expect(leverageFromImf('16')).toBe(6.25)
-    expect(leverageFromImf('32')).toBe(3.13)
+    expect(leverageFromImf('8')).toBe('12.5')
+    expect(leverageFromImf('16')).toBe('6.25')
+    expect(leverageFromImf('32')).toBe('3.13')
   })
 
   it('reads every leverage at the precision back to a value that re-saves the same IMF', () => {
@@ -325,7 +336,7 @@ describe('leverageFromImf', () => {
       if (readBack === undefined) {
         expect.unreachable(`IMF ${fraction} has no read-back`)
       }
-      expect(leverageToFraction(readBack)).toBe(fraction)
+      expect(leverageToFraction(decimalStringToNumber(readBack))).toBe(fraction)
     }
   })
 })

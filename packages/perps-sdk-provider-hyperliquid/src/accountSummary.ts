@@ -1,30 +1,34 @@
-import { PerpsError, requireVenueDecimal } from '@lifi/perps-sdk'
+import {
+  addDecimalString,
+  PerpsError,
+  subtractDecimalString,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   AccountSummary,
   Balance,
+  DecimalString,
   HyperliquidAccountConfig,
   Position,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from './constants.js'
 import { isUnifiedAbstraction } from './utils/abstractionMode.js'
 import { perpsTotals, sumUnrealizedPnl } from './utils/venueTotals.js'
 
-const sumValueUsd = (balances: readonly Balance[]): Big =>
+const sumValueUsd = (balances: readonly Balance[]): DecimalString =>
   balances.reduce(
     (sum, balance) =>
-      sum.plus(
-        new Big(
-          requireVenueDecimal(
-            balance.valueUsd,
-            'balance.valueUsd',
-            PROVIDER_KEY
-          )
+      addDecimalString(
+        sum,
+        unknownToDecimalString(
+          balance.valueUsd,
+          'balance.valueUsd',
+          PROVIDER_KEY
         )
       ),
-    new Big(0)
+    '0'
   )
 
 const hyperliquidConfig = (
@@ -41,11 +45,11 @@ const hyperliquidConfig = (
 
 const getAvailableMargin = (
   config: HyperliquidAccountConfig,
-  accountValue: Big,
-  marginUsed: Big
-): Big => {
+  accountValue: DecimalString,
+  marginUsed: DecimalString
+): DecimalString => {
   if (!isUnifiedAbstraction(config.abstractionMode)) {
-    return accountValue.minus(marginUsed)
+    return subtractDecimalString(accountValue, marginUsed)
   }
   if (config.availableAfterMaintenance === undefined) {
     throw new PerpsError(
@@ -53,12 +57,10 @@ const getAvailableMargin = (
       `Hyperliquid '${config.abstractionMode}' account carries no quote-asset entry in \`tokenToAvailableAfterMaintenance\``
     )
   }
-  return new Big(
-    requireVenueDecimal(
-      config.availableAfterMaintenance,
-      'tokenToAvailableAfterMaintenance',
-      PROVIDER_KEY
-    )
+  return unknownToDecimalString(
+    config.availableAfterMaintenance,
+    'tokenToAvailableAfterMaintenance',
+    PROVIDER_KEY
   )
 }
 
@@ -67,7 +69,8 @@ const getAvailableMargin = (
  * {@link AccountSummary}, from the venue figures the response carries.
  *
  * @throws {PerpsError} `SDKError` when the account is not a Hyperliquid one,
- * or when a unified/portfolio-margin account carries no venue buying power.
+ * when a unified/portfolio-margin account carries no venue buying power, or
+ * when a summed venue figure is not a decimal.
  * @public
  */
 export function getAccountSummary(
@@ -78,15 +81,12 @@ export function getAccountSummary(
   const { accountValue, marginUsed } = perpsTotals(config.dexStates)
 
   return {
-    portfolioValue: sumValueUsd(account.collateralBalances)
-      .plus(sumValueUsd(account.balances))
-      .toFixed(),
-    availableMargin: getAvailableMargin(
-      config,
-      accountValue,
-      marginUsed
-    ).toFixed(),
-    marginUsed: marginUsed.toFixed(),
-    unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
+    portfolioValue: addDecimalString(
+      sumValueUsd(account.collateralBalances),
+      sumValueUsd(account.balances)
+    ),
+    availableMargin: getAvailableMargin(config, accountValue, marginUsed),
+    marginUsed,
+    unrealizedPnl: sumUnrealizedPnl(positions),
   }
 }

@@ -3290,7 +3290,7 @@ describe('HyperliquidWsProvider', () => {
       expect(event.data.find((p: any) => p.market.id === 'BTC')).toMatchObject({
         size: '0.1',
         entryPrice: '94000',
-        leverage: 10,
+        leverage: '10',
       })
     })
 
@@ -3654,7 +3654,7 @@ describe('HyperliquidWsProvider', () => {
       getMockRwsInstance().simulateMessage(
         JSON.stringify({
           channel: 'orderUpdates',
-          data: [sparseOrderUpdate({ timestamp: 1e20 })],
+          data: [sparseOrderUpdate({}, 'mysteryStatus')],
         })
       )
 
@@ -3667,6 +3667,38 @@ describe('HyperliquidWsProvider', () => {
       expect(event.channel).toBe('marketsContext')
       expect(event.data.BTC.midPrice).toBe('95000')
       errorSpy.mockRestore()
+    })
+
+    it('skips an order update with an out-of-range timestamp and warns, without an error', async () => {
+      const provider = createEnrichingProvider(HL_MARKETS)
+      const orderListener = vi.fn()
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock.mockReset().mockResolvedValue(orderMetadata())
+
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        orderListener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'orderUpdates',
+          data: [sparseOrderUpdate({ timestamp: 1e20 })],
+        })
+      )
+
+      await vi.waitFor(() => expect(orderListener).toHaveBeenCalledOnce())
+      expect(orderListener.mock.calls[0][0].data).toEqual({
+        orders: [],
+        terminated: [],
+      })
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[hyperliquid] skipping order row: `timestamp`')
+      )
+      expect(errorSpy).not.toHaveBeenCalled()
+      errorSpy.mockRestore()
+      warnSpy.mockRestore()
     })
 
     it('should not notify a listener after it unsubscribes', async () => {

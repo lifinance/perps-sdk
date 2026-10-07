@@ -1,4 +1,8 @@
-import { PerpsError, type SDKRequestOptions } from '@lifi/perps-sdk'
+import {
+  numberToDecimalString,
+  PerpsError,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import {
   MarginMode,
   type MarketRef,
@@ -66,6 +70,6 @@ export const getMarketSettings = async (
   return {
     marginMode:
       leverage.type === 'isolated' ? MarginMode.ISOLATED : MarginMode.CROSS,
-    leverage: leverage.value,
+    leverage: numberToDecimalString(leverage.value),
   }
 }

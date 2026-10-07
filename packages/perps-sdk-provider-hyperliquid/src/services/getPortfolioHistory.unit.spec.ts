@@ -160,7 +160,7 @@ describe('Hyperliquid getPortfolioHistory', () => {
     expect(result.totalPnl).toBe('5.0')
   })
 
-  it('skips invalid samples and an invalid volume, and warns', async () => {
+  it('keeps sample values and volume as raw venue strings, and skips a sample with an invalid timestamp', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const installed = installInfoFetchMock({
       portfolio: [
@@ -170,10 +170,12 @@ describe('Hyperliquid getPortfolioHistory', () => {
             accountValueHistory: [
               [1_741_046_400_000, '1000.0'],
               [1_741_050_000_000, 'n/a'],
+              [Number.NaN, '1001.0'],
             ] as [number, string][],
             pnlHistory: [
               [1_741_046_400_000, '2.0'],
               [1_741_050_000_000, ''],
+              [Number.NaN, '3.0'],
             ] as [number, string][],
             vlm: 'NaN',
           },
@@ -192,9 +194,10 @@ describe('Hyperliquid getPortfolioHistory', () => {
       range: '24h',
       points: [
         { timestamp: 1_741_046_400_000, accountValue: '1000.0', pnl: '2.0' },
+        { timestamp: 1_741_050_000_000, accountValue: 'n/a', pnl: '' },
       ],
-      volume: undefined,
-      totalPnl: '2.0',
+      volume: 'NaN',
+      totalPnl: '',
     })
     expect(warn).toHaveBeenCalledTimes(2)
     warn.mockRestore()

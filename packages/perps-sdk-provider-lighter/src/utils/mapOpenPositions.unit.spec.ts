@@ -2,7 +2,7 @@ import {
   type PerpsMarketDisplay,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LtAccountPosition } from '../types/index.js'
 import { isOpenPosition, mapOpenPositions } from './mapOpenPositions.js'
 
@@ -98,5 +98,12 @@ describe('isOpenPosition', () => {
     '10oops',
   ])('gives true for position %j', (position) => {
     expect(isOpenPosition(rawPosition({ position }))).toBe(true)
+  })
+
+  it('keeps a row with an invalid size and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(isOpenPosition(rawPosition({ position: 'n/a' }))).toBe(true)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })

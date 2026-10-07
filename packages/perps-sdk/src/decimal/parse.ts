@@ -1,110 +1,52 @@
-import {
-  DECIMAL_PATTERN,
-  type DecimalString,
-  PerpsErrorCode,
-} from '@lifi/perps-types'
+import { DECIMAL_PATTERN, PerpsErrorCode } from '@lifi/perps-types'
 import Big from 'big.js'
 import { PerpsError } from '../errors/PerpsError.js'
-
-function toFloat(value: string): number {
-  if (!value) {
-    return 0
-  }
-  const cleaned = value.replace(/[\s$%,]/g, '')
-  if (!cleaned) {
-    return 0
-  }
-  return parseFloat(cleaned)
-}
-
-const FORMATTED_NUMBER =
-  /^(?:[+-]\s*)?(?:\$\s*)?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*(?:%|USD))?$/i
+import { createSafeFunction } from '../utils/createSafeFunction.js'
+import { decimalStringToBig } from './decimalStringToBig.js'
 
 /**
- * Read human-formatted text as a JS float, removing currency symbols, grouping
- * separators and a percentage suffix around the number.
+ * Read a decimal string as a JS float, for a chart or pixel value only. A
+ * float holds about 15 significant digits, so the result can lose precision;
+ * never use it for an amount sent to a venue.
  *
- * @returns `0` for blank text, and `undefined` for missing, malformed or
- *   non-finite text.
+ * @throws {PerpsError} `ValidationError` when `value` is not a decimal string
+ *   or is too large for a finite float.
  * @public
  */
-export function formattedStringToNumber(
-  text: string | null | undefined
-): number | undefined {
-  if (text == null) {
-    return undefined
-  }
-  if (text.trim() === '') {
-    return 0
-  }
-  if (!FORMATTED_NUMBER.test(text.trim())) {
-    return undefined
-  }
-  const parsed = toFloat(text)
-  return Number.isFinite(parsed) ? parsed : undefined
-}
-
-/**
- * Read a {@link DecimalString} as a JS float for display math. No formatting
- * is removed.
- *
- * @returns `undefined` for a missing or invalid value, or one too large for a
- *   finite float.
- * @public
- */
-export function decimalStringToNumber(
-  value: DecimalString | null | undefined
-): number | undefined {
-  if (!isDecimalString(value)) {
-    return undefined
-  }
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : undefined
-}
-
-/**
- * Narrows an unknown value to a {@link DecimalString}.
- *
- * @public
- */
-export function isDecimalString(value: unknown): value is DecimalString {
-  return typeof value === 'string' && DECIMAL_PATTERN.test(value)
-}
-
-/**
- * Check a decimal input against the {@link DecimalString} contract, naming
- * the field it came from, so a malformed amount fails at the SDK boundary
- * instead of inside big.js.
- *
- * @returns `value`, unchanged.
- * @throws {PerpsError} `ValidationError` naming `field`.
- * @public
- */
-export function validateDecimalString(
-  value: DecimalString,
-  field: string
-): DecimalString {
-  if (!isDecimalString(value)) {
+export function decimalStringToNumber(value: string): number {
+  const parsed = decimalStringToBig(value).toNumber()
+  if (!Number.isFinite(parsed)) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
-      `Invalid \`${field}\`: '${value}' is not a decimal string.`
+      `'${value}' is too large for a finite number.`
     )
   }
-  return value
+  return parsed
+}
+
+/**
+ * {@link decimalStringToNumber}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeDecimalStringToNumber = createSafeFunction(
+  'decimalStringToNumber',
+  decimalStringToNumber
+)
+
+/**
+ * Narrows an unknown value to a {@link DecimalString}. No characters are
+ * removed first.
+ *
+ * @public
+ */
+export function isDecimalString(value: unknown): value is string {
+  return typeof value === 'string' && DECIMAL_PATTERN.test(value)
 }
 
 const MAX_SPELLED_EXPONENT = 1000
 
-/**
- * Read a venue value as a {@link DecimalString} for display. A number or an
- * exponent string is spelled out in full; a value already in the pattern is
- * returned unchanged.
- *
- * @returns `undefined` for any value that is not a finite decimal, or whose
- *   exponent is above 1000 in magnitude. Never throws.
- * @public
- */
-export function asDecimalString(value: unknown): DecimalString | undefined {
+function spellDecimal(value: unknown): string | undefined {
   if (isDecimalString(value)) {
     return value
   }
@@ -128,19 +70,21 @@ export function asDecimalString(value: unknown): DecimalString | undefined {
 }
 
 /**
- * Read a required venue value as a {@link DecimalString}, for account and
- * balance math that must not go on with a wrong total.
+ * Read a venue value (a string or a number) as a decimal string, for a
+ * money-path value that must not go on wrong. A number or an exponent string
+ * is spelled out in full; no `$`, `%` or `,` is removed.
  *
  * @param tool - Provider key set on the error.
- * @throws {PerpsError} `SDKError` naming `field` when `value` is not a finite decimal.
+ * @throws {PerpsError} `SDKError` naming `field` when `value` is not a finite
+ *   decimal.
  * @public
  */
-export function requireVenueDecimal(
+export function unknownToDecimalString(
   value: unknown,
   field: string,
   tool: string
-): DecimalString {
-  const decimal = asDecimalString(value)
+): string {
+  const decimal = spellDecimal(value)
   if (decimal !== undefined) {
     return decimal
   }

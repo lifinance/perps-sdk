@@ -1,6 +1,5 @@
 import {
   ACTIVE_ORDER_STATUSES,
-  asDecimalString,
   calculateTransferable,
   type DepositFlow,
   estimateLiquidationPriceAtMarketRate,
@@ -11,7 +10,7 @@ import {
   getMarketsContext,
   getProviders,
   isActiveOrderStatus,
-  isDecimalString,
+  isDecimalStringGreaterThan,
   localStorageAdapter,
   numberToDecimalString,
   PerpsError,
@@ -33,13 +32,17 @@ import {
   type ProviderGetWithdrawalTypesParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
-  requireVenueDecimal,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
   type StorageAdapter,
+  safeAbsDecimalString,
+  safeAddDecimalString,
+  safeMultiplyDecimalString,
+  subtractDecimalString,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
   type WithdrawalSourceTypes,
 } from '@lifi/perps-sdk'
 import type {
@@ -75,7 +78,6 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
 import {
   boundAccountTiers,
@@ -181,6 +183,14 @@ import { isPlaceholderTxHash } from './utils/txHash.js'
 import { wireList } from './utils/wireList.js'
 
 const ZERO_FEE_TIER = { maker: '0', taker: '0' }
+
+/** The sum of `values`, or `undefined` when any term is not a decimal string. */
+const safeSum = (values: readonly string[]): string | undefined =>
+  values.reduce<string | undefined>(
+    (sum, value) =>
+      sum === undefined ? undefined : safeAddDecimalString(sum, value),
+    '0'
+  )
 
 const tickToFeeString = (tick: number): string =>
   numberToDecimalString(tick / LIGHTER_FEE_TICK_SCALE)
@@ -918,7 +928,10 @@ export const createLighterProvider = (
         `The backend market '${marketId}' carries no positive Lighter default leverage`
       )
     }
-    return { marginMode: MarginMode.CROSS, leverage }
+    return {
+      marginMode: MarginMode.CROSS,
+      leverage: numberToDecimalString(leverage),
+    }
   }
 
   const resolveAccountExists = async (
@@ -1087,35 +1100,17 @@ export const createLighterProvider = (
         (id) => toPerpsMarketDisplay(registry.require(String(id)))
       )
 
-      const totalMarginUsed = positions.reduce(
-        (sum, p) =>
-          sum.plus(
-            new Big(
-              requireVenueDecimal(p.marginUsed, 'marginUsed', providerKey)
-            )
-          ),
-        new Big(0)
-      )
-      const totalUnrealizedPnl = positions.reduce(
-        (sum, p) =>
-          sum.plus(
-            new Big(
-              requireVenueDecimal(p.unrealizedPnl, 'unrealizedPnl', providerKey)
-            )
-          ),
-        new Big(0)
-      )
+      const totalMarginUsed = safeSum(positions.map((p) => p.marginUsed))
+      const totalUnrealizedPnl = safeSum(positions.map((p) => p.unrealizedPnl))
 
       const instanceMeta = providers.find((p) => p.key === providerKey)
       const categories = instanceMeta?.categories ?? []
       const perpsCategory = categories.find((c) => c.quoteAsset !== null)
 
-      const availableBalance = new Big(
-        requireVenueDecimal(
-          account.available_balance,
-          'available_balance',
-          providerKey
-        )
+      const availableBalance = unknownToDecimalString(
+        account.available_balance,
+        'available_balance',
+        providerKey
       )
       // Each asset has a spot route (`balance`) and a perps route
       // (`margin_balance`). The instance's settlement asset is valued 1:1; an
@@ -1125,21 +1120,24 @@ export const createLighterProvider = (
         account.account_trading_mode === LT_ACCOUNT_TRADING_MODE_UNIFIED &&
         asset.asset_id === collateral.assetIndex
       const heldAssets = account.assets.filter((asset) =>
-        (isPooled(asset)
-          ? pooledSettlementUnits(asset)
-          : new Big(requireVenueDecimal(asset.balance, 'balance', providerKey))
-        ).gt(0)
+        isDecimalStringGreaterThan(
+          isPooled(asset)
+            ? pooledSettlementUnits(asset)
+            : unknownToDecimalString(asset.balance, 'balance', providerKey),
+          '0'
+        )
       )
       const marginAssets = account.assets.filter(
         (asset) =>
           !isPooled(asset) &&
-          new Big(
-            requireVenueDecimal(
+          isDecimalStringGreaterThan(
+            unknownToDecimalString(
               asset.margin_balance,
               'margin_balance',
               providerKey
-            )
-          ).gt(0)
+            ),
+            '0'
+          )
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
@@ -1168,7 +1166,7 @@ export const createLighterProvider = (
           asset,
           units,
           valueUsd,
-          ...(price === undefined ? {} : { price: price.toFixed() }),
+          ...(price === undefined ? {} : { price }),
         }
       }
       const registryAsset = (a: LtAccountAsset): Asset =>
@@ -1187,55 +1185,51 @@ export const createLighterProvider = (
       // account's free margin; every other perps-route asset releases none.
       const collateralBalances: Balance[] = marginAssets.map((a) => {
         const isSettlement = a.asset_id === collateral.assetIndex
-        const marginBalance = new Big(
-          requireVenueDecimal(a.margin_balance, 'margin_balance', providerKey)
-        ).toFixed()
+        const marginBalance = unknownToDecimalString(
+          a.margin_balance,
+          'margin_balance',
+          providerKey
+        )
         return {
           ...toBalance(
             a,
             perpsCategory?.id ?? providerKey,
             isSettlement ? settlementAsset : registryAsset(a),
-            isDecimalString(a.margin_balance) ? a.margin_balance : marginBalance
+            marginBalance
           ),
           transferable: isSettlement
-            ? calculateTransferable(availableBalance.toFixed(), marginBalance)
+            ? calculateTransferable(availableBalance, marginBalance)
             : '0',
         }
       })
       const balances: Balance[] = heldAssets.map((a) => {
         if (isPooled(a)) {
-          const units = pooledSettlementUnits(a).toFixed()
+          const units = pooledSettlementUnits(a)
           return {
             ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), units),
             transferable: calculateTransferable(
-              pooledSettlementSpendable(a, availableBalance).toFixed(),
+              pooledSettlementSpendable(a, availableBalance),
               units
             ),
           }
         }
-        const balance = new Big(
-          requireVenueDecimal(a.balance, 'balance', providerKey)
+        const balance = unknownToDecimalString(
+          a.balance,
+          'balance',
+          providerKey
         )
         return {
-          ...toBalance(
-            a,
-            LIGHTER_SPOT_CATEGORY_ID,
-            registryAsset(a),
-            isDecimalString(a.balance) ? a.balance : balance.toFixed()
-          ),
+          ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), balance),
           transferable: calculateTransferable(
-            balance
-              .minus(
-                new Big(
-                  requireVenueDecimal(
-                    a.locked_balance,
-                    'locked_balance',
-                    providerKey
-                  )
-                )
+            subtractDecimalString(
+              balance,
+              unknownToDecimalString(
+                a.locked_balance,
+                'locked_balance',
+                providerKey
               )
-              .toFixed(),
-            balance.toFixed()
+            ),
+            balance
           ),
         }
       })
@@ -1286,8 +1280,12 @@ export const createLighterProvider = (
         balances,
         collateralBalances,
         positions,
-        marginUsed: totalMarginUsed.toFixed(),
-        unrealizedPnl: totalUnrealizedPnl.toFixed(),
+        ...(totalMarginUsed === undefined
+          ? {}
+          : { marginUsed: totalMarginUsed }),
+        ...(totalUnrealizedPnl === undefined
+          ? {}
+          : { unrealizedPnl: totalUnrealizedPnl }),
         feeTier:
           limitsResult === undefined
             ? ZERO_FEE_TIER
@@ -1396,24 +1394,20 @@ export const createLighterProvider = (
       }
       const account = await plugin.getAccount({ address: params.address }, opts)
       const config = lighterConfig(account)
-      const crossFreeCollateral = new Big(
-        requireVenueDecimal(
-          config.crossAssetValue,
-          'crossAssetValue',
-          providerKey
-        )
-      ).minus(
-        new Big(
-          requireVenueDecimal(
+      return lighterAvailableToTrade(
+        market,
+        subtractDecimalString(
+          unknownToDecimalString(
+            config.crossAssetValue,
+            'crossAssetValue',
+            providerKey
+          ),
+          unknownToDecimalString(
             config.crossInitialMarginRequirement,
             'crossInitialMarginRequirement',
             providerKey
           )
-        )
-      )
-      return lighterAvailableToTrade(
-        market,
-        crossFreeCollateral.toFixed(),
+        ),
         account.positions
       )
     },
@@ -1444,7 +1438,7 @@ export const createLighterProvider = (
         row === undefined
           ? undefined
           : leverageFromImf(
-              requireVenueDecimal(
+              unknownToDecimalString(
                 row.initial_margin_fraction,
                 'initial_margin_fraction',
                 providerKey
@@ -1753,7 +1747,7 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        new Big(getAccountSummary(account, account.positions).portfolioValue)
+        getAccountSummary(account, account.positions).portfolioValue
       )
     },
 
@@ -1849,8 +1843,12 @@ export const createLighterProvider = (
           if (market === undefined) {
             return []
           }
-          const price = asDecimalString(l.trade.price)
-          const size = asDecimalString(l.trade.size)
+          const notional = safeMultiplyDecimalString(
+            l.trade.price,
+            l.trade.size
+          )
+          const liquidatedNotionalPosition =
+            notional === undefined ? undefined : safeAbsDecimalString(notional)
           const marginMode = wireList(l.info.positions).find(
             (p) => p.market_id === l.market_id
           )?.margin_mode
@@ -1871,14 +1869,9 @@ export const createLighterProvider = (
               provider: providerKey,
               timestamp: toIsoFromMs(l.executed_at),
               type: ActivityType.LIQUIDATION,
-              ...(price === undefined || size === undefined
+              ...(liquidatedNotionalPosition === undefined
                 ? {}
-                : {
-                    liquidatedNotionalPosition: new Big(price)
-                      .times(size)
-                      .abs()
-                      .toFixed(),
-                  }),
+                : { liquidatedNotionalPosition }),
               // The account value at liquidation time is the pre-trade
               // snapshot, not the settled one Lighter also reports.
               ...(accountValue === undefined ? {} : { accountValue }),

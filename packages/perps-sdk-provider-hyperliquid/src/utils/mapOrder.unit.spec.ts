@@ -66,11 +66,6 @@ describe('mapOrder', () => {
   it.each([
     ['origSz', raw({ origSz: 'abc' })],
     ['sz', raw({ sz: '' })],
-    ['limitPx', raw({ limitPx: 'NaN' })],
-    [
-      'triggerPx',
-      raw({ orderType: 'Stop Market', isTrigger: true, triggerPx: 'x' }),
-    ],
   ])('skips the row and warns when %s is invalid', (field, order) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -78,6 +73,26 @@ describe('mapOrder', () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(`[hyperliquid] skipping order row: \`${field}\``)
     )
+  })
+  it('keeps a limit order with a non-decimal limitPx as the raw venue string', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(raw({ limitPx: 'NaN' }), MARKET)).toMatchObject({
+      type: OrderType.LIMIT,
+      price: 'NaN',
+    })
+    expect(warn).not.toHaveBeenCalled()
+  })
+  it('keeps a trigger order with a non-decimal triggerPx as the raw venue string', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(
+      mapOrder(
+        raw({ orderType: 'Stop Market', isTrigger: true, triggerPx: 'x' }),
+        MARKET
+      )
+    ).toMatchObject({ type: OrderType.STOP_MARKET, triggerPrice: 'x' })
+    expect(warn).not.toHaveBeenCalled()
   })
   it('keeps a trigger market order whose unused limitPx is invalid', () => {
     expect(

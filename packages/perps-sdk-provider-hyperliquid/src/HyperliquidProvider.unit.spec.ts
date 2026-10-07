@@ -151,11 +151,11 @@ describe('hyperliquidProvider', () => {
       const provider = hyperliquidProvider()
       // mmr = 1/(2*50) = 0.01; entry * (1 - 1/leverage) / (1 - mmr)
       const liq = provider.estimateLiquidationPrice(perpMarket, {
-        entryPrice: 50000,
-        leverage: 10,
+        entryPrice: '50000',
+        leverage: '10',
         isLong: true,
       })
-      expect(liq).toBeCloseTo(45454.545, 2)
+      expect(liq).toBe('45454.5454545454545454545454545454545454545455')
     })
   })
 

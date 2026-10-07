@@ -110,7 +110,8 @@ describe('mapOrder', () => {
       orderFixture({ size: '10.00', filledSize: '0.00' }),
       MARKET
     )
-    expect(unfilled?.originalSize).toBe(unfilled?.remainingSize)
+    expect(unfilled?.originalSize).toBe('10.00')
+    expect(unfilled?.remainingSize).toBe('10')
     expect(unfilled?.status).toBe(OrderStatus.OPEN)
     expect(unfilled).not.toHaveProperty('averagePrice')
   })
@@ -308,26 +309,60 @@ describe('mapOrder', () => {
     warn.mockRestore()
   })
 
-  it('omits averagePrice when filledCost is invalid', () => {
+  it('omits averagePrice and warns once when filledCost is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const mapped = mapOrder(
       orderFixture({ filledSize: '1', filledCost: 'abc' }),
       MARKET
     )
     expect(mapped?.filledSize).toBe('1')
     expect(mapped).not.toHaveProperty('averagePrice')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 
-  it.each<[string, OndoOrder | OndoTwapOrder]>([
-    ['price', orderFixture({ price: 'bad-limit' })],
-    ['triggerPrice', orderFixture({ type: 'stopMarket', triggerPrice: '' })],
+  it('reads a numeric size from the wire', () => {
+    const raw: OndoOrder = JSON.parse(
+      JSON.stringify({ ...orderFixture(), size: 10, filledSize: 4 })
+    )
+    expect(mapOrder(raw, MARKET)).toMatchObject({
+      originalSize: '10',
+      filledSize: '4',
+      remainingSize: '6',
+    })
+  })
+
+  it('spells out an exponent-form size in full', () => {
+    expect(
+      mapOrder(orderFixture({ size: '1e1', filledSize: '4e0' }), MARKET)
+    ).toMatchObject({ originalSize: '10', filledSize: '4', remainingSize: '6' })
+  })
+
+  it.each<[string, OndoOrder, Record<string, string>]>([
+    ['price', orderFixture({ price: 'bad-limit' }), { price: 'bad-limit' }],
     [
-      'price',
+      'triggerPrice',
+      orderFixture({ type: 'stopMarket', triggerPrice: '' }),
+      { triggerPrice: '' },
+    ],
+    [
+      'limitPrice',
       orderFixture({
         stopOrderType: 'stopLoss',
         triggerPrice: '190',
         price: 'x',
       }),
+      { triggerPrice: '190', limitPrice: 'x' },
     ],
+  ])('keeps a row with an invalid %s as the raw venue string', (_field, row, prices) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(mapOrder(row, MARKET)).toMatchObject({ orderId: 'ord-1', ...prices })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it.each<[string, OndoOrder | OndoTwapOrder]>([
     ['createdAt', orderFixture({ createdAt: 'not a time' })],
     ['updatedAt', orderFixture({ status: 'canceled', canceledAt: 'never' })],
     ['startTime', twapFixture({ startTime: 'soon' })],
@@ -341,19 +376,19 @@ describe('mapOrder', () => {
     warn.mockRestore()
   })
 
-  it('omits the price of a market order when the venue price is invalid', () => {
+  it('keeps the raw venue price of a market order when it is invalid', () => {
     const mapped = mapOrder(
       orderFixture({ type: 'market', price: 'n/a', timeInForce: undefined }),
       MARKET
     )
     expect(mapped?.type).toBe(OrderType.MARKET)
-    expect(mapped).not.toHaveProperty('price')
+    expect(mapped).toHaveProperty('price', 'n/a')
   })
 
-  it('omits the TWAP averagePrice when avgFilledPrice is invalid', () => {
+  it('keeps the raw TWAP averagePrice when avgFilledPrice is invalid', () => {
     const mapped = mapOrder(twapFixture({ avgFilledPrice: 'abc' }), MARKET)
     expect(mapped?.filledSize).toBe('4')
-    expect(mapped).not.toHaveProperty('averagePrice')
+    expect(mapped).toHaveProperty('averagePrice', 'abc')
   })
 })
 
@@ -417,7 +452,7 @@ describe('mapOrderUpdates', () => {
       terminated: ['cancelled'],
     })
     expect(warn).toHaveBeenCalledWith(
-      '[ondo:ws] skipping order row: Unsupported Ondo order status: unknown'
+      '[ondo:ws] skipping order row: unmappable: Unsupported Ondo order status: unknown'
     )
     warn.mockRestore()
   })

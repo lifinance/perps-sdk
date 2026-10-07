@@ -151,8 +151,8 @@ export interface ActionSignerContribution {
  */
 export interface LiquidationEstimateParams {
   /** Entry price in quote currency per base unit. */
-  entryPrice: number
-  leverage: number
+  entryPrice: string
+  leverage: string
   /** `true` for long, `false` for short. */
   isLong: boolean
 }
@@ -335,7 +335,7 @@ export interface ProviderGetQuoteParams {
   /** Trade direction used to choose asks for buys or bids for sells. */
   side: QuoteSide
   /** USD notional to fill. */
-  size: number
+  size: string
   /** Product family used to disambiguate spot and perpetual markets. */
   type: TradeType
 }
@@ -599,10 +599,6 @@ export interface PerpsProviderPlugin {
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —
    * does no I/O.
    *
-   * Numbers, in and out, on purpose: this is a display-tier estimate that
-   * feeds a screen, not a wire amount. It is not a `snap*` method and must
-   * not be converted to {@link DecimalString}.
-   *
    * @returns The estimated liquidation price, or `undefined` when the venue's
    *   model cannot be evaluated client-side (degenerate inputs, or `market`
    *   lacks the margin metadata the model needs).
@@ -610,7 +606,7 @@ export interface PerpsProviderPlugin {
   estimateLiquidationPrice(
     market: PerpsMarket,
     params: LiquidationEstimateParams
-  ): number | undefined
+  ): string | undefined
 
   /**
    * Margin that can be removed from `position` under the venue margin rules,

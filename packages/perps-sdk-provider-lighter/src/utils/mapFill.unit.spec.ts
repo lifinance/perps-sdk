@@ -575,7 +575,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.liquidity).toBe(LiquidityRole.MAKER)
-      expect(fill.leverage).toBe(20)
+      expect(fill.leverage).toBe('20')
     })
 
     it("reads the taker fraction on a taker fill and ignores the maker's", () => {
@@ -591,7 +591,7 @@ describe('mapFill (Lighter)', () => {
         MARKET
       )
       expect(fill.liquidity).toBe(LiquidityRole.TAKER)
-      expect(fill.leverage).toBe(50)
+      expect(fill.leverage).toBe('50')
     })
 
     it('reports a fractional multiple when the reciprocal does not divide', () => {
@@ -605,7 +605,7 @@ describe('mapFill (Lighter)', () => {
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.leverage).toBe(33.33)
+      expect(fill.leverage).toBe('33.33')
     })
 
     it('leaves leverage unset on older rows missing the fraction', () => {
@@ -1022,16 +1022,26 @@ describe('mapFill (Lighter)', () => {
   })
 
   it.each([
-    ['size', { size: '10oops' }],
-    ['price', { price: 'NaN' }],
-    ['timestamp', { timestamp: Number.NaN }],
+    ['size', { size: '10oops' }, '10oops'],
+    ['price', { price: 'NaN' }, 'NaN'],
   ] satisfies [
-    string,
+    'size' | 'price',
     Partial<LtTrade>,
-  ][])('skips a trade with an invalid %s and warns', (_field, overrides) => {
+    string,
+  ][])('keeps a trade with an invalid %s and shows the venue string', (field, overrides, venueValue) => {
+    const fill = mapValidFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)
+    expect(fill[field]).toBe(venueValue)
+  })
+
+  it('skips a trade with an invalid timestamp and warns once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(baseTrade(overrides), ACCOUNT_INDEX, MARKET)).toBeUndefined()
+    expect(
+      mapFill(baseTrade({ timestamp: Number.NaN }), ACCOUNT_INDEX, MARKET)
+    ).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('skipping fill row: `timestamp`')
+    )
     warn.mockRestore()
   })
 

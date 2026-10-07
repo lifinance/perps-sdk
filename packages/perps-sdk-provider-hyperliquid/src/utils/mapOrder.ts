@@ -1,7 +1,13 @@
 import {
-  asDecimalString,
+  isDecimalStringGreaterThan,
   PerpsError,
+  safeDivideDecimalString,
+  safeIsDecimalStringGreaterThan,
+  safeIsDecimalStringZero,
+  safeSubtractDecimalString,
+  subtractDecimalString,
   triggerConditionFor,
+  unknownToDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
@@ -17,13 +23,13 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlFrontendOpenOrder,
   HlOrderDetail,
   HlTwapHistoryEntry,
 } from '../types/index.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Order payload shared by frontend, historical, and single-order reads. */
 export type HlOrderLike = HlFrontendOpenOrder | HlOrderDetail['order']
@@ -97,6 +103,14 @@ const skipOrder = (field: string, value: unknown): undefined => {
   return undefined
 }
 
+const venueDecimal = (value: unknown, field: string): string | undefined => {
+  try {
+    return unknownToDecimalString(value, field, PROVIDER_KEY)
+  } catch {
+    return undefined
+  }
+}
+
 function venueError(message: string): PerpsError {
   const error = new PerpsError(PerpsErrorCode.ThirdPartyError, message)
   error.tool = PROVIDER_KEY
@@ -105,7 +119,7 @@ function venueError(message: string): PerpsError {
 
 /**
  * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
- * with an invalid size or price gives `undefined`.
+ * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
  */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
@@ -117,20 +131,25 @@ export const mapOrder = (
       throw venueError('Hyperliquid returned a TWAP without a twapId.')
     }
     const { state } = raw
-    const size = asDecimalString(state.sz)
-    if (size === undefined) {
-      return skipOrder('sz', state.sz)
-    }
-    const executedSize = asDecimalString(state.executedSz)
-    if (executedSize === undefined) {
+    const remainingSize = safeSubtractDecimalString(state.sz, state.executedSz)
+    if (remainingSize === undefined) {
       return skipOrder('executedSz', state.executedSz)
     }
-    const executedNotional = asDecimalString(state.executedNtl)
-    const filled = new Big(executedSize)
+    const createdAt = rowTimestampToIsoStringOrUndefined(state.timestamp)
+    if (createdAt === undefined) {
+      return skipOrder('timestamp', state.timestamp)
+    }
+    const updatedAt = rowTimestampToIsoStringOrUndefined(raw.time * 1000)
+    if (updatedAt === undefined) {
+      return skipOrder('time', raw.time)
+    }
     let status: OrderStatus
     switch (raw.status.status) {
       case 'activated':
-        status = filled.gt(0) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+        status =
+          safeIsDecimalStringGreaterThan(state.executedSz, '0') === true
+            ? OrderStatus.PARTIALLY_FILLED
+            : OrderStatus.OPEN
         break
       case 'waitingForTrigger':
         status = OrderStatus.OPEN
@@ -150,44 +169,57 @@ export const mapOrder = (
           `Unknown Hyperliquid TWAP status: ${raw.status.status}`
         )
     }
+    const averagePrice =
+      safeIsDecimalStringZero(state.executedSz) === false
+        ? safeDivideDecimalString(state.executedNtl, state.executedSz)
+        : undefined
     return {
       orderId: String(raw.twapId),
       market,
       type: OrderType.TWAP,
       side: state.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
-      originalSize: size,
-      remainingSize: new Big(size).minus(filled).toFixed(),
-      filledSize: executedSize,
-      ...(filled.eq(0) || executedNotional === undefined
-        ? {}
-        : { averagePrice: new Big(executedNotional).div(filled).toFixed() }),
+      originalSize: state.sz,
+      remainingSize,
+      filledSize: state.executedSz,
+      ...(averagePrice === undefined ? {} : { averagePrice }),
       reduceOnly: state.reduceOnly,
       status,
       ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
         ? { statusReason: raw.status.description ?? raw.status.status }
         : {}),
-      createdAt: new Date(state.timestamp).toISOString(),
-      updatedAt: new Date(raw.time * 1000).toISOString(),
-      startedAt: new Date(state.timestamp).toISOString(),
+      createdAt,
+      updatedAt,
+      startedAt: createdAt,
       durationSeconds: state.minutes * 60,
     }
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const originalSize = asDecimalString(o.origSz)
+  const originalSize = venueDecimal(o.origSz, 'origSz')
   if (originalSize === undefined) {
     return skipOrder('origSz', o.origSz)
   }
-  const remainingSize = asDecimalString(o.sz)
+  const remainingSize = venueDecimal(o.sz, 'sz')
   if (remainingSize === undefined) {
     return skipOrder('sz', o.sz)
   }
-  const price = asDecimalString(o.limitPx)
-  const filled = new Big(originalSize).minus(remainingSize)
+  const filledSize = subtractDecimalString(originalSize, remainingSize)
+  const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
+  if (createdAt === undefined) {
+    return skipOrder('timestamp', o.timestamp)
+  }
+  const statusTimestamp = 'order' in raw ? raw.statusTimestamp : o.timestamp
+  const updatedAt = rowTimestampToIsoStringOrUndefined(statusTimestamp)
+  if (updatedAt === undefined) {
+    return skipOrder('statusTimestamp', statusTimestamp)
+  }
   let status = mapOrderStatus(venueStatus)
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING
-  } else if (status === OrderStatus.OPEN && filled.gt(0)) {
+  } else if (
+    status === OrderStatus.OPEN &&
+    isDecimalStringGreaterThan(filledSize, '0')
+  ) {
     status = OrderStatus.PARTIALLY_FILLED
   }
   const base: OrderBase = {
@@ -199,15 +231,13 @@ export const mapOrder = (
     ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
       ? { statusReason: venueStatus }
       : {}),
-    originalSize,
-    remainingSize,
-    filledSize: filled.toFixed(),
+    originalSize: o.origSz,
+    remainingSize: o.sz,
+    filledSize,
     reduceOnly: o.reduceOnly,
     ...(parentOrderId === undefined ? {} : { parentOrderId }),
-    createdAt: new Date(o.timestamp).toISOString(),
-    updatedAt: new Date(
-      'order' in raw ? raw.statusTimestamp : o.timestamp
-    ).toISOString(),
+    createdAt,
+    updatedAt,
   }
   let type = mapOrderType(o.orderType)
   if (o.isTrigger && (type === OrderType.MARKET || type === OrderType.LIMIT)) {
@@ -228,19 +258,13 @@ export const mapOrder = (
     if (o.triggerPx === null) {
       throw venueError('Hyperliquid trigger order has no trigger price.')
     }
-    const triggerPrice = asDecimalString(o.triggerPx)
-    if (triggerPrice === undefined) {
-      return skipOrder('triggerPx', o.triggerPx)
-    }
     return {
       ...base,
       type: triggerType,
-      triggerPrice,
+      triggerPrice: o.triggerPx,
       triggerCondition: triggerConditionFor(triggerType, base.side),
-      ...((type === OrderType.STOP_LIMIT ||
-        type === OrderType.TAKE_PROFIT_LIMIT) &&
-      price !== undefined
-        ? { limitPrice: price }
+      ...(type === OrderType.STOP_LIMIT || type === OrderType.TAKE_PROFIT_LIMIT
+        ? { limitPrice: o.limitPx }
         : {}),
     }
   }
@@ -263,8 +287,5 @@ export const mapOrder = (
     default:
       throw venueError(`Unknown Hyperliquid time in force: ${o.tif}`)
   }
-  if (price === undefined) {
-    return skipOrder('limitPx', o.limitPx)
-  }
-  return { ...base, type, price, timeInForce }
+  return { ...base, type, price: o.limitPx, timeInForce }
 }

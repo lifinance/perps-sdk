@@ -1,7 +1,9 @@
 /**
  * Display-tier position formulas and margin-adjustment predicates. Every
- * formula takes and gives `number`; exact decimal arithmetic happens
- * internally with `DivBig`.
+ * formula takes and gives decimal strings; arithmetic is exact Big.js, with
+ * division to 40 decimal places. Each formula throws `ValidationError` on an
+ * input that is not a decimal string and has a `safe*` pair that gives
+ * `undefined` in place of the throw.
  *
  * Sign convention: long = +1, short = -1. Sizes passed to the `estimate*`
  * helpers are always non-negative magnitudes; direction is carried by
@@ -10,189 +12,223 @@
 
 import {
   MarginMode,
+  PerpsErrorCode,
   type PerpsMarket,
   type Position,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
-import { areFinite, DivBig } from '../decimal/big.js'
+import { DivBig } from '../decimal/big.js'
+import { numberToDecimalString } from '../decimal/convert.js'
+import {
+  bigToDecimalString,
+  decimalStringToBig,
+  decimalStringToDivBig,
+} from '../decimal/decimalStringToBig.js'
+import { PerpsError } from '../errors/PerpsError.js'
 import type { LiquidationEstimateParams } from '../types/provider.js'
+import { createSafeFunction } from '../utils/createSafeFunction.js'
 
 /**
- * Calculate notional value of a position.
+ * Notional value of a position: `|size| × price`.
  *
- * @param size - Position size in asset units
- * @param price - Current asset price
- * @returns Notional value in USD
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
-export function calculateNotionalValue(size: number, price: number): number {
-  if (!areFinite(size, price)) {
-    return Number.NaN
-  }
-  return new DivBig(size).abs().times(price).toNumber()
+export function calculateNotionalValue(size: string, price: string): string {
+  return bigToDecimalString(
+    decimalStringToBig(size).abs().times(decimalStringToBig(price))
+  )
 }
 
+/** @public */
+export const safeCalculateNotionalValue = createSafeFunction(
+  'calculateNotionalValue',
+  calculateNotionalValue
+)
+
 /**
- * Calculate unrealized PnL.
+ * Unrealized PnL: `(currentPrice - entryPrice) × size`, where `size` is
+ * positive for a long and negative for a short.
  *
- * @param entryPrice - Position entry price
- * @param currentPrice - Current market price
- * @param size - Position size (positive for long, negative for short)
- * @returns Unrealized PnL in USD
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateUnrealizedPnl(
-  entryPrice: number,
-  currentPrice: number,
-  size: number
-): number {
-  if (!areFinite(entryPrice, currentPrice, size)) {
-    return Number.NaN
-  }
-  return new DivBig(currentPrice).minus(entryPrice).times(size).toNumber()
+  entryPrice: string,
+  currentPrice: string,
+  size: string
+): string {
+  return bigToDecimalString(
+    decimalStringToBig(currentPrice)
+      .minus(decimalStringToBig(entryPrice))
+      .times(decimalStringToBig(size))
+  )
 }
 
+/** @public */
+export const safeCalculateUnrealizedPnl = createSafeFunction(
+  'calculateUnrealizedPnl',
+  calculateUnrealizedPnl
+)
+
 /**
- * Calculate return on equity (ROE) percentage.
+ * Return on equity as a percentage (`'10'` for 10%): `pnl ÷ margin × 100`.
+ * A zero margin gives `'0'`.
  *
- * @param pnl - Profit/loss in USD
- * @param margin - Initial margin in USD
- * @returns ROE as percentage (e.g., 10 for 10%)
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
-export function calculateRoe(pnl: number, margin: number): number {
-  if (margin === 0) {
-    return 0
+export function calculateRoe(pnl: string, margin: string): string {
+  const marginBig = decimalStringToBig(margin)
+  const pnlBig = decimalStringToDivBig(pnl)
+  if (marginBig.eq(0)) {
+    return '0'
   }
-  if (!areFinite(pnl, margin)) {
-    return Number.NaN
-  }
-  return new DivBig(pnl).div(margin).times(100).toNumber()
+  return bigToDecimalString(pnlBig.div(marginBig).times(100))
 }
 
+/** @public */
+export const safeCalculateRoe = createSafeFunction('calculateRoe', calculateRoe)
+
 /**
- * Calculate required margin for a position.
+ * Required margin: `notionalValue ÷ leverage`.
  *
- * @param notionalValue - Position notional value in USD
- * @param leverage - Position leverage
- * @returns Required margin in USD
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string
+ *   or `leverage` is zero.
  * @public
  */
 export function calculateRequiredMargin(
-  notionalValue: number,
-  leverage: number
-): number {
-  if (leverage === 0) {
-    return notionalValue / leverage
+  notionalValue: string,
+  leverage: string
+): string {
+  const notionalBig = decimalStringToDivBig(notionalValue)
+  const leverageBig = decimalStringToBig(leverage)
+  if (leverageBig.eq(0)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Leverage must not be zero.'
+    )
   }
-  if (!areFinite(notionalValue, leverage)) {
-    return Number.NaN
-  }
-  return new DivBig(notionalValue).div(leverage).toNumber()
+  return bigToDecimalString(notionalBig.div(leverageBig))
 }
 
+/** @public */
+export const safeCalculateRequiredMargin = createSafeFunction(
+  'calculateRequiredMargin',
+  calculateRequiredMargin
+)
+
 /**
- * Distance from the current price to the liquidation price, as a percentage of
- * the current price.
+ * Distance from the current price to the liquidation price, as an absolute
+ * percentage of the current price. A zero current price gives `'0'`.
  *
- * @param liquidationPrice - The position's liquidation price
- * @param currentPrice - Current market price
- * @returns Absolute distance as a percentage, or 0 when current price is zero
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateLiquidationDistance(params: {
-  liquidationPrice: number
-  currentPrice: number
-}): number {
-  const { liquidationPrice, currentPrice } = params
-  if (currentPrice === 0) {
-    return 0
+  liquidationPrice: string
+  currentPrice: string
+}): string {
+  const liquidationPrice = decimalStringToDivBig(params.liquidationPrice)
+  const currentPrice = decimalStringToBig(params.currentPrice)
+  if (currentPrice.eq(0)) {
+    return '0'
   }
-  return Math.abs((liquidationPrice - currentPrice) / currentPrice) * 100
+  return bigToDecimalString(
+    liquidationPrice.minus(currentPrice).div(currentPrice).abs().times(100)
+  )
 }
 
+/** @public */
+export const safeCalculateLiquidationDistance = createSafeFunction(
+  'calculateLiquidationDistance',
+  calculateLiquidationDistance
+)
+
 /**
- * Effective leverage of an open position.
+ * Effective leverage of an open position: `positionValueUsd ÷ marginUsd`.
+ * A zero margin gives `'0'`.
  *
- * leverage = positionValueUsd / marginUsd
- *
- * @param positionValueUsd - Position notional value in USD
- * @param marginUsd - Margin backing the position in USD
- * @returns Effective leverage, or 0 when margin is zero
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateEffectiveLeverage(params: {
-  positionValueUsd: number
-  marginUsd: number
-}): number {
-  const { positionValueUsd, marginUsd } = params
-  if (marginUsd === 0) {
-    return 0
+  positionValueUsd: string
+  marginUsd: string
+}): string {
+  const positionValue = decimalStringToDivBig(params.positionValueUsd)
+  const margin = decimalStringToBig(params.marginUsd)
+  if (margin.eq(0)) {
+    return '0'
   }
-  if (!areFinite(positionValueUsd, marginUsd)) {
-    return Number.NaN
-  }
-  return new DivBig(positionValueUsd).div(marginUsd).toNumber()
+  return bigToDecimalString(positionValue.div(margin))
 }
+
+/** @public */
+export const safeCalculateEffectiveLeverage = createSafeFunction(
+  'calculateEffectiveLeverage',
+  calculateEffectiveLeverage
+)
 
 /**
  * Estimated liquidation price for an isolated-margin position, parameterised
  * by the venue's maintenance margin rate.
  *
  * Standard isolated-margin model (new position, no existing exposure):
- *   margin_per_unit      = entryPrice / leverage
- *   maintenance_per_unit = entryPrice * mmr
- *   margin_available     = margin_per_unit - maintenance_per_unit
- *   liq_price            = entryPrice - side * margin_available / (1 - mmr * side)
+ *   margin_available = entryPrice × (1 / leverage - mmr)
+ *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
  *
  * For existing positions, prefer `Position.liquidationPrice` from the venue.
  *
  * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
- *   (e.g. 0.01 = 1%).
- * @returns Estimated liquidation price, or undefined if the inputs cannot
- *   produce one (zero leverage, degenerate denominator).
+ *   (`'0.01'` = 1%).
+ * @returns The estimate, or `undefined` for a zero leverage or a zero
+ *   denominator.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function estimateLiquidationPrice(params: {
-  entryPrice: number
-  leverage: number
+  entryPrice: string
+  leverage: string
   isLong: boolean
-  maintenanceMarginRate: number
-}): number | undefined {
-  const { entryPrice, leverage, isLong, maintenanceMarginRate } = params
-  if (leverage === 0) {
+  maintenanceMarginRate: string
+}): string | undefined {
+  const entryPrice = decimalStringToBig(params.entryPrice)
+  const leverage = decimalStringToBig(params.leverage)
+  const mmr = decimalStringToBig(params.maintenanceMarginRate)
+  const side = params.isLong ? 1 : -1
+  const denominator = mmr.times(-side).plus(1)
+  if (leverage.eq(0) || denominator.eq(0)) {
     return undefined
   }
-  const side = isLong ? 1 : -1
-  const denominator = 1 - maintenanceMarginRate * side
-  if (denominator === 0) {
-    return undefined
-  }
-  if (!areFinite(entryPrice, leverage, maintenanceMarginRate)) {
-    return Number.NaN
-  }
-  const mmr = new DivBig(maintenanceMarginRate)
   const marginAvailable = new DivBig(1)
     .div(leverage)
     .minus(mmr)
     .times(entryPrice)
-  return new DivBig(entryPrice)
-    .minus(marginAvailable.times(side).div(mmr.times(-side).plus(1)))
-    .toNumber()
+  return bigToDecimalString(
+    entryPrice.minus(marginAvailable.times(side).div(denominator))
+  )
 }
+
+/** @public */
+export const safeEstimateLiquidationPrice = createSafeFunction(
+  'estimateLiquidationPrice',
+  estimateLiquidationPrice
+)
 
 /**
  * Estimate the liquidation price of a new isolated position from the flat
  * `market.maintenanceMarginRate`.
  *
  * @returns The estimate, or `undefined` when the market carries no
- *   `maintenanceMarginRate` or `estimateLiquidationPrice` cannot produce one.
+ *   `maintenanceMarginRate` or `estimateLiquidationPrice` gives `undefined`.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function estimateLiquidationPriceAtMarketRate(
   market: PerpsMarket,
   params: LiquidationEstimateParams
-): number | undefined {
+): string | undefined {
   if (market.maintenanceMarginRate === undefined) {
     return undefined
   }
@@ -200,9 +236,15 @@ export function estimateLiquidationPriceAtMarketRate(
     entryPrice: params.entryPrice,
     leverage: params.leverage,
     isLong: params.isLong,
-    maintenanceMarginRate: market.maintenanceMarginRate,
+    maintenanceMarginRate: numberToDecimalString(market.maintenanceMarginRate),
   })
 }
+
+/** @public */
+export const safeEstimateLiquidationPriceAtMarketRate = createSafeFunction(
+  'estimateLiquidationPriceAtMarketRate',
+  estimateLiquidationPriceAtMarketRate
+)
 
 /**
  * Whether an isolated position with this liquidation price is already past
@@ -210,142 +252,158 @@ export function estimateLiquidationPriceAtMarketRate(
  * liquidation level, a short when it rises to it. A non-positive price on
  * either side counts as unknown, so the result is `false`.
  *
+ * @throws {PerpsError} `ValidationError` when a price is not a decimal string.
  * @public
  */
 export function wouldImmediatelyLiquidate(params: {
-  liquidationPrice: number
-  currentPrice: number
+  liquidationPrice: string
+  currentPrice: string
   isLong: boolean
 }): boolean {
-  const { liquidationPrice, currentPrice, isLong } = params
-  if (currentPrice <= 0 || liquidationPrice <= 0) {
+  const liquidationPrice = decimalStringToBig(params.liquidationPrice)
+  const currentPrice = decimalStringToBig(params.currentPrice)
+  if (currentPrice.lte(0) || liquidationPrice.lte(0)) {
     return false
   }
-  return isLong
-    ? liquidationPrice >= currentPrice
-    : liquidationPrice <= currentPrice
+  return params.isLong
+    ? liquidationPrice.gte(currentPrice)
+    : liquidationPrice.lte(currentPrice)
 }
 
+/** @public */
+export const safeWouldImmediatelyLiquidate = createSafeFunction(
+  'wouldImmediatelyLiquidate',
+  wouldImmediatelyLiquidate
+)
+
 /**
- * Estimated average entry price after adding to an existing position.
+ * Estimated average entry price after adding to an existing position: the
+ * size-weighted average of the current entry and the fill price. Both legs
+ * are in the same direction (an add, not a flip).
  *
- * Weighted average of the current entry and the new fill price, weighted by
- * the size of each leg in coin units. Both legs assumed in the same direction
- * (this helper is for adding to, not flipping, a position).
- *
- * @param currentSize - Existing position size in coin units (>= 0).
- * @param currentEntry - Existing position's average entry price.
- * @param addSize - Size being added in coin units (>= 0).
- * @param fillPrice - Price the new size is expected to fill at (mid for
- *   market, limitPrice for limit orders).
- * @returns The new weighted-average entry price, or undefined if the inputs
- *   cannot produce a valid average (zero combined size, non-finite values).
+ * @param fillPrice - Expected fill price (mid for market, limit price for
+ *   limit orders).
+ * @returns The new average entry price, or `undefined` when the combined size
+ *   is not positive.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function estimateAverageEntryPrice(params: {
-  currentSize: number
-  currentEntry: number
-  addSize: number
-  fillPrice: number
-}): number | undefined {
-  const { currentSize, currentEntry, addSize, fillPrice } = params
-  const totalSize = currentSize + addSize
-  if (totalSize <= 0) {
+  currentSize: string
+  currentEntry: string
+  addSize: string
+  fillPrice: string
+}): string | undefined {
+  const currentSize = decimalStringToDivBig(params.currentSize)
+  const addSize = decimalStringToBig(params.addSize)
+  const currentEntry = decimalStringToBig(params.currentEntry)
+  const fillPrice = decimalStringToBig(params.fillPrice)
+  const totalSize = currentSize.plus(addSize)
+  if (totalSize.lte(0)) {
     return undefined
   }
-  if (!Number.isFinite(currentEntry) || !Number.isFinite(fillPrice)) {
-    return undefined
-  }
-  if (!areFinite(currentSize, addSize)) {
-    return Number.NaN
-  }
-  return new DivBig(currentSize)
-    .times(currentEntry)
-    .plus(new DivBig(addSize).times(fillPrice))
-    .div(new DivBig(currentSize).plus(addSize))
-    .toNumber()
+  return bigToDecimalString(
+    currentSize
+      .times(currentEntry)
+      .plus(addSize.times(fillPrice))
+      .div(totalSize)
+  )
 }
 
+/** @public */
+export const safeEstimateAverageEntryPrice = createSafeFunction(
+  'estimateAverageEntryPrice',
+  estimateAverageEntryPrice
+)
+
 /**
- * Estimated effective leverage after adding margin and notional.
+ * Estimated effective leverage after adding margin and notional:
+ * `(currentNotional + addNotional) ÷ (currentMargin + addMargin)`.
  *
- * leverage = totalNotional / totalMargin. The caller computes notional from
- * size and price (`calculateNotionalValue`) and supplies the additional
- * margin the user is about to put up.
- *
- * @returns The new effective leverage, or undefined if total margin is
- *   non-positive.
+ * @returns The new leverage, or `undefined` when the total margin is not
+ *   positive.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function estimateNewLeverage(params: {
-  currentNotional: number
-  currentMargin: number
-  addNotional: number
-  addMargin: number
-}): number | undefined {
-  const { currentNotional, currentMargin, addNotional, addMargin } = params
-  const totalMargin = currentMargin + addMargin
-  if (totalMargin <= 0) {
+  currentNotional: string
+  currentMargin: string
+  addNotional: string
+  addMargin: string
+}): string | undefined {
+  const totalNotional = decimalStringToDivBig(params.currentNotional).plus(
+    decimalStringToBig(params.addNotional)
+  )
+  const totalMargin = decimalStringToBig(params.currentMargin).plus(
+    decimalStringToBig(params.addMargin)
+  )
+  if (totalMargin.lte(0)) {
     return undefined
   }
-  if (!areFinite(currentNotional, currentMargin, addNotional, addMargin)) {
-    return Number.NaN
-  }
-  return new DivBig(currentNotional)
-    .plus(addNotional)
-    .div(new DivBig(currentMargin).plus(addMargin))
-    .toNumber()
+  return bigToDecimalString(totalNotional.div(totalMargin))
 }
 
+/** @public */
+export const safeEstimateNewLeverage = createSafeFunction(
+  'estimateNewLeverage',
+  estimateNewLeverage
+)
+
 /**
- * Estimated unrealised PnL at the current mark price.
- *
- * `pnl = (markPrice - entryPrice) * size * (isLong ? 1 : -1)`
+ * Estimated unrealised PnL at the mark price:
+ * `(markPrice - entryPrice) × size × (isLong ? 1 : -1)`.
  *
  * @param size - Position size as a non-negative magnitude.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function estimateUnrealizedPnl(params: {
-  entryPrice: number
-  markPrice: number
-  size: number
+  entryPrice: string
+  markPrice: string
+  size: string
   isLong: boolean
-}): number {
-  const { entryPrice, markPrice, size, isLong } = params
-  if (!areFinite(entryPrice, markPrice, size)) {
-    return Number.NaN
-  }
-  return new DivBig(markPrice)
-    .minus(entryPrice)
-    .times(size)
-    .times(isLong ? 1 : -1)
-    .toNumber()
+}): string {
+  return bigToDecimalString(
+    decimalStringToBig(params.markPrice)
+      .minus(decimalStringToBig(params.entryPrice))
+      .times(decimalStringToBig(params.size))
+      .times(params.isLong ? 1 : -1)
+  )
 }
 
+/** @public */
+export const safeEstimateUnrealizedPnl = createSafeFunction(
+  'estimateUnrealizedPnl',
+  estimateUnrealizedPnl
+)
+
 /**
- * Realised PnL on the portion of a position being closed.
- *
- * `rPnl = (closePrice - entryPrice) * closeSize * (isLong ? 1 : -1)`
+ * Realised PnL on the portion of a position being closed:
+ * `(closePrice - entryPrice) × closeSize × (isLong ? 1 : -1)`.
  *
  * @param closeSize - Size being closed as a non-negative magnitude.
+ * @throws {PerpsError} `ValidationError` when an input is not a decimal string.
  * @public
  */
 export function calculateRealizedPnl(params: {
-  entryPrice: number
-  closePrice: number
-  closeSize: number
+  entryPrice: string
+  closePrice: string
+  closeSize: string
   isLong: boolean
-}): number {
-  const { entryPrice, closePrice, closeSize, isLong } = params
-  if (!areFinite(entryPrice, closePrice, closeSize)) {
-    return Number.NaN
-  }
-  return new DivBig(closePrice)
-    .minus(entryPrice)
-    .times(closeSize)
-    .times(isLong ? 1 : -1)
-    .toNumber()
+}): string {
+  return bigToDecimalString(
+    decimalStringToBig(params.closePrice)
+      .minus(decimalStringToBig(params.entryPrice))
+      .times(decimalStringToBig(params.closeSize))
+      .times(params.isLong ? 1 : -1)
+  )
 }
+
+/** @public */
+export const safeCalculateRealizedPnl = createSafeFunction(
+  'calculateRealizedPnl',
+  calculateRealizedPnl
+)
 
 /**
  * Whether this position can take a margin adjustment at all: it holds margin of

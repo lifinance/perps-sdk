@@ -11,7 +11,7 @@ type WireLevel = { price: string; size: string }
 const countingOrder = (order: PriceOrder) => {
   const counter = {
     calls: 0,
-    order: (a: number, b: number) => {
+    order: (a: string, b: string) => {
       counter.calls++
       return order(a, b)
     },
@@ -21,7 +21,7 @@ const countingOrder = (order: PriceOrder) => {
 
 /** Copies and sorts the full side on each delta, for comparison. */
 class FullSortReference {
-  private readonly book = new Map<string, { size: string; priceNum: number }>()
+  private readonly book = new Map<string, string>()
 
   constructor(private readonly order: PriceOrder) {}
 
@@ -30,23 +30,15 @@ class FullSortReference {
       if (level.size === '0' || Number(level.size) === 0) {
         this.book.delete(level.price)
       } else {
-        const existing = this.book.get(level.price)
-        if (existing) {
-          existing.size = level.size
-        } else {
-          this.book.set(level.price, {
-            size: level.size,
-            priceNum: Number(level.price),
-          })
-        }
+        this.book.set(level.price, level.size)
       }
     }
   }
 
   toLevels(): WireLevel[] {
     return [...this.book]
-      .sort(([, a], [, b]) => this.order(a.priceNum, b.priceNum))
-      .map(([price, { size }]) => ({ price, size }))
+      .sort(([a], [b]) => this.order(a, b))
+      .map(([price, size]) => ({ price, size }))
   }
 }
 
@@ -130,8 +122,7 @@ const replaySide = (
 
 const isOrdered = (levels: WireLevel[], order: PriceOrder) =>
   levels.every(
-    (level, i) =>
-      i === 0 || order(Number(levels[i - 1].price), Number(level.price)) < 0
+    (level, i) => i === 0 || order(levels[i - 1].price, level.price) < 0
   )
 
 describe('OrderBookSide', () => {

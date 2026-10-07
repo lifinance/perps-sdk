@@ -1,6 +1,8 @@
-import { requireVenueDecimal } from '@lifi/perps-sdk'
+import {
+  isDecimalStringGreaterThan,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import type { Balance } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 
 /**
@@ -27,9 +29,14 @@ export const partitionSpotBalances = (
   const balances: Balance[] = []
   for (const balance of spotBalances) {
     if (
-      !new Big(
-        requireVenueDecimal(balance.units, 'spotBalance.units', PROVIDER_KEY)
-      ).gt(0)
+      !isDecimalStringGreaterThan(
+        unknownToDecimalString(
+          balance.units,
+          'spotBalance.units',
+          PROVIDER_KEY
+        ),
+        '0'
+      )
     ) {
       continue
     }

@@ -54,7 +54,7 @@ const makePlugin = () => {
     getMarketSettings: vi.fn(
       async (): Promise<MarketSettings> => ({
         marginMode: MarginMode.CROSS,
-        leverage: 1,
+        leverage: '1',
       })
     ),
     resolveAuthToken: vi.fn(async (): Promise<string | undefined> => 'token'),

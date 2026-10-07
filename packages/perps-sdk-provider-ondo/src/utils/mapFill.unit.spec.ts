@@ -150,25 +150,33 @@ describe('mapFill', () => {
   it.each([
     'fee',
     'feeRebate',
-  ] as const)('maps the fill without a fee when %s is malformed', (field) => {
+  ] as const)('maps the fill without a fee and warns once when %s is malformed', (field) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const mapped = mapValidFill(fillFixture({ [field]: '10oops' }), MARKET)
     expect(mapped.fee).toBeUndefined()
     expect(mapped.id).toBe(fillFixture().id)
     expect(mapped.classification).toBe(FillClassification.OPENED_LONG)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
 describe('mapFill invalid rows', () => {
   it.each([
-    ['size', { size: '4 units' }],
-    ['price', { price: 'NaN' }],
-    ['time', { time: 'not a time' }],
-  ] satisfies [
-    string,
-    Partial<OndoFill>,
-  ][])('skips a fill with an invalid %s and warns', (_field, overrides) => {
+    ['size', '4 units'],
+    ['price', 'NaN'],
+  ] as const)('keeps a fill with an invalid %s as the raw venue string', (field, value) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(fillFixture(overrides), MARKET)).toBeUndefined()
+    expect(mapValidFill(fillFixture({ [field]: value }), MARKET)[field]).toBe(
+      value
+    )
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('skips a fill with an invalid time and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(fillFixture({ time: 'not a time' }), MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })

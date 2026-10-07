@@ -1,7 +1,17 @@
-import { asDecimalString, warnSkippedVenueRow } from '@lifi/perps-sdk'
+import {
+  absDecimalString,
+  divideDecimalString,
+  isDecimalString,
+  isDecimalStringZero,
+  multiplyDecimalString,
+  safeDivideDecimalString,
+  safeIsDecimalStringGreaterThan,
+  safeNumberToDecimalString,
+  safeRoundDecimalString,
+  warnSkippedVenueRow,
+} from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
-import Big from 'big.js'
 import {
   LIGHTER_IMF_PERCENT_SCALE,
   LIGHTER_LEVERAGE_PRECISION,
@@ -12,34 +22,35 @@ import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
- * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION` before
- * conversion to `number`, so the value a client reads is the value it saved.
- * Provider risk calculations consume the original decimal IMF instead.
- * `undefined` for a non-positive or unparsable IMF.
+ * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION`, so the value a
+ * client reads is the value it saved. Provider risk calculations consume the
+ * original decimal IMF instead. `undefined` for a non-positive or unparsable
+ * IMF.
  * @public
  */
-export const leverageFromImf = (imf: string): number | undefined => {
-  const decimal = asDecimalString(imf)
-  if (decimal === undefined || new Big(decimal).lte(0)) {
+export const leverageFromImf = (imf: string): string | undefined => {
+  if (safeIsDecimalStringGreaterThan(imf, '0') !== true) {
     return undefined
   }
-  return new Big(100)
-    .div(decimal)
-    .round(LIGHTER_LEVERAGE_PRECISION, Big.roundHalfUp)
-    .toNumber()
+  const leverage = safeDivideDecimalString('100', imf)
+  return leverage === undefined
+    ? undefined
+    : safeRoundDecimalString(leverage, LIGHTER_LEVERAGE_PRECISION, 'round')
 }
 
 /**
  * Display leverage from an integer IMF on `LIGHTER_IMF_PERCENT_SCALE`, the
  * unit of trade rows and order-book details: `500` is 5.00%, so 20x.
- * `undefined` for a non-positive or unparsable IMF. Lighter declares the
+ * `undefined` for a non-positive or non-finite IMF. Lighter declares the
  * fraction a `StrictInt`, so the scale division is exact.
  */
-export const leverageFromScaledImf = (imf: number): number | undefined => {
-  const decimal = asDecimalString(imf)
-  return decimal === undefined
-    ? undefined
-    : leverageFromImf(new Big(decimal).div(LIGHTER_IMF_PERCENT_SCALE).toFixed())
+export const leverageFromScaledImf = (imf: number): string | undefined => {
+  const scaled = safeNumberToDecimalString(imf)
+  const percent =
+    scaled === undefined
+      ? undefined
+      : safeDivideDecimalString(scaled, String(LIGHTER_IMF_PERCENT_SCALE))
+  return percent === undefined ? undefined : leverageFromImf(percent)
 }
 
 const skipPosition = (field: string, value: unknown): undefined => {
@@ -49,8 +60,9 @@ const skipPosition = (field: string, value: unknown): undefined => {
 
 /**
  * Map a raw Lighter account position to the generic Position type. A row with
- * a non-positive initial margin fraction, or an invalid size, value, price,
- * PnL, funding or isolated margin, gives `undefined`.
+ * an invalid size or value, or a non-positive initial margin fraction, gives
+ * `undefined`: the mapper derives the size, mark price, margin and leverage
+ * from them. Prices, PnL, funding and isolated margin pass through raw.
  * @param market - Backend-resolved market identity for `pos.market_id`.
  * @public
  */
@@ -58,60 +70,40 @@ export const mapPosition = (
   pos: LtAccountPosition,
   market: PerpsMarketDisplay
 ): Position | undefined => {
-  const sizeDecimal = asDecimalString(pos.position)
-  if (sizeDecimal === undefined) {
+  if (!isDecimalString(pos.position)) {
     return skipPosition('position', pos.position)
   }
-  const positionValueDecimal = asDecimalString(pos.position_value)
-  if (positionValueDecimal === undefined) {
+  if (!isDecimalString(pos.position_value)) {
     return skipPosition('position_value', pos.position_value)
   }
-  const imfDecimal = asDecimalString(pos.initial_margin_fraction)
-  if (imfDecimal === undefined || new Big(imfDecimal).lte(0)) {
-    return skipPosition('initial_margin_fraction', pos.initial_margin_fraction)
-  }
-  const entryPrice = asDecimalString(pos.avg_entry_price)
-  if (entryPrice === undefined) {
-    return skipPosition('avg_entry_price', pos.avg_entry_price)
-  }
-  const liquidationPrice = asDecimalString(pos.liquidation_price)
-  if (liquidationPrice === undefined) {
-    return skipPosition('liquidation_price', pos.liquidation_price)
-  }
-  const unrealizedPnl = asDecimalString(pos.unrealized_pnl)
-  if (unrealizedPnl === undefined) {
-    return skipPosition('unrealized_pnl', pos.unrealized_pnl)
-  }
-  const accruedFunding = asDecimalString(pos.total_funding_paid_out ?? '0')
-  if (accruedFunding === undefined) {
-    return skipPosition('total_funding_paid_out', pos.total_funding_paid_out)
+  const imf = pos.initial_margin_fraction
+  const leverage = isDecimalString(imf) ? leverageFromImf(imf) : undefined
+  if (leverage === undefined) {
+    return skipPosition('initial_margin_fraction', imf)
   }
   const isIsolated = pos.margin_mode === LT_MARGIN_MODE_ISOLATED
-  const allocatedMargin = isIsolated
-    ? asDecimalString(pos.allocated_margin)
-    : undefined
-  if (isIsolated && allocatedMargin === undefined) {
-    return skipPosition('allocated_margin', pos.allocated_margin)
-  }
-  const size = new Big(sizeDecimal)
-  const positionValue = new Big(positionValueDecimal).abs()
-  const initialMarginRequirement = positionValue.times(imfDecimal).div(100)
+  const size = absDecimalString(pos.position)
+  const positionValue = absDecimalString(pos.position_value)
+  const initialMarginRequirement = divideDecimalString(
+    multiplyDecimalString(positionValue, imf),
+    '100'
+  )
 
   return {
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
-    size: size.abs().toFixed(),
-    entryPrice,
+    size,
+    entryPrice: pos.avg_entry_price,
     markPrice:
-      positionValue.eq(0) || size.eq(0)
+      isDecimalStringZero(positionValue) || isDecimalStringZero(size)
         ? '0'
-        : positionValue.div(size.abs()).toFixed(),
-    liquidationPrice,
-    unrealizedPnl,
-    accruedFunding,
-    leverage: leverageFromImf(imfDecimal) ?? 1,
-    marginUsed: allocatedMargin ?? initialMarginRequirement.toFixed(),
-    initialMarginRequirement: initialMarginRequirement.toFixed(),
+        : divideDecimalString(positionValue, size),
+    liquidationPrice: pos.liquidation_price,
+    unrealizedPnl: pos.unrealized_pnl,
+    accruedFunding: pos.total_funding_paid_out ?? '0',
+    leverage,
+    marginUsed: isIsolated ? pos.allocated_margin : initialMarginRequirement,
+    initialMarginRequirement,
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   }
 }

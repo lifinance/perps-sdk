@@ -78,15 +78,11 @@ describe('mapPortfolioHistory', () => {
     })
   })
 
-  it.each<[string, Partial<OndoPortfolioGraphPoint>]>([
-    ['time', { time: 'yesterday' }],
-    ['marginBalance', { marginBalance: 'n/a' }],
-    ['totalPnL', { totalPnL: '' }],
-  ])('skips a point with an invalid %s and warns', (_field, overrides) => {
+  it('skips a point with an invalid time and warns', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const history = mapPortfolioHistory(
       '7d',
-      [point(overrides), GRAPH[1]],
+      [point({ time: 'yesterday' }), GRAPH[1]],
       SUMMARY
     )
 
@@ -98,6 +94,33 @@ describe('mapPortfolioHistory', () => {
       },
     ])
     expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it.each<[string, Partial<OndoPortfolioGraphPoint>, string, string]>([
+    ['marginBalance', { marginBalance: 'n/a' }, 'n/a', '180.00'],
+    ['totalPnL', { totalPnL: '' }, '4800.00', ''],
+  ])('keeps a point with an invalid %s as the raw venue string', (_field, overrides, accountValue, pnl) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const history = mapPortfolioHistory(
+      '7d',
+      [point(overrides), GRAPH[1]],
+      SUMMARY
+    )
+
+    expect(history.points).toEqual([
+      {
+        timestamp: Date.parse('2025-03-04T00:00:00Z'),
+        accountValue,
+        pnl,
+      },
+      {
+        timestamp: Date.parse('2025-03-05T00:00:00Z'),
+        accountValue: '4950.00',
+        pnl: '232.00',
+      },
+    ])
+    expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
 })

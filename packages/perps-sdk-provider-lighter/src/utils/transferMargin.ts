@@ -1,25 +1,40 @@
 import {
+  addDecimalString,
+  isDecimalString,
+  isDecimalStringGreaterThan,
   PerpsError,
   positionSupportsMarginAdjustment,
   positionSupportsMarginRemoval,
-  validateDecimalString,
+  roundDecimalString,
+  subtractDecimalString,
 } from '@lifi/perps-sdk'
 import {
   type DecimalString,
   PerpsErrorCode,
   type Position,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 
 const AMOUNT_DECIMALS = 6
 
-function positionAmount(value: DecimalString, field: string): Big {
-  return new Big(validateDecimalString(value, `Position.${field}`))
+function positionAmount(
+  value: DecimalString | undefined,
+  field: string
+): DecimalString {
+  if (!isDecimalString(value)) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Invalid \`Position.${field}\`: '${value}' is not a decimal string.`
+    )
+  }
+  return value
 }
 
-function positivePositionAmount(value: DecimalString, field: string): Big {
+function positivePositionAmount(
+  value: DecimalString | undefined,
+  field: string
+): DecimalString {
   const amount = positionAmount(value, field)
-  if (amount.lte(0)) {
+  if (!isDecimalStringGreaterThan(amount, '0')) {
     throw new PerpsError(
       PerpsErrorCode.ValidationError,
       `Position.${field} must be greater than zero.`
@@ -51,16 +66,18 @@ export function positionRemovableMargin(
   if (!positionSupportsMarginRemoval(position)) {
     return '0'
   }
-  const removable = positivePositionAmount(position.marginUsed, 'marginUsed')
-    .plus(positionAmount(position.unrealizedPnl, 'unrealizedPnl'))
-    .minus(
-      positivePositionAmount(
-        position.initialMarginRequirement,
-        'initialMarginRequirement'
-      )
+  const removable = subtractDecimalString(
+    addDecimalString(
+      positivePositionAmount(position.marginUsed, 'marginUsed'),
+      positionAmount(position.unrealizedPnl, 'unrealizedPnl')
+    ),
+    positivePositionAmount(
+      position.initialMarginRequirement,
+      'initialMarginRequirement'
     )
-  if (removable.lte(0)) {
+  )
+  if (!isDecimalStringGreaterThan(removable, '0')) {
     return '0'
   }
-  return removable.round(AMOUNT_DECIMALS, Big.roundDown).toFixed()
+  return roundDecimalString(removable, AMOUNT_DECIMALS, 'truncate')
 }

@@ -272,8 +272,8 @@ describe('mapOrder (Lighter)', () => {
     ['initial_base_amount', { initial_base_amount: 'abc' }],
     ['remaining_base_amount', { remaining_base_amount: '' }],
     ['filled_base_amount', { filled_base_amount: 'NaN' }],
-    ['price', { price: 'n/a' }],
-    ['trigger_price', { type: 'stop-loss', trigger_price: 'bad' }],
+    ['created_at', { created_at: Number.NaN }],
+    ['updated_at', { updated_at: 9e15 }],
   ])('skips the row and warns when %s is invalid', (field, overrides) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -282,6 +282,35 @@ describe('mapOrder (Lighter)', () => {
       expect.stringContaining(`[lighter] skipping order row: \`${field}\``)
     )
     warn.mockRestore()
+  })
+
+  it.each([
+    ['price', { price: 'n/a' }, 'n/a'],
+    ['triggerPrice', { type: 'stop-loss', trigger_price: 'bad' }, 'bad'],
+  ] satisfies [
+    string,
+    Partial<LtOrder>,
+    string,
+  ][])('keeps the row and the raw venue %s when the venue value is invalid', (key, overrides, venueValue) => {
+    expect(mapOrder(baseOrder(overrides), MARKET)).toHaveProperty(
+      key,
+      venueValue
+    )
+  })
+
+  it('omits expiresAt and warns once when order_expiry is out of range', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const order = mapOrder(baseOrder({ order_expiry: 9e15 }), MARKET)
+    expect(order).toBeDefined()
+    expect(order).not.toHaveProperty('expiresAt')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('reads an exponent-form size and keeps the venue string', () => {
+    expect(
+      mapOrder(baseOrder({ initial_base_amount: '1e-3' }), MARKET)
+    ).toMatchObject({ originalSize: '1e-3' })
   })
 
   it('omits averagePrice when filled_quote_amount is invalid', () => {

@@ -14,20 +14,20 @@ describe('ondoWithdrawableBalances', () => {
         categoryId: 'ondo',
         available: '599',
         max: '597.5',
-        withdrawalFee: '1.5',
+        withdrawalFee: '1.50',
         isFeeDeducted: false,
       },
     ])
   })
 
-  it('keeps a published zero fee as withdrawalFee "0"', () => {
+  it('keeps a published zero fee in the venue spelling', () => {
     expect(ondoWithdrawableBalances('usdc', balance('599'), '0.00')).toEqual([
       {
         assetId: 'usdc',
         categoryId: 'ondo',
         available: '599',
         max: '599',
-        withdrawalFee: '0',
+        withdrawalFee: '0.00',
         isFeeDeducted: false,
       },
     ])

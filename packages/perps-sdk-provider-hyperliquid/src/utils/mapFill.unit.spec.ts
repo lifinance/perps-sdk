@@ -365,17 +365,32 @@ describe('mapFill (Hyperliquid)', () => {
 })
 
 describe('mapFill (Hyperliquid) invalid rows', () => {
-  it.each([
-    ['sz', { sz: '10oops' }],
-    ['px', { px: '' }],
-    ['time', { time: Number.NaN }],
-  ] satisfies [
-    string,
-    Partial<HlUserFill>,
-  ][])('skips a fill with an invalid %s and warns', (_field, overrides) => {
+  it('keeps a fill with a non-decimal sz as the raw venue string', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(baseFill(overrides), ETH_MARKET)).toBeUndefined()
+    expect(mapFill(baseFill({ sz: '10oops' }), ETH_MARKET)).toMatchObject({
+      size: '10oops',
+      filledSize: '10oops',
+    })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('keeps a fill with a non-decimal px as the raw venue string', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(baseFill({ px: '' }), ETH_MARKET)).toMatchObject({
+      price: '',
+    })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('skips a fill with an invalid time and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(mapFill(baseFill({ time: Number.NaN }), ETH_MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('skipping fill row: `time`')
+    )
     warn.mockRestore()
   })
 })

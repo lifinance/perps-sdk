@@ -2812,7 +2812,7 @@ describe('PerpsClient', () => {
       liquidationPrice: '8000',
       unrealizedPnl: '0',
       accruedFunding: '0',
-      leverage: 10,
+      leverage: '10',
       marginUsed: '1500',
       initialMarginRequirement: '1000',
       marginMode: MarginMode.ISOLATED,

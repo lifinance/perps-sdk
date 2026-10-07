@@ -1,6 +1,8 @@
-import { asDecimalString } from '@lifi/perps-sdk'
+import {
+  safeIsDecimalStringGreaterThan,
+  safeMultiplyDecimalString,
+} from '@lifi/perps-sdk'
 import type { MarketContext } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { HlWsFastAssetCtx, HlWsPerpAssetCtx } from '../types/index.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -13,12 +15,10 @@ const toOpenInterestNotional = (
   openInterest: string,
   markPrice: string
 ): string | undefined => {
-  const mark = asDecimalString(markPrice)
-  const interest = asDecimalString(openInterest)
-  if (mark === undefined || interest === undefined || new Big(mark).lte(0)) {
+  if (safeIsDecimalStringGreaterThan(markPrice, '0') !== true) {
     return undefined
   }
-  return new Big(interest).times(mark).toFixed()
+  return safeMultiplyDecimalString(openInterest, markPrice)
 }
 
 /**

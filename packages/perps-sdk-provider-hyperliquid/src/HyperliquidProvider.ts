@@ -479,7 +479,7 @@ export function hyperliquidProvider(
     estimateLiquidationPrice: (
       market: PerpsMarket,
       params: LiquidationEstimateParams
-    ): number | undefined =>
+    ): string | undefined =>
       calculateLiquidationPrice(
         params.entryPrice,
         params.leverage,

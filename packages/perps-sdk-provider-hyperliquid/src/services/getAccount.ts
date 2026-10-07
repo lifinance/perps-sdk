@@ -1,22 +1,23 @@
 import {
   calculateTransferable,
-  decimalStringToNumber,
   getMarketRegistry,
   getMarketsContext,
+  isDecimalStringGreaterThan,
   type ProviderGetAccountParams,
-  requireVenueDecimal,
   type SDKRequestOptions,
+  subtractDecimalString,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
   Asset,
   Balance,
+  DecimalString,
   HyperliquidAccountConfig,
   HyperliquidDexAccountState,
   Position,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -31,14 +32,13 @@ import {
   assetIsOutcome,
   partitionSpotBalances,
   perpsDexNames,
-  perpsTotals,
   spotAssetFromToken,
   spotBalance,
   spotPriceById,
-  sumUnrealizedPnl,
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
+import { safeSumDecimalStrings } from '../utils/venueTotals.js'
 import { requireAccountExists } from './getAccountExists.js'
 
 /**
@@ -47,18 +47,6 @@ import { requireAccountExists } from './getAccountExists.js'
  * @public
  */
 export type GetAccountParams = ProviderGetAccountParams
-
-// `marginSummary` covers the whole account (cross AND isolated positions);
-// `crossMarginSummary` is the cross-only subset and would drop isolated
-// equity/margin.
-const getAccountValue = (state: HlClearinghouseState): Big =>
-  new Big(
-    requireVenueDecimal(
-      state.marginSummary.accountValue,
-      'marginSummary.accountValue',
-      PROVIDER_KEY
-    )
-  )
 
 /** Venue buying power for the quote asset the perps dex settles in. */
 const getAvailableAfterMaintenance = (
@@ -79,35 +67,28 @@ const buildBalances = (
   spotState: HlSpotClearinghouseState,
   stateByDex: Map<string, HlClearinghouseState>,
   quoteAssetIds: ReadonlySet<string>,
-  priceById: Map<string, number>,
+  priceById: ReadonlyMap<string, DecimalString>,
   quoteAssetByCategory: Map<string, Asset>
 ): BalancePartition => {
   const { balances, collateralBalances } = partitionSpotBalances(
     spotState.balances
       .filter((b) => !assetIsOutcome(b.coin))
       .map((b) => {
-        const total = new Big(
-          requireVenueDecimal(
-            b.total,
-            'spotClearinghouseState.total',
-            PROVIDER_KEY
-          )
+        const total = unknownToDecimalString(
+          b.total,
+          'spotClearinghouseState.total',
+          PROVIDER_KEY
+        )
+        const hold = unknownToDecimalString(
+          b.hold,
+          'spotClearinghouseState.hold',
+          PROVIDER_KEY
         )
         return {
-          ...spotBalance(spotAssetFromToken(b), total.toFixed(), priceById),
+          ...spotBalance(spotAssetFromToken(b), total, priceById),
           transferable: calculateTransferable(
+            subtractDecimalString(total, hold),
             total
-              .minus(
-                new Big(
-                  requireVenueDecimal(
-                    b.hold,
-                    'spotClearinghouseState.hold',
-                    PROVIDER_KEY
-                  )
-                )
-              )
-              .toFixed(),
-            total.toFixed()
           ),
         }
       }),
@@ -121,8 +102,15 @@ const buildBalances = (
   if (!isUnifiedAbstraction(abstraction)) {
     for (const [dex, state] of stateByDex) {
       const categoryId = dex || PROVIDER_KEY
-      const value = getAccountValue(state)
-      if (!value.gt(0)) {
+      // `marginSummary` covers the whole account (cross AND isolated positions);
+      // `crossMarginSummary` is the cross-only subset and would drop isolated
+      // equity/margin.
+      const value = unknownToDecimalString(
+        state.marginSummary.accountValue,
+        'marginSummary.accountValue',
+        PROVIDER_KEY
+      )
+      if (!isDecimalStringGreaterThan(value, '0')) {
         continue
       }
       collateralBalances.push({
@@ -130,18 +118,16 @@ const buildBalances = (
         // Always present: every dex in `stateByDex` derives from `markets`,
         // which is what populates `quoteAssetByCategory`.
         asset: quoteAssetByCategory.get(categoryId)!,
-        units: value.toFixed(),
-        valueUsd: value.toFixed(),
+        units: value,
+        valueUsd: value,
         price: '1',
         transferable: calculateTransferable(
-          new Big(
-            requireVenueDecimal(
-              state.withdrawable,
-              'clearinghouseState.withdrawable',
-              PROVIDER_KEY
-            )
-          ).toFixed(),
-          value.toFixed()
+          unknownToDecimalString(
+            state.withdrawable,
+            'clearinghouseState.withdrawable',
+            PROVIDER_KEY
+          ),
+          value
         ),
       })
     }
@@ -232,12 +218,7 @@ export const getAccount = async (
 
   const priceById = spotPriceById(
     markets,
-    new Map(
-      prices.flatMap((p) => {
-        const markPrice = decimalStringToNumber(p.markPrice)
-        return markPrice === undefined ? [] : [[p.marketId, markPrice] as const]
-      })
-    )
+    new Map(prices.map((p) => [p.marketId, p.markPrice]))
   )
 
   const positions: Position[] = stateResults.flatMap((state) =>
@@ -293,14 +274,23 @@ export const getAccount = async (
     quoteAssetByCategory
   )
 
+  const marginUsed = safeSumDecimalStrings(
+    dexStates.flatMap(({ marginSummary }) =>
+      marginSummary === undefined ? [] : [marginSummary.totalMarginUsed]
+    )
+  )
+  const unrealizedPnl = safeSumDecimalStrings(
+    positions.map((position) => position.unrealizedPnl)
+  )
+
   return {
     provider: PROVIDER_KEY,
     address: params.address,
     balances,
     collateralBalances,
     positions,
-    marginUsed: perpsTotals(dexStates).marginUsed.toFixed(),
-    unrealizedPnl: sumUnrealizedPnl(positions).toFixed(),
+    ...(marginUsed === undefined ? {} : { marginUsed }),
+    ...(unrealizedPnl === undefined ? {} : { unrealizedPnl }),
     feeTier: {
       maker: feesResult.userAddRate ?? '0',
       taker: feesResult.userCrossRate ?? '0',

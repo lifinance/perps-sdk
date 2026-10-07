@@ -1,13 +1,22 @@
 import {
-  asDecimalString,
+  absDecimalString,
+  createWarnOnce,
+  isDecimalString,
+  isDecimalStringGreaterThan,
   isDecimalStringZero,
+  safeAbsDecimalString,
+  safeDivideDecimalString,
+  safeIsDecimalStringZero,
+  safeNumberToDecimalString,
+  safeSubtractDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
-import Big from 'big.js'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlAssetPosition } from '../types/index.js'
+
+const warnNonPositiveLeverageOnce = createWarnOnce()
 
 const skipPosition = (field: string, value: unknown): undefined => {
   warnSkippedVenueRow(PROVIDER_KEY, 'position', field, value)
@@ -21,15 +30,16 @@ const skipPosition = (field: string, value: unknown): undefined => {
  * @public
  */
 export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
-  !isDecimalStringZero(ap.position.szi)
+  safeIsDecimalStringZero(ap.position.szi) !== true
 
 /**
  * Map a non-zero Hyperliquid position payload to the SDK's normalized
  * position. Signed wire size determines side; decimal strings remain strings
  * in the normalized response. `cumFunding.sinceOpen` is negated because
  * Hyperliquid signs funding paid as positive and `accruedFunding` signs it as
- * negative. A row with an invalid size, position value, leverage or funding
- * gives `undefined`.
+ * negative. A row with an invalid size gives `undefined`; an invalid position
+ * value, a non-positive leverage or an invalid funding leaves the derived field
+ * absent.
  * @public
  */
 export const mapPosition = (
@@ -37,40 +47,56 @@ export const mapPosition = (
   market: PerpsMarketDisplay
 ): Position | undefined => {
   const pos = ap.position
-  const sziDecimal = asDecimalString(pos.szi)
-  if (sziDecimal === undefined) {
+  if (!isDecimalString(pos.szi)) {
     return skipPosition('szi', pos.szi)
   }
-  const positionValueDecimal = asDecimalString(pos.positionValue)
-  if (positionValueDecimal === undefined) {
-    return skipPosition('positionValue', pos.positionValue)
+  const size = absDecimalString(pos.szi)
+  const positionValue = safeAbsDecimalString(pos.positionValue)
+  const markPrice =
+    positionValue === undefined
+      ? undefined
+      : isDecimalStringZero(size)
+        ? '0'
+        : safeDivideDecimalString(positionValue, size)
+  const accruedFunding = safeSubtractDecimalString(
+    '0',
+    pos.cumFunding.sinceOpen
+  )
+  const venueLeverage = safeNumberToDecimalString(pos.leverage.value)
+  const leverage =
+    venueLeverage !== undefined &&
+    isDecimalStringGreaterThan(venueLeverage, '0')
+      ? venueLeverage
+      : undefined
+  if (venueLeverage !== undefined && leverage === undefined) {
+    warnNonPositiveLeverageOnce(
+      venueLeverage,
+      `[${PROVIDER_KEY}] position \`leverage.value\` is not positive: '${venueLeverage}'`
+    )
   }
-  const leverageDecimal = asDecimalString(pos.leverage.value)
-  if (leverageDecimal === undefined || new Big(leverageDecimal).lte(0)) {
-    return skipPosition('leverage.value', pos.leverage.value)
-  }
-  const cumFunding = asDecimalString(pos.cumFunding.sinceOpen)
-  if (cumFunding === undefined) {
-    return skipPosition('cumFunding.sinceOpen', pos.cumFunding.sinceOpen)
-  }
-  const szi = new Big(sziDecimal)
-  const positionValue = new Big(positionValueDecimal).abs()
-  const leverage = new Big(leverageDecimal)
+  const initialMarginRequirement =
+    positionValue === undefined || leverage === undefined
+      ? undefined
+      : safeDivideDecimalString(positionValue, leverage)
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
 
   return {
     market,
-    side: szi.gte(0) ? PositionSide.LONG : PositionSide.SHORT,
-    size: szi.abs().toFixed(),
+    side: isDecimalStringGreaterThan('0', pos.szi)
+      ? PositionSide.SHORT
+      : PositionSide.LONG,
+    size,
     entryPrice: pos.entryPx ?? '0',
-    markPrice: szi.eq(0) ? '0' : positionValue.div(szi.abs()).toFixed(),
+    ...(markPrice === undefined ? {} : { markPrice }),
     liquidationPrice: pos.liquidationPx ?? '0',
     unrealizedPnl: pos.unrealizedPnl,
-    accruedFunding: new Big(cumFunding).neg().toFixed(),
-    leverage: ap.position.leverage.value,
+    ...(accruedFunding === undefined ? {} : { accruedFunding }),
+    ...(leverage === undefined ? {} : { leverage }),
     marginUsed: pos.marginUsed,
-    initialMarginRequirement: positionValue.div(leverage).toFixed(),
+    ...(initialMarginRequirement === undefined
+      ? {}
+      : { initialMarginRequirement }),
     marginMode,
   }
 }

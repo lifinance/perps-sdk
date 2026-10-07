@@ -945,7 +945,7 @@ describe('LighterWsProvider', () => {
       expect(event.channel).toBe('positions')
       expect(event.data).toHaveLength(1)
       expect(event.data[0].entryPrice).toBe('50000')
-      expect(event.data[0].leverage).toBe(20)
+      expect(event.data[0].leverage).toBe('20')
       p.close()
     })
 
@@ -2070,7 +2070,7 @@ describe('LighterWsProvider', () => {
       expect(listener).toHaveBeenCalledOnce()
       const event = listener.mock.calls[0][0]
       expect(event.data.portfolioValue).toBe('35.072119')
-      expect(event.data.availableMargin).toBe('11.05625')
+      expect(event.data.availableMargin).toBe('11.056250')
       // marginUsed = portfolio - available; unrealizedPnl = portfolio - collateral
       expect(event.data.marginUsed).toBe('24.015869')
       expect(event.data.unrealizedPnl).toBe('9.29435')

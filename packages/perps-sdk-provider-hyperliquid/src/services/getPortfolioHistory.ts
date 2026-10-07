@@ -1,5 +1,4 @@
 import {
-  asDecimalString,
   PerpsError,
   type SDKRequestOptions,
   warnSkippedVenueRow,
@@ -47,18 +46,23 @@ const PERP_PERIOD_BY_RANGE: Record<PortfolioHistoryRange, HlPortfolioPeriod> = {
   all: 'perpAllTime',
 }
 
-/** The samples whose value is a decimal; each other sample is skipped. */
+/** The samples with a finite timestamp; each other sample is skipped. */
 const validSamples = (
   samples: HlPortfolioWindow['pnlHistory'],
   row: string
 ): [number, DecimalString][] =>
   samples.flatMap(([timestamp, value]): [number, DecimalString][] => {
-    const decimal = asDecimalString(value)
-    if (decimal === undefined) {
-      warnSkippedVenueRow(PROVIDER_KEY, row, 'value', value)
+    if (!Number.isFinite(timestamp)) {
+      warnSkippedVenueRow(
+        PROVIDER_KEY,
+        row,
+        'timestamp',
+        timestamp,
+        'timestamp'
+      )
       return []
     }
-    return [[timestamp, decimal]]
+    return [[timestamp, value]]
   })
 
 /**
@@ -141,7 +145,7 @@ export async function getPortfolioHistory(
       pnlHistory,
       period
     ),
-    volume: asDecimalString(window.vlm),
+    volume: window.vlm,
     totalPnl: pnlHistory.at(-1)?.[1],
   }
 }

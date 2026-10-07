@@ -645,11 +645,11 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     const provider = lighterProvider()
     // entry * (1 - 1/leverage) / (1 - mmr) = 50000 * 0.9 / 0.988
     const liq = provider.estimateLiquidationPrice(btcMarket, {
-      entryPrice: 50000,
-      leverage: 10,
+      entryPrice: '50000',
+      leverage: '10',
       isLong: true,
     })
-    expect(liq).toBeCloseTo(45546.559, 2)
+    expect(liq).toBe('45546.5587044534412955465587044534412955465587')
   })
 })
 
@@ -3333,7 +3333,10 @@ describe('LighterProvider — data-read account-access contract', () => {
   const DEFAULT_LEVERAGE = 20
   const EMPTY = { resolves: [] }
   const VENUE_DEFAULT = {
-    resolves: { marginMode: MarginMode.CROSS, leverage: DEFAULT_LEVERAGE },
+    resolves: {
+      marginMode: MarginMode.CROSS,
+      leverage: String(DEFAULT_LEVERAGE),
+    },
   }
   const AUTHED: Record<Access, Outcome> = {
     'no credential': PerpsErrorCode.SetupRequired,
@@ -3820,16 +3823,31 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
   })
 
   it.each([
-    ['marginUsed', isolatedPosition('not-a-decimal', '0')],
-    ['unrealizedPnl', isolatedPosition('0', 'not-a-decimal')],
-  ])('rejects a malformed position %s', async (_field, malformed) => {
-    positions = [malformed]
+    [
+      'marginUsed',
+      'unrealizedPnl',
+      isolatedPosition('not-a-decimal', '0.1'),
+      '0.2',
+    ],
+    [
+      'unrealizedPnl',
+      'marginUsed',
+      isolatedPosition('0.1', 'not-a-decimal'),
+      '0.2',
+    ],
+  ] as const)('omits the %s total, keeps %s and the rows, and warns once for a malformed term', async (absent, kept, malformed, keptTotal) => {
+    positions = [malformed, isolatedPosition('0.1', '0.1')]
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
 
-    await expect(provider.getAccount({ address: ADDRESS })).rejects.toThrow(
-      /account totals are unknown/
-    )
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.positions).toHaveLength(2)
+    expect(account).not.toHaveProperty(absent)
+    expect(account[kept]).toBe(keptTotal)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 
@@ -6420,7 +6438,7 @@ describe('LighterProvider — getMarketSettings', () => {
   it("reads the market's mode and leverage from the account position row", async () => {
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 2,
+      leverage: '2',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6430,7 +6448,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 50,
+      leverage: '50',
     })
   })
 
@@ -6447,14 +6465,14 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
-      leverage: 1.67,
+      leverage: '1.67',
     })
   })
 
   it("resolves the backend market's default leverage with cross margin for a market without a row", async () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6473,7 +6491,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6484,7 +6502,7 @@ describe('LighterProvider — getMarketSettings', () => {
 
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 20,
+      leverage: '20',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })

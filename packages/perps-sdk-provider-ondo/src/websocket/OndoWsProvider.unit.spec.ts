@@ -1168,7 +1168,7 @@ describe('OndoWsProvider', () => {
       expect(event.data.orders[0]).toMatchObject({
         orderId: 'ord-1',
         price: '227.50',
-        originalSize: '10',
+        originalSize: '10.00',
         remainingSize: '10',
       })
       expect(event.data.orders[0].market.baseAsset.displaySymbol).toBe('AAPL')
@@ -1199,7 +1199,7 @@ describe('OndoWsProvider', () => {
       const event = listener.mock.calls[0][0]
       expect(event.data.orders[0]).toMatchObject({
         orderId: 'ord-1',
-        originalSize: '10',
+        originalSize: '10.00',
         remainingSize: '6',
         filledSize: '4.00',
         status: OrderStatus.PARTIALLY_FILLED,

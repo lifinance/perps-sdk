@@ -1,5 +1,5 @@
 import type { DecimalString } from '@lifi/perps-types'
-import { requireDecimal } from '../decimal/requireDecimal.js'
+import { decimalStringToBig } from '../decimal/decimalStringToBig.js'
 import type { WithdrawableBalance } from '../types/withdrawal.js'
 
 /**
@@ -18,12 +18,10 @@ export function calculateWithdrawMax(
     'available' | 'withdrawalFee' | 'isFeeDeducted'
   >
 ): DecimalString {
-  const available = requireDecimal(row.available, 'available')
+  const available = decimalStringToBig(row.available)
   if (row.isFeeDeducted !== false || row.withdrawalFee === undefined) {
     return available.toFixed()
   }
-  const funded = available.minus(
-    requireDecimal(row.withdrawalFee, 'withdrawalFee')
-  )
+  const funded = available.minus(decimalStringToBig(row.withdrawalFee))
   return funded.gt(0) ? funded.toFixed() : '0'
 }

@@ -46,13 +46,13 @@ describe('getQuote', () => {
       provider: 'hyperliquid',
       symbol: 'BTC',
       side: 'buy',
-      size: 10_000,
+      size: '10000',
       type: 'perps',
     })
 
     expect(result).toEqual(mockQuote)
     expect(getQuoteSpy).toHaveBeenCalledWith(
-      { symbol: 'BTC', side: 'buy', size: 10_000, type: 'perps' },
+      { symbol: 'BTC', side: 'buy', size: '10000', type: 'perps' },
       undefined
     )
   })
@@ -67,14 +67,14 @@ describe('getQuote', () => {
         provider: 'hyperliquid',
         symbol: 'BTC',
         side: 'sell',
-        size: 500,
+        size: '500',
         type: 'perps',
       },
       { signal: controller.signal }
     )
 
     expect(getQuoteSpy).toHaveBeenCalledWith(
-      { symbol: 'BTC', side: 'sell', size: 500, type: 'perps' },
+      { symbol: 'BTC', side: 'sell', size: '500', type: 'perps' },
       { signal: controller.signal }
     )
   })
@@ -90,7 +90,7 @@ describe('getQuote', () => {
         provider: 'hyperliquid',
         symbol: 'BTC',
         side: 'buy',
-        size: 100,
+        size: '100',
         type: 'perps',
       })
     ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)

@@ -1,42 +1,15 @@
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PerpsError } from '../errors/PerpsError.js'
 import {
-  asDecimalString,
   decimalStringToNumber,
-  formattedStringToNumber,
   isDecimalString,
-  requireVenueDecimal,
+  safeDecimalStringToNumber,
+  unknownToDecimalString,
 } from './parse.js'
 
-describe('formattedStringToNumber', () => {
-  it.each([
-    [undefined, undefined],
-    [null, undefined],
-    ['', 0],
-    ['   ', 0],
-    ['123.45', 123.45],
-    ['-42.5', -42.5],
-    ['+42.5', 42.5],
-    ['0.07', 0.07],
-    ['not-a-number', undefined],
-    ['10oops', undefined],
-    ['1.2.3', undefined],
-    ['NaN', undefined],
-    ['Infinity', undefined],
-    ['$', undefined],
-    ['$1,234.5', 1234.5],
-    ['+$100', 100],
-    ['-$50.25', -50.25],
-    ['1,234,567.89', 1234567.89],
-    ['  $ 42  ', 42],
-    ['12.5%', 12.5],
-    ['12 USD', 12],
-    ['- 5', -5],
-    ['-$ 5', -5],
-  ])('parses %j to %j', (input, expected) => {
-    expect(formattedStringToNumber(input)).toBe(expected)
-  })
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('decimalStringToNumber', () => {
@@ -45,37 +18,60 @@ describe('decimalStringToNumber', () => {
     ['123.45', 123.45],
     ['-42.5', -42.5],
     ['0.000599', 0.000599],
+    ['$1,234.5', 1234.5],
+    ['12.5%', 12.5],
   ])('reads %j as %j', (input, expected) => {
     expect(decimalStringToNumber(input)).toBe(expected)
   })
 
   it.each([
-    undefined,
-    null,
     '',
-    '$1,234.5',
-    '12.5%',
     '+42.5',
     '1e-7',
     'NaN',
     'not-a-number',
-  ])('gives undefined for %j', (input) => {
-    expect(decimalStringToNumber(input)).toBeUndefined()
+  ])('throws ValidationError for %j', (input) => {
+    expect(() => decimalStringToNumber(input)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 
-  it('gives undefined for a value too large for a finite float', () => {
-    expect(decimalStringToNumber(`1${'0'.repeat(400)}`)).toBeUndefined()
+  it('throws ValidationError for a value too large for a finite float', () => {
+    expect(() => decimalStringToNumber(`1${'0'.repeat(400)}`)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
 
-describe('asDecimalString', () => {
+describe('safeDecimalStringToNumber', () => {
+  it('reads a valid decimal string', () => {
+    expect(safeDecimalStringToNumber('1.5')).toBe(1.5)
+  })
+
+  it('gives undefined and warns for a bad value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeDecimalStringToNumber('abc')).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+  })
+})
+
+const catchError = (fn: () => unknown): unknown => {
+  try {
+    fn()
+  } catch (caught) {
+    return caught
+  }
+  return undefined
+}
+
+describe('unknownToDecimalString', () => {
   it.each([
     '0',
     '1.50',
     '-0',
     '-42.5',
   ])('returns the decimal string %j unchanged', (value) => {
-    expect(asDecimalString(value)).toBe(value)
+    expect(unknownToDecimalString(value, 'balance', 'lighter')).toBe(value)
   })
 
   it.each([
@@ -83,12 +79,13 @@ describe('asDecimalString', () => {
     ['.5', '0.5'],
     ['1.', '1'],
     [42, '42'],
+    [3, '3'],
     [1e-7, '0.0000001'],
     [0, '0'],
     [-0, '0'],
     ['1e-400', `0.${'0'.repeat(399)}1`],
   ])('spells %j out as %j', (value, expected) => {
-    expect(asDecimalString(value)).toBe(expected)
+    expect(unknownToDecimalString(value, 'balance', 'lighter')).toBe(expected)
   })
 
   it.each([
@@ -98,6 +95,7 @@ describe('asDecimalString', () => {
     ' 1',
     '+1',
     '1,000',
+    '$1',
     'NaN',
     'abc',
     Number.NaN,
@@ -107,35 +105,15 @@ describe('asDecimalString', () => {
     [],
     '1e999999999',
     '1e-999999999',
-  ])('gives undefined for %j without a throw', (value) => {
-    expect(asDecimalString(value)).toBeUndefined()
-  })
-})
-
-describe('requireVenueDecimal', () => {
-  it('returns the decimal string of a valid value', () => {
-    expect(requireVenueDecimal('12.5', 'balance', 'lighter')).toBe('12.5')
-    expect(requireVenueDecimal(3, 'balance', 'lighter')).toBe('3')
-  })
-
-  it.each([
-    undefined,
-    'abc',
-    Number.NaN,
-  ])('throws an SDKError for %j', (value) => {
-    const error = (() => {
-      try {
-        requireVenueDecimal(value, 'balance', 'lighter')
-      } catch (caught) {
-        return caught
-      }
-      return undefined
-    })()
+  ])('throws an SDKError naming the field and the tool for %j', (value) => {
+    const error = catchError(() =>
+      unknownToDecimalString(value, 'balance', 'lighter')
+    )
     expect(error).toBeInstanceOf(PerpsError)
     expect(error).toMatchObject({
       code: PerpsErrorCode.SDKError,
       tool: 'lighter',
-      message: expect.stringContaining('`balance`'),
+      message: expect.stringMatching(/^lighter field `balance`/),
     })
   })
 })

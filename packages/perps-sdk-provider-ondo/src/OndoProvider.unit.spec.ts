@@ -613,11 +613,11 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
     const provider = ondoProvider()
     // entry * (1 - 1/leverage) / (1 - mmr) = 200 * 0.8 / 0.98
     const liq = provider.estimateLiquidationPrice(market, {
-      entryPrice: 200,
-      leverage: 5,
+      entryPrice: '200',
+      leverage: '5',
       isLong: true,
     })
-    expect(liq).toBeCloseTo(163.265, 2)
+    expect(liq).toBe('163.2653061224489795918367346938775510204082')
   })
 })
 
@@ -693,7 +693,7 @@ const SESSION_GATED_READS: ReadonlyArray<
         address: ADDRESS,
         market: { marketId: 'AAPL-USD.P', categoryId: 'ondo' },
       }),
-    { resolves: { marginMode: MarginMode.CROSS, leverage: 5 } },
+    { resolves: { marginMode: MarginMode.CROSS, leverage: '5' } },
   ],
 ]
 
@@ -808,7 +808,7 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
     const { provider } = await loggedInProvider()
 
     const rows = await provider.getWithdrawableBalances!({ address: ADDRESS })
-    expect(rows.map((row) => row.withdrawalFee)).toEqual(['1.5'])
+    expect(rows.map((row) => row.withdrawalFee)).toEqual(['1.50'])
     expect(recorded.some((r) => r.url === `${API_URL}/v1/account`)).toBe(true)
   })
 
@@ -1060,18 +1060,18 @@ describe('OndoProvider — getMarketSettings', () => {
   it('resolves the stored leverage with cross margin', async () => {
     await expect(read()).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 5,
+      leverage: '5',
     })
     const call = recorded.find((r) => r.url.includes('/v1/perps/leverage'))
     expect(new URL(call!.url).searchParams.get('market')).toBe('AAPL-USD.P')
     expect(authHeaderOf(call!)).toBe(`Bearer ${AUTH_TOKEN.token}`)
   })
 
-  it('parses a fractional leverage string exactly', async () => {
-    leverageRows([{ market: 'AAPL-USD.P', leverage: '2.5' }])
+  it('keeps a fractional leverage string exactly', async () => {
+    leverageRows([{ market: 'AAPL-USD.P', leverage: '2.50' }])
     await expect(read()).resolves.toEqual({
       marginMode: MarginMode.CROSS,
-      leverage: 2.5,
+      leverage: '2.50',
     })
   })
 
@@ -1211,7 +1211,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
         liquidationPrice: '182.3',
         unrealizedPnl: '15.5',
         accruedFunding: '-0.12',
-        leverage: 5,
+        leverage: '5',
         marginUsed: '401',
         initialMarginRequirement: '401',
         marginMode: MarginMode.CROSS,
@@ -1925,13 +1925,24 @@ describe('OndoProvider — getOrder', () => {
     expect(call).toBeDefined()
   })
 
-  it('rejects with OrderNotFound when the venue row is invalid', async () => {
+  it('keeps a venue row with an invalid price as the raw venue string', async () => {
     orderDetailResult = { ...ORDER_OPEN, price: 'bad' }
     const { provider } = await loggedInProvider()
 
     await expect(
       provider.getOrder({ address: ADDRESS, id: 'ord-1' })
+    ).resolves.toMatchObject({ orderId: 'ord-1', price: 'bad' })
+  })
+
+  it('rejects with OrderNotFound when the venue row size is invalid', async () => {
+    orderDetailResult = { ...ORDER_OPEN, size: 'bad' }
+    const { provider } = await loggedInProvider()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(
+      provider.getOrder({ address: ADDRESS, id: 'ord-1' })
     ).rejects.toMatchObject({ code: PerpsErrorCode.OrderNotFound })
+    warn.mockRestore()
   })
 })
 

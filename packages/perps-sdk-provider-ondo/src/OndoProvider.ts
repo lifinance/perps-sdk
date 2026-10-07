@@ -9,6 +9,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isDecimalStringGreaterThan,
   localStorageAdapter,
   PerpsError,
   type PerpsProviderPlugin,
@@ -29,7 +30,6 @@ import {
   type ProviderGetWithdrawFlowParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
-  requireVenueDecimal,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -38,6 +38,7 @@ import {
   toAssetDisplay,
   toMarketDisplay,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
   type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import type {
@@ -50,6 +51,7 @@ import type {
   ActivitiesResponse,
   ActivityItem,
   AvailableToTrade,
+  DepositActivity,
   Fill,
   FillsResponse,
   FundingActivity,
@@ -75,7 +77,6 @@ import {
   MarginMode,
   PerpsErrorCode,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
@@ -389,12 +390,10 @@ export const ondoProvider = (
             requirePerpsMarketDisplay
           )
 
-          const walletBalance = new Big(
-            requireVenueDecimal(
-              balance.walletBalance,
-              'balance.walletBalance',
-              ONDO_PROVIDER_KEY
-            )
+          const walletBalance = unknownToDecimalString(
+            balance.walletBalance,
+            'balance.walletBalance',
+            ONDO_PROVIDER_KEY
           )
 
           // The backend owns the collateral identity; the venue supplies its
@@ -403,7 +402,7 @@ export const ondoProvider = (
             provider: ONDO_PROVIDER_KEY,
             address: params.address,
             balances: [],
-            collateralBalances: walletBalance.gt(0)
+            collateralBalances: isDecimalStringGreaterThan(walletBalance, '0')
               ? [
                   {
                     categoryId: ONDO_PROVIDER_KEY,
@@ -412,14 +411,12 @@ export const ondoProvider = (
                     valueUsd: balance.walletBalance,
                     price: '1',
                     transferable: calculateTransferable(
-                      new Big(
-                        requireVenueDecimal(
-                          balance.withdrawableMargin,
-                          'balance.withdrawableMargin',
-                          ONDO_PROVIDER_KEY
-                        )
-                      ).toFixed(),
-                      walletBalance.toFixed()
+                      unknownToDecimalString(
+                        balance.withdrawableMargin,
+                        'balance.withdrawableMargin',
+                        ONDO_PROVIDER_KEY
+                      ),
+                      walletBalance
                     ),
                   },
                 ]
@@ -510,10 +507,12 @@ export const ondoProvider = (
             error.tool = ONDO_PROVIDER_KEY
             throw error
           }
-          const leverage = new Big(
-            requireVenueDecimal(row.leverage, 'leverage', ONDO_PROVIDER_KEY)
+          const leverage = unknownToDecimalString(
+            row.leverage,
+            'leverage',
+            ONDO_PROVIDER_KEY
           )
-          if (leverage.lte(0)) {
+          if (!isDecimalStringGreaterThan(leverage, '0')) {
             const error = new PerpsError(
               PerpsErrorCode.SDKError,
               `Ondo field \`leverage\` must be positive: '${row.leverage}'`
@@ -521,7 +520,10 @@ export const ondoProvider = (
             error.tool = ONDO_PROVIDER_KEY
             throw error
           }
-          return { marginMode: MarginMode.CROSS, leverage: leverage.toNumber() }
+          return {
+            marginMode: MarginMode.CROSS,
+            leverage,
+          }
         }
       )
     },
@@ -1078,16 +1080,18 @@ export const ondoProvider = (
           const items: ActivityItem[] = [
             ...fundings.result.flatMap((f): FundingActivity[] => {
               const market = marketDisplay(f.market)
-              return market === undefined ? [] : [mapFundingActivity(f, market)]
+              const activity =
+                market === undefined ? null : mapFundingActivity(f, market)
+              return activity === null ? [] : [activity]
             }),
             // A liquidation event that names no position is dropped: the
             // public contract guarantees a non-empty `liquidatedPositions`.
             ...liquidations.result
               .map((l) => mapLiquidationActivity(l, marketDisplay))
               .filter((a): a is LiquidationActivity => a !== null),
-            ...(deposits ?? []).map((deposit) =>
-              mapDepositActivity(deposit, assetRegistry)
-            ),
+            ...(deposits ?? [])
+              .map((deposit) => mapDepositActivity(deposit, assetRegistry))
+              .filter((a): a is DepositActivity => a !== null),
             // A withdrawal Ondo reports as failed or cancelled moved no value,
             // and `WithdrawalActivity` carries no status to say so.
             ...(withdrawals ?? [])

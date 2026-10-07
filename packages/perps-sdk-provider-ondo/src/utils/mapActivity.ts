@@ -18,12 +18,16 @@ import type {
   OndoWalletDeposit,
   OndoWalletWithdrawal,
 } from '../types/wire.js'
+import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
+
+const activityTimestamp = (row: string, time: string): string | undefined =>
+  rowTimestampToIsoStringOrWarn(row, 'time', time)
 
 /**
  * Map an Ondo funding-fee transfer to a {@link FundingActivity}. Ondo carries
  * no transfer id on the wire, so a deterministic `funding:<market>:<ISO time>`
  * id is synthesized — funding settles at most once per market per interval,
- * so the pair is unique.
+ * so the pair is unique. A transfer with an invalid time gives `null`.
  *
  * @param market - Backend-resolved market identity for `transfer.market`.
  * @public
@@ -31,8 +35,11 @@ import type {
 export const mapFundingActivity = (
   transfer: OndoFundingFeeTransfer,
   market: MarketDisplay
-): FundingActivity => {
-  const timestamp = new Date(transfer.time).toISOString()
+): FundingActivity | null => {
+  const timestamp = activityTimestamp('funding', transfer.time)
+  if (timestamp === undefined) {
+    return null
+  }
   return {
     id: `funding:${transfer.market}:${timestamp}`,
     provider: ONDO_PROVIDER_KEY,
@@ -47,7 +54,7 @@ export const mapFundingActivity = (
 
 /**
  * Map an Ondo liquidation event to a {@link LiquidationActivity}, or `null`
- * when the event names no triggering position. Ondo margin accounts are
+ * when the event names no triggering position or has an invalid time. Ondo margin accounts are
  * cross-only, so `leverageType` is always `'cross'`. Ondo reports no account
  * value at liquidation time, so `accountValue` stays absent. One Ondo event
  * carries the whole cross-margin cascade in `triggeringPositions`, so every
@@ -70,10 +77,14 @@ export const mapLiquidationActivity = (
   if (firstPosition === undefined) {
     return null
   }
+  const timestamp = activityTimestamp('liquidation', event.time)
+  if (timestamp === undefined) {
+    return null
+  }
   return {
     id: event.id,
     provider: ONDO_PROVIDER_KEY,
-    timestamp: new Date(event.time).toISOString(),
+    timestamp,
     type: ActivityType.LIQUIDATION,
     ...(event.filledQuoteSize === undefined
       ? {}
@@ -116,16 +127,25 @@ const ondoExplorerLink = (
     : explorerTxUrl(explorerChainId, txid)
 }
 
-/** Map a wallet deposit with registry asset identity and its on-chain transaction. @public */
+/**
+ * Map a wallet deposit with registry asset identity and its on-chain
+ * transaction, or `null` when its time is invalid.
+ *
+ * @public
+ */
 export const mapDepositActivity = (
   deposit: OndoWalletDeposit,
   assetRegistry: AssetRegistry
-): DepositActivity => {
+): DepositActivity | null => {
+  const timestamp = activityTimestamp('deposit', deposit.time)
+  if (timestamp === undefined) {
+    return null
+  }
   const explorerLink = ondoExplorerLink(deposit.chainId, deposit.txid)
   return {
     id: depositId(deposit),
     provider: ONDO_PROVIDER_KEY,
-    timestamp: new Date(deposit.time).toISOString(),
+    timestamp,
     type: ActivityType.DEPOSIT,
     asset: assetRegistry.require(deposit.coin),
     amount: deposit.size,
@@ -149,7 +169,8 @@ const ONDO_WITHDRAWAL_FEE_SYMBOL = 'USD'
 
 /**
  * Map an Ondo wallet withdrawal to a {@link WithdrawalActivity}, or `null`
- * when the venue reports a status under which no value left the account. Ondo
+ * when the venue reports a status under which no value left the account or
+ * the time is invalid. Ondo
  * charges the fee in USD, so `fee.asset` is `USD` and not the withdrawn asset.
  *
  * @public
@@ -161,11 +182,15 @@ export const mapWithdrawalActivity = (
   if (!SETTLING_WITHDRAWAL_STATUSES.has(withdrawal.status)) {
     return null
   }
+  const timestamp = activityTimestamp('withdrawal', withdrawal.time)
+  if (timestamp === undefined) {
+    return null
+  }
   const explorerLink = ondoExplorerLink(withdrawal.chainId, withdrawal.txid)
   return {
     id: withdrawal.withdrawal_id,
     provider: ONDO_PROVIDER_KEY,
-    timestamp: new Date(withdrawal.time).toISOString(),
+    timestamp,
     type: ActivityType.WITHDRAWAL,
     asset: assetRegistry.require(withdrawal.coin),
     amount: withdrawal.size,

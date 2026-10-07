@@ -1,19 +1,20 @@
-import { requireVenueDecimal } from '@lifi/perps-sdk'
-import Big from 'big.js'
+import {
+  addDecimalString,
+  isDecimalStringGreaterThan,
+  subtractDecimalString,
+  unknownToDecimalString,
+} from '@lifi/perps-sdk'
 import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtAccountAsset } from '../types/account.js'
 
 /** Both routes of a unified account's settlement asset, as one holding. */
-export const pooledSettlementUnits = (asset: LtAccountAsset): Big =>
-  new Big(
-    requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
-  ).plus(
-    new Big(
-      requireVenueDecimal(
-        asset.margin_balance,
-        'margin_balance',
-        LIGHTER_PROVIDER_KEY
-      )
+export const pooledSettlementUnits = (asset: LtAccountAsset): string =>
+  addDecimalString(
+    unknownToDecimalString(asset.balance, 'balance', LIGHTER_PROVIDER_KEY),
+    unknownToDecimalString(
+      asset.margin_balance,
+      'margin_balance',
+      LIGHTER_PROVIDER_KEY
     )
   )
 
@@ -25,28 +26,26 @@ export const pooledSettlementUnits = (asset: LtAccountAsset): Big =>
  */
 export const pooledSettlementSpendable = (
   asset: LtAccountAsset,
-  availableBalance: Big
-): Big => {
-  const marginBalance = new Big(
-    requireVenueDecimal(
-      asset.margin_balance,
-      'margin_balance',
-      LIGHTER_PROVIDER_KEY
-    )
+  availableBalance: string
+): string => {
+  const marginBalance = unknownToDecimalString(
+    asset.margin_balance,
+    'margin_balance',
+    LIGHTER_PROVIDER_KEY
   )
-  return new Big(
-    requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
-  )
-    .minus(
-      new Big(
-        requireVenueDecimal(
-          asset.locked_balance,
-          'locked_balance',
-          LIGHTER_PROVIDER_KEY
-        )
+  return addDecimalString(
+    subtractDecimalString(
+      unknownToDecimalString(asset.balance, 'balance', LIGHTER_PROVIDER_KEY),
+      unknownToDecimalString(
+        asset.locked_balance,
+        'locked_balance',
+        LIGHTER_PROVIDER_KEY
       )
-    )
-    .plus(marginBalance.lt(availableBalance) ? marginBalance : availableBalance)
+    ),
+    isDecimalStringGreaterThan(marginBalance, availableBalance)
+      ? availableBalance
+      : marginBalance
+  )
 }
 
 /** Spot-route `balance` of the collateral asset; `'0'` when the account holds none. */
@@ -57,7 +56,5 @@ export const collateralSpotBalance = (
   const asset = assets.find((a) => a.asset_id === settlementAssetIndex)
   return asset === undefined
     ? '0'
-    : new Big(
-        requireVenueDecimal(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
-      ).toFixed()
+    : unknownToDecimalString(asset.balance, 'balance', LIGHTER_PROVIDER_KEY)
 }

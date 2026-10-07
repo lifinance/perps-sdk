@@ -70,7 +70,7 @@ describe('mapPosition (Hyperliquid)', () => {
     // markPrice = positionValue / |szi| = 9500 / 0.1 = 95000
     expect(result.markPrice).toBe('95000')
     expect(result.liquidationPrice).toBe('85000')
-    expect(result.leverage).toBe(10)
+    expect(result.leverage).toBe('10')
     expect(result.initialMarginRequirement).toBe('950')
     expect(result.marginMode).toBe(MarginMode.CROSS)
     expect(result.market).toBe(BTC_MARKET)
@@ -93,30 +93,62 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('0')
   })
 
-  it.each([
-    ['szi', { szi: 'abc' }],
-    ['positionValue', { positionValue: '' }],
-    ['leverage.value', { leverage: { type: 'cross' as const, value: 0 } }],
-    [
-      'cumFunding.sinceOpen',
-      { cumFunding: { allTime: '0', sinceOpen: 'NaN', sinceChange: '0' } },
-    ],
-  ])('skips the row and warns when %s is invalid', (field, overrides) => {
+  it('skips the row and warns when szi is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    expect(mapPosition(makeAp(overrides), BTC_MARKET)).toBeUndefined()
+    expect(mapPosition(makeAp({ szi: 'abc' }), BTC_MARKET)).toBeUndefined()
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `[hyperliquid] skipping position row: \`${field}\``
-      )
+      expect.stringContaining('[hyperliquid] skipping position row: `szi`')
     )
+  })
+
+  it('keeps the row without markPrice and initialMarginRequirement and warns once when positionValue is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(makeAp({ positionValue: '' }))
+
+    expect(result.size).toBe('0.1')
+    expect(result.leverage).toBe('10')
+    expect(result).not.toHaveProperty('markPrice')
+    expect(result).not.toHaveProperty('initialMarginRequirement')
+    expect(warn).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the row without leverage and initialMarginRequirement, and warns once, when leverage.value is zero', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(makeAp({ leverage: { type: 'cross', value: 0 } }))
+
+    expect(result.size).toBe('0.1')
+    expect(result.markPrice).toBe('95000')
+    expect(result).not.toHaveProperty('leverage')
+    expect(result).not.toHaveProperty('initialMarginRequirement')
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      "[hyperliquid] position `leverage.value` is not positive: '0'"
+    )
+  })
+
+  it('keeps the row without accruedFunding and warns once when cumFunding.sinceOpen is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(
+      makeAp({
+        cumFunding: { allTime: '0', sinceOpen: 'NaN', sinceChange: '0' },
+      })
+    )
+
+    expect(result.size).toBe('0.1')
+    expect(result.initialMarginRequirement).toBe('950')
+    expect(result).not.toHaveProperty('accruedFunding')
+    expect(warn).toHaveBeenCalledOnce()
   })
 
   it('maps isolated leverage type to MarginMode.ISOLATED', () => {
     const result = map(makeAp({ leverage: { type: 'isolated', value: 5 } }))
 
     expect(result.marginMode).toBe(MarginMode.ISOLATED)
-    expect(result.leverage).toBe(5)
+    expect(result.leverage).toBe('5')
     expect(result.marginUsed).toBe('940')
     expect(result.initialMarginRequirement).toBe('1900')
   })

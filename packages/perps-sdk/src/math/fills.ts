@@ -4,6 +4,7 @@ import {
   OrderSide,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 
 /**
@@ -86,7 +87,7 @@ export function classifyFill(
       ? FillClassification.BUY
       : FillClassification.SELL
   }
-  const isClose = realizedPnl != null && !new Big(realizedPnl).eq(0)
+  const isClose = realizedPnl != null && !isDecimalStringZero(realizedPnl)
   if (side === OrderSide.BUY) {
     return isClose
       ? FillClassification.CLOSED_SHORT

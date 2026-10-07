@@ -1,6 +1,8 @@
 import {
+  addDecimalString,
   cachePromise,
   getMarketRegistry,
+  isDecimalStringGreaterThan,
   type MarketRegistry,
   PerpsError,
   type PerpsProvider,
@@ -8,10 +10,11 @@ import {
   type ProviderGetQuoteParams,
   type QuoteListener,
   ReconnectingWebSocket,
-  requireVenueDecimal,
   resolveRetryPolicy,
   resolveSubscribeQuote,
+  subtractDecimalString,
   toPerpsMarketDisplay,
+  unknownToDecimalString,
   WsProviderBase,
   type WsProviderFactory,
   type WsProviderFactoryParams,
@@ -25,7 +28,6 @@ import {
   type Position,
   type Subscription,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import type { Address } from 'viem'
 import { lighterPortfolioValue } from '../accountSummary.js'
 import {
@@ -142,8 +144,8 @@ interface SubState {
 
 /** Settlement equity and per-asset route quantities for account valuation. */
 interface AccountSummaryInputs {
-  perps?: { equity: Big } & Omit<AccountSummary, 'portfolioValue'>
-  balances?: Map<number, { spot: Big; margin: Big }>
+  perps?: { equity: string } & Omit<AccountSummary, 'portfolioValue'>
+  balances?: Map<number, { spot: string; margin: string }>
   lastPortfolioValue?: string
 }
 
@@ -721,59 +723,47 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
 
-    const portfolio = new Big(
-      requireVenueDecimal(
-        stats.portfolio_value,
-        'stats.portfolio_value',
-        this.providerKey
-      )
+    const portfolio = unknownToDecimalString(
+      stats.portfolio_value,
+      'stats.portfolio_value',
+      this.providerKey
     )
-    const collateral = new Big(
-      requireVenueDecimal(
-        stats.collateral,
-        'stats.collateral',
-        this.providerKey
-      )
+    const collateral = unknownToDecimalString(
+      stats.collateral,
+      'stats.collateral',
+      this.providerKey
     )
 
-    let available: Big
-    let marginUsed: Big
+    let available: string
+    let marginUsed: string
     if (stats.cross_stats === undefined) {
       // Compatibility with legacy gateways that omitted the entire
       // cross_stats object.
-      available = new Big(
-        requireVenueDecimal(
-          stats.available_balance,
-          'stats.available_balance',
-          this.providerKey
-        )
+      available = unknownToDecimalString(
+        stats.available_balance,
+        'stats.available_balance',
+        this.providerKey
       )
-      marginUsed = portfolio.minus(available)
+      marginUsed = subtractDecimalString(portfolio, available)
     } else {
-      const crossCollateral = new Big(
-        requireVenueDecimal(
-          stats.cross_stats.collateral,
-          'stats.cross_stats.collateral',
-          this.providerKey
-        )
+      const crossCollateral = unknownToDecimalString(
+        stats.cross_stats.collateral,
+        'stats.cross_stats.collateral',
+        this.providerKey
       )
-      const crossPortfolio = new Big(
-        requireVenueDecimal(
-          stats.cross_stats.portfolio_value,
-          'stats.cross_stats.portfolio_value',
-          this.providerKey
-        )
+      const crossPortfolio = unknownToDecimalString(
+        stats.cross_stats.portfolio_value,
+        'stats.cross_stats.portfolio_value',
+        this.providerKey
       )
-      available = new Big(
-        requireVenueDecimal(
-          stats.cross_stats.available_balance,
-          'stats.cross_stats.available_balance',
-          this.providerKey
-        )
+      available = unknownToDecimalString(
+        stats.cross_stats.available_balance,
+        'stats.cross_stats.available_balance',
+        this.providerKey
       )
-      const isolatedMargin = collateral.minus(crossCollateral)
-      const crossMargin = crossPortfolio.minus(available)
-      marginUsed = isolatedMargin.plus(crossMargin)
+      const isolatedMargin = subtractDecimalString(collateral, crossCollateral)
+      const crossMargin = subtractDecimalString(crossPortfolio, available)
+      marginUsed = addDecimalString(isolatedMargin, crossMargin)
     }
 
     const inputs = this.accountSummaryInputs.get(address)
@@ -782,9 +772,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     inputs.perps = {
       equity: portfolio,
-      availableMargin: available.toFixed(),
-      marginUsed: marginUsed.toFixed(),
-      unrealizedPnl: portfolio.minus(collateral).toFixed(),
+      availableMargin: available,
+      marginUsed,
+      unrealizedPnl: subtractDecimalString(portfolio, collateral),
     }
     this.emitAccountSummary(address)
   }
@@ -805,22 +795,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     }
     const parsed = Object.values(msg.assets ?? {}).map((asset) => ({
       assetId: asset.asset_id,
-      spot: new Big(
-        requireVenueDecimal(asset.balance, 'balance', this.providerKey)
-      ),
+      spot: unknownToDecimalString(asset.balance, 'balance', this.providerKey),
       margin:
         asset.margin_balance === undefined
           ? undefined
-          : new Big(
-              requireVenueDecimal(
-                asset.margin_balance,
-                'margin_balance',
-                this.providerKey
-              )
+          : unknownToDecimalString(
+              asset.margin_balance,
+              'margin_balance',
+              this.providerKey
             ),
     }))
     const balances = isSnapshot
-      ? new Map<number, { spot: Big; margin: Big }>()
+      ? new Map<number, { spot: string; margin: string }>()
       : inputs.balances
     if (balances === undefined) {
       return
@@ -828,7 +814,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     for (const { assetId, spot, margin } of parsed) {
       balances.set(assetId, {
         spot,
-        margin: margin ?? balances.get(assetId)?.margin ?? new Big(0),
+        margin: margin ?? balances.get(assetId)?.margin ?? '0',
       })
     }
     inputs.balances = balances
@@ -847,10 +833,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         ([assetId, { spot, margin }]) =>
           [
             assetId,
-            assetId === settlementAssetIndex ? spot : spot.plus(margin),
+            assetId === settlementAssetIndex
+              ? spot
+              : addDecimalString(spot, margin),
           ] as const
       )
-      .filter(([, balance]) => balance.gt(0))
+      .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
     const spotPrices = spotPriceByAssetId(
       this.registry?.markets ?? [],
       LIGHTER_SPOT_CATEGORY_ID,
@@ -865,14 +853,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       inputs.perps.equity,
       held.map(
         ([assetId, balance]) =>
-          spotValuation(
-            assetId,
-            balance.toFixed(),
-            settlementAssetIndex,
-            spotPrices
-          ).valueUsd
+          spotValuation(assetId, balance, settlementAssetIndex, spotPrices)
+            .valueUsd
       )
-    ).toFixed()
+    )
     if (onlyOnChange && portfolioValue === inputs.lastPortfolioValue) {
       return
     }

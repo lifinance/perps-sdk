@@ -41,8 +41,8 @@ describe('formatUsd', () => {
     expect(formatUsd(Number.POSITIVE_INFINITY)).toBe('—')
   })
 
-  it('renders the placeholder for an unparseable string', () => {
-    expect(formatUsd('abc')).toBe('—')
+  it('shows an unparseable string unchanged', () => {
+    expect(formatUsd('abc')).toBe('abc')
   })
 
   it('honours a custom placeholder', () => {

@@ -1,6 +1,7 @@
 import type { DecimalString, Market } from '@lifi/perps-types'
-import Big from 'big.js'
+import type Big from 'big.js'
 import { DivBig, TruncBig } from '../decimal/big.js'
+import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { snapOrderSize } from './snap.js'
@@ -74,7 +75,7 @@ export function calculateOrderAmounts(
         ? amount.div(price).toFixed()
         : amount.times(leverage).div(price).toFixed()
   const size = snapOrderSize(sdk, market, requested)
-  if (new Big(size).eq(0)) {
+  if (isDecimalStringZero(size)) {
     return null
   }
 

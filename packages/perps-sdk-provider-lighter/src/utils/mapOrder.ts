@@ -1,8 +1,11 @@
 import {
-  asDecimalString,
   isActiveOrderStatus,
+  isDecimalStringGreaterThan,
   PerpsError,
+  safeDivideDecimalString,
+  safeTimestampToIsoString,
   triggerConditionFor,
+  unknownToDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { MarketDisplay, Order, OrderBase } from '@lifi/perps-types'
@@ -13,9 +16,9 @@ import {
   PerpsErrorCode,
   TimeInForce,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtOrder } from '../types/index.js'
+import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 const mapOrderType = (type: string): Order['type'] => {
   switch (type.replace(/-/g, '_')) {
@@ -59,9 +62,17 @@ const mapTimeInForce = (tif: string): TimeInForce => {
   }
 }
 
+const venueDecimal = (value: unknown, field: string): string | undefined => {
+  try {
+    return unknownToDecimalString(value, field, LIGHTER_PROVIDER_KEY)
+  } catch {
+    return undefined
+  }
+}
+
 const hasFill = (order: LtOrder): boolean => {
-  const filled = asDecimalString(order.filled_base_amount)
-  return filled !== undefined && new Big(filled).gt(0)
+  const filled = venueDecimal(order.filled_base_amount, 'filled_base_amount')
+  return filled !== undefined && isDecimalStringGreaterThan(filled, '0')
 }
 
 const mapOrderStatus = (order: LtOrder): OrderStatus => {
@@ -107,27 +118,66 @@ const skipOrder = (field: string, value: unknown): undefined => {
   return undefined
 }
 
+const orderSizeOrSkip = (
+  field: 'initial_base_amount' | 'remaining_base_amount' | 'filled_base_amount',
+  value: string
+): string | undefined =>
+  venueDecimal(value, field) === undefined ? skipOrder(field, value) : value
+
 /**
  * Map a Lighter order with its venue identity, lifecycle, and execution fields.
- * A row with an invalid size or price gives `undefined`. An invalid filled
- * quote amount omits `averagePrice`.
+ * A row with an invalid size or time gives `undefined`. An invalid limit price or
+ * filled quote amount omits that field.
  */
 export const mapOrder = (
   order: LtOrder,
   market: MarketDisplay
 ): Order | undefined => {
   const type = mapOrderType(order.type)
-  for (const field of [
+  const originalSize = orderSizeOrSkip(
     'initial_base_amount',
-    'remaining_base_amount',
-    'filled_base_amount',
-  ] as const) {
-    if (asDecimalString(order[field]) === undefined) {
-      return skipOrder(field, order[field])
-    }
+    order.initial_base_amount
+  )
+  if (originalSize === undefined) {
+    return undefined
   }
-  const filledSize = new Big(order.filled_base_amount)
-  const filledQuote = asDecimalString(order.filled_quote_amount)
+  const remainingSize = orderSizeOrSkip(
+    'remaining_base_amount',
+    order.remaining_base_amount
+  )
+  if (remainingSize === undefined) {
+    return undefined
+  }
+  const filledSize = orderSizeOrSkip(
+    'filled_base_amount',
+    order.filled_base_amount
+  )
+  if (filledSize === undefined) {
+    return undefined
+  }
+  const createdAt = rowTimestampToIsoStringOrUndefined(order.created_at * 1000)
+  if (createdAt === undefined) {
+    return skipOrder('created_at', order.created_at)
+  }
+  const updatedAt = rowTimestampToIsoStringOrUndefined(order.updated_at * 1000)
+  if (updatedAt === undefined) {
+    return skipOrder('updated_at', order.updated_at)
+  }
+  const filledQuote = venueDecimal(
+    order.filled_quote_amount,
+    'filled_quote_amount'
+  )
+  const filledAmount = venueDecimal(filledSize, 'filled_base_amount')
+  const averagePrice =
+    filledQuote !== undefined &&
+    filledAmount !== undefined &&
+    isDecimalStringGreaterThan(filledAmount, '0')
+      ? safeDivideDecimalString(filledQuote, filledAmount)
+      : undefined
+  const expiresAt =
+    order.order_expiry > 0
+      ? safeTimestampToIsoString(order.order_expiry)
+      : undefined
   const status = mapOrderStatus(order)
   const base: OrderBase = {
     orderId: String(order.order_index),
@@ -138,16 +188,14 @@ export const mapOrder = (
     side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
     status,
     ...(status === OrderStatus.CANCELLED ? { statusReason: order.status } : {}),
-    originalSize: order.initial_base_amount,
-    remainingSize: order.remaining_base_amount,
-    filledSize: order.filled_base_amount,
-    ...(filledSize.gt(0) && filledQuote !== undefined
-      ? { averagePrice: new Big(filledQuote).div(filledSize).toFixed() }
-      : {}),
+    originalSize,
+    remainingSize,
+    filledSize,
+    ...(averagePrice === undefined ? {} : { averagePrice }),
     reduceOnly: order.reduce_only,
     ...(order.parent_order_id ? { parentOrderId: order.parent_order_id } : {}),
-    createdAt: new Date(order.created_at * 1000).toISOString(),
-    updatedAt: new Date(order.updated_at * 1000).toISOString(),
+    createdAt,
+    updatedAt,
   }
   switch (type) {
     case OrderType.TWAP:
@@ -161,34 +209,26 @@ export const mapOrder = (
     case OrderType.STOP_LIMIT:
     case OrderType.TAKE_PROFIT_MARKET:
     case OrderType.TAKE_PROFIT_LIMIT: {
-      if (asDecimalString(order.trigger_price) === undefined) {
-        return skipOrder('trigger_price', order.trigger_price)
-      }
-      const limitPrice =
-        type === OrderType.STOP_LIMIT || type === OrderType.TAKE_PROFIT_LIMIT
-          ? asDecimalString(order.price)
-          : undefined
       return {
         ...base,
         type,
         triggerPrice: order.trigger_price,
         triggerCondition: triggerConditionFor(type, base.side),
-        ...(limitPrice === undefined ? {} : { limitPrice }),
+        ...((type === OrderType.STOP_LIMIT ||
+          type === OrderType.TAKE_PROFIT_LIMIT) &&
+        venueDecimal(order.price, 'price') !== undefined
+          ? { limitPrice: order.price }
+          : {}),
       }
     }
     case OrderType.MARKET:
     case OrderType.LIMIT:
-      if (asDecimalString(order.price) === undefined) {
-        return skipOrder('price', order.price)
-      }
       return {
         ...base,
         type,
         price: order.price,
         timeInForce: mapTimeInForce(order.time_in_force),
-        ...(order.order_expiry > 0
-          ? { expiresAt: new Date(order.order_expiry).toISOString() }
-          : {}),
+        ...(expiresAt === undefined ? {} : { expiresAt }),
       }
   }
 }

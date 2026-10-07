@@ -1,4 +1,4 @@
-import { asDecimalString, warnSkippedVenueRow } from '@lifi/perps-sdk'
+import { warnSkippedVenueRow } from '@lifi/perps-sdk'
 import type {
   PortfolioHistoryPoint,
   PortfolioHistoryRange,
@@ -42,27 +42,7 @@ const mapPoint = (
     )
     return undefined
   }
-  const accountValue = asDecimalString(point.marginBalance)
-  if (accountValue === undefined) {
-    warnSkippedVenueRow(
-      ONDO_PROVIDER_KEY,
-      POINT_ROW,
-      'marginBalance',
-      point.marginBalance
-    )
-    return undefined
-  }
-  const pnl = asDecimalString(point.totalPnL)
-  if (pnl === undefined) {
-    warnSkippedVenueRow(
-      ONDO_PROVIDER_KEY,
-      POINT_ROW,
-      'totalPnL',
-      point.totalPnL
-    )
-    return undefined
-  }
-  return { timestamp, accountValue, pnl }
+  return { timestamp, accountValue: point.marginBalance, pnl: point.totalPnL }
 }
 
 /**
@@ -70,7 +50,7 @@ const mapPoint = (
  * totals for `range`. Ondo reports no 24-hour volume, so `volume` is absent
  * for `'24h'`. `totalPnl` comes from the last graph point: the summary route
  * takes no range parameter, so its `totalPnL` is an all-time total. A point
- * with an invalid time or value is skipped.
+ * with an invalid time is skipped.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
@@ -81,7 +61,7 @@ export const mapPortfolioHistory = (
   return {
     range,
     points,
-    volume: asDecimalString(summaryVolume(summary, range)),
+    volume: summaryVolume(summary, range),
     totalPnl: points.at(-1)?.pnl,
   }
 }
