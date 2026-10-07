@@ -1002,4 +1002,9 @@ describe('mapFill (Lighter)', () => {
       expect(fill.classification).toBe(FillClassification.INCREASED_LONG)
     })
   })
+
+  it('maps a trade with a malformed size and classifies it by side', () => {
+    const fill = mapFill(baseTrade({ size: '10oops' }), ACCOUNT_INDEX, MARKET)
+    expect(fill.classification).toBe(FillClassification.BUY)
+  })
 })

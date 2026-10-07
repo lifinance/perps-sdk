@@ -234,6 +234,10 @@ export enum FillClassification {
   SWITCHED_SHORT = 'Switched Short',
   SPOT_BUY = 'Spot Buy',
   SPOT_SELL = 'Spot Sell',
+  /** A perp buy whose position change the venue data cannot show. */
+  BUY = 'Buy',
+  /** A perp sell whose position change the venue data cannot show. */
+  SELL = 'Sell',
 }
 
 /** Classification emitted for a liquidation activity. @public */

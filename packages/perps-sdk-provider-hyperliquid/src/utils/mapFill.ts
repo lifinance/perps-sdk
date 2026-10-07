@@ -24,6 +24,7 @@ export { classifyFillFromPosition }
 export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => {
   // HL charges the builder portion in the same token as the total fee.
   const feeAsset = fill.feeToken ?? market.quoteAsset.displaySymbol
+  const side = fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL
 
   return {
     ...(market.categoryId === SPOT_MARKET_ID
@@ -33,7 +34,7 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => {
     orderId: String(fill.oid),
     clientOrderId: fill.cloid,
     market,
-    side: fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
+    side,
     // HL fills don't carry the originating order type. A maker fill (crossed:
     // false) can only come from a resting order, so it's necessarily a limit;
     // a taker fill (crossed: true) may be a market OR an aggressive limit order,
@@ -55,10 +56,10 @@ export const mapFill = (fill: HlUserFill, market: MarketDisplay): Fill => {
     explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, fill.hash),
     classification:
       market.categoryId === SPOT_MARKET_ID
-        ? fill.side === 'B'
+        ? side === OrderSide.BUY
           ? FillClassification.SPOT_BUY
           : FillClassification.SPOT_SELL
-        : classifyFillFromPosition(fill.startPosition, fill.side, fill.sz),
+        : classifyFillFromPosition(fill.startPosition, side, fill.sz),
     createdAt: new Date(fill.time).toISOString(),
   }
 }
