@@ -14,6 +14,7 @@ import type {
   PerpsMarket,
   PortfolioHistoryRange,
   Provider,
+  SessionActionStep,
   SetupAction,
   SiweActionStep,
 } from '@lifi/perps-types'
@@ -1713,14 +1714,19 @@ describe('OndoProvider — resolveActionRequest', () => {
     ).resolves.toEqual({ params: { accountId: 'acct-1' } })
   })
 
-  it('throws OndoSessionExpiredError for a withdrawal without a session', async () => {
+  it('throws SetupRequired without a venue call for a withdrawal without a session', async () => {
     await expect(
       loggedOutProvider().resolveActionRequest!(
         ActionType.WITHDRAWAL,
         ADDRESS,
         PerpsSigner.USER
       )
-    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SetupRequired,
+      message: `No valid Ondo session token stored for ${ADDRESS}. Run the SIWE login first.`,
+      tool: ONDO_PROVIDER_KEY,
+    })
+    expect(recorded).toHaveLength(0)
   })
 
   it.each([
@@ -3100,6 +3106,39 @@ describe('OndoProvider — write-action surface', () => {
 
     const after = await provider.getAccount({ address: ADDRESS })
     expect(after.config).toMatchObject({ apiKeyRegistered: true })
+  })
+})
+
+describe('OndoProvider — signActions session errors', () => {
+  const TERMS_STEP: SessionActionStep = {
+    action: ActionType.ACCEPT_PROVIDER_TERMS,
+    session: {},
+  }
+
+  it('throws SetupRequired without a venue call when no session is stored', async () => {
+    await expect(
+      loggedOutProvider().signActions?.(
+        SigningMethod.SESSION,
+        [TERMS_STEP],
+        ADDRESS
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SetupRequired,
+      tool: ONDO_PROVIDER_KEY,
+    })
+    expect(recorded).toHaveLength(0)
+  })
+
+  it('evicts the stored token and rethrows OndoSessionExpiredError when the venue rejects it', async () => {
+    const { provider, store } = await loggedInProvider()
+    fetchMock.mockImplementation(async () =>
+      respond({ success: false, error: 'token expired' }, 401)
+    )
+
+    await expect(
+      provider.signActions?.(SigningMethod.SESSION, [TERMS_STEP], ADDRESS)
+    ).rejects.toBeInstanceOf(OndoSessionExpiredError)
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
 })
 
