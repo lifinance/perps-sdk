@@ -305,3 +305,16 @@ export enum SigningMethod {
   /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
   SESSION = 'session',
 }
+
+/**
+ * How a venue settles a withdrawal. A provider offers the types it supports
+ * per holding through `PerpsClient.getWithdrawalTypes`.
+ *
+ * @public
+ */
+export enum WithdrawalType {
+  FAST = 'FAST',
+  STANDARD = 'STANDARD',
+  NATIVE = 'NATIVE',
+  BRIDGE = 'BRIDGE',
+}

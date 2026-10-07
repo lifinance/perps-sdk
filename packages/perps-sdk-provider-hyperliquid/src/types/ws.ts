@@ -1,5 +1,6 @@
 // Hyperliquid WebSocket incoming message types.
 
+import type { DecimalString } from '@lifi/perps-types'
 import type { HlClearinghouseState, HlSpotBalance } from './account.js'
 import type { HlCandle, HlL2Book } from './asset.js'
 import type { HlUserFill } from './fill.js'
@@ -77,8 +78,8 @@ export type HlWsMessage = {
  * @public
  */
 export type HlWsFastAssetCtx = {
-  markPx?: string
-  midPx?: string | null
+  markPx?: DecimalString
+  midPx?: DecimalString | null
 }
 
 /**

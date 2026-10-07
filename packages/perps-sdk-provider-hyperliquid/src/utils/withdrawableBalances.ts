@@ -2,6 +2,7 @@ import {
   calculateWithdrawMax,
   type ProviderWithdrawableBalance,
 } from '@lifi/perps-sdk'
+import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type {
   HlAbstractionMode,
   HlClearinghouseState,
@@ -12,13 +13,13 @@ import { assetIsOutcome } from './assetId.js'
 import { toWireBig } from './decimal.js'
 
 /**
- * Split a Hyperliquid account's venue figures into the routes a withdrawal
- * draws on. A unified or portfolio-margin account holds its collateral in spot,
+ * Split a Hyperliquid account's venue figures into the categories a
+ * withdrawal draws on. A unified or portfolio-margin account holds its collateral in spot,
  * so each spot token adds the part of `total` that no order or margin holds. A
- * route with nothing left to draw carries no row, and the caller applies the
+ * category with nothing left to draw carries no row, and the caller applies the
  * per-asset venue minimum.
  *
- * @param quoteAssetId - `Asset.id` the perps-route row is keyed by.
+ * @param quoteAssetId - `Asset.id` the perps-category row is keyed by.
  * @param withdrawalFee - Flat venue fee in quote-asset units, set on every
  *   quote-asset row. Hyperliquid deducts it from the requested amount. Absent
  *   leaves every row without a fee.
@@ -55,7 +56,7 @@ export const hyperliquidWithdrawableBalances = (
         const assetId = String(balance.token)
         const row = {
           assetId,
-          route: 'spot' as const,
+          categoryId: SPOT_MARKET_ID,
           available: spot.toFixed(),
           ...feeFor(assetId),
         }
@@ -68,7 +69,7 @@ export const hyperliquidWithdrawableBalances = (
   if (perps.gt(0)) {
     const row = {
       assetId: quoteAssetId,
-      route: 'perps' as const,
+      categoryId: PROVIDER_KEY,
       available: perps.toFixed(),
       ...feeFor(quoteAssetId),
     }

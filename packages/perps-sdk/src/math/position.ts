@@ -10,10 +10,12 @@
 
 import {
   MarginMode,
+  type PerpsMarket,
   type Position,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { areFinite, DivBig } from '../decimal/big.js'
+import type { LiquidationEstimateParams } from '../types/provider.js'
 
 /**
  * Calculate notional value of a position.
@@ -177,6 +179,29 @@ export function estimateLiquidationPrice(params: {
   return new DivBig(entryPrice)
     .minus(marginAvailable.times(side).div(mmr.times(-side).plus(1)))
     .toNumber()
+}
+
+/**
+ * Estimate the liquidation price of a new isolated position from the flat
+ * `market.maintenanceMarginRate`.
+ *
+ * @returns The estimate, or `undefined` when the market carries no
+ *   `maintenanceMarginRate` or `estimateLiquidationPrice` cannot produce one.
+ * @public
+ */
+export function estimateLiquidationPriceAtMarketRate(
+  market: PerpsMarket,
+  params: LiquidationEstimateParams
+): number | undefined {
+  if (market.maintenanceMarginRate === undefined) {
+    return undefined
+  }
+  return estimateLiquidationPrice({
+    entryPrice: params.entryPrice,
+    leverage: params.leverage,
+    isLong: params.isLong,
+    maintenanceMarginRate: market.maintenanceMarginRate,
+  })
 }
 
 /**

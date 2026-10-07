@@ -2,6 +2,7 @@ import {
   ACTIVE_ORDER_STATUSES,
   calculateTransferable,
   type DepositFlow,
+  estimateLiquidationPriceAtMarketRate,
   explorerTxUrl,
   explorerTxUrlFromBase,
   getAssetRegistry,
@@ -28,6 +29,7 @@ import {
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
   type ProviderGetWithdrawableBalancesParams,
+  type ProviderGetWithdrawalTypesParams,
   type ProviderWithdrawableBalance,
   paginateActivity,
   resolveQuote,
@@ -36,6 +38,7 @@ import {
   type SignActionsContext,
   type StorageAdapter,
   toPerpsMarketDisplay,
+  type WithdrawalSourceTypes,
 } from '@lifi/perps-sdk'
 import type {
   AccountConfig,
@@ -111,6 +114,7 @@ import type {
   LtAccountPnL,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
+  LtFastwithdrawInfoResponse,
   LtLiquidation,
   LtLiquidationsResponse,
   LtOrder,
@@ -119,6 +123,7 @@ import type {
   LtPositionFundingsResponse,
   LtTradesResponse,
   LtTransfer,
+  LtTransferFeeInfoResponse,
   LtTransferHistoryResponse,
   LtWithdrawHistoryItem,
   LtWithdrawHistoryResponse,
@@ -142,11 +147,13 @@ import {
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import {
-  estimateLiquidationPrice,
   fetchDetailedAccount,
+  type LighterFastWithdrawal,
   leverageFromImf,
   lighterAsset,
+  lighterFastWithdrawal,
   lighterWithdrawableBalances,
+  lighterWithdrawalTypes,
   mapFill,
   mapOpenPositions,
   mapOrder,
@@ -635,6 +642,86 @@ export const createLighterProvider = (
         throw err
       }
       return await run(fresh)
+    }
+  }
+
+  /**
+   * {@link retryOnRevoked}, then one retry with the standard token when the
+   * venue rejects the read-only one. The fallback sits outside
+   * `retryOnRevoked`, so a revocation the standard token reports never
+   * replaces the read-only one. The key is re-read at retry time because
+   * `REGISTER_API_KEY` can rotate it.
+   */
+  const retryWithStandardToken = <T>(
+    address: Address,
+    apiKey: LighterApiKey | null,
+    token: string,
+    run: (token: string) => Promise<T>
+  ): Promise<T> =>
+    retryOnRevoked(address, token, run).catch(async (err: unknown) => {
+      if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
+        throw err
+      }
+      const current = (await keyStore.get(address)) ?? apiKey
+      return run(
+        await getStandardAuthToken(address, current.apiKeyPrivateKey, {
+          apiKeyIndex: current.apiKeyIndex,
+          accountIndex: current.accountIndex,
+        })
+      )
+    })
+
+  const perpsCategoryId = async (): Promise<string> => {
+    const { providers } = await getProviders(requireClient())
+    return (
+      providers
+        .find((p) => p.key === providerKey)
+        ?.categories.find((c) => c.quoteAsset !== null)?.id ?? providerKey
+    )
+  }
+
+  /**
+   * The fast-withdraw terms for `accountIndex`, or `undefined` when no token
+   * resolves, a read fails, or Lighter offers no fast withdrawal.
+   */
+  const readFastWithdrawal = async (
+    client: LighterApiClient,
+    address: Address,
+    accountIndex: number
+  ): Promise<LighterFastWithdrawal | undefined> => {
+    try {
+      const apiKey = await keyStore.get(address)
+      const token = await resolveAuthToken(address, apiKey ?? undefined)
+      if (token === undefined) {
+        return undefined
+      }
+      const info = await retryWithStandardToken(address, apiKey, token, (t) =>
+        client.getAuthed<LtFastwithdrawInfoResponse>(
+          '/api/v1/fastwithdraw/info',
+          t,
+          { account_index: accountIndex }
+        )
+      )
+      if (info.code !== 200 || !(info.to_account_index > 0)) {
+        return undefined
+      }
+      const feeInfo = await retryWithStandardToken(
+        address,
+        apiKey,
+        token,
+        (t) =>
+          client.getAuthed<LtTransferFeeInfoResponse>(
+            '/api/v1/transferFeeInfo',
+            t,
+            {
+              account_index: accountIndex,
+              to_account_index: info.to_account_index,
+            }
+          )
+      )
+      return lighterFastWithdrawal(info, feeInfo)
+    } catch {
+      return undefined
     }
   }
 
@@ -1200,11 +1287,41 @@ export const createLighterProvider = (
       params: ProviderGetWithdrawableBalancesParams,
       opts?: SDKRequestOptions
     ): Promise<ProviderWithdrawableBalance[]> {
-      const account = await fetchDetailedAccount(
-        apiClient(opts),
-        params.address
+      const [account, categoryId] = await Promise.all([
+        fetchDetailedAccount(apiClient(opts), params.address),
+        perpsCategoryId(),
+      ])
+      return lighterWithdrawableBalances(
+        account,
+        collateral.assetIndex,
+        categoryId
       )
-      return lighterWithdrawableBalances(account, collateral.assetIndex)
+    },
+
+    async getWithdrawalTypes(
+      params: ProviderGetWithdrawalTypesParams,
+      opts?: SDKRequestOptions
+    ): Promise<WithdrawalSourceTypes[]> {
+      const client = apiClient(opts)
+      const [account, categoryId] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        perpsCategoryId(),
+      ])
+      const rows = lighterWithdrawableBalances(
+        account,
+        collateral.assetIndex,
+        categoryId
+      )
+      const fast = await readFastWithdrawal(
+        client,
+        params.address,
+        account.index
+      )
+      return lighterWithdrawalTypes(
+        rows,
+        { categoryId, asset: { id: String(collateral.assetIndex) } },
+        fast
+      )
     },
 
     async getPositions(
@@ -1583,28 +1700,12 @@ export const createLighterProvider = (
       const read = (tok: string) =>
         client.getAuthed<LtAccountPnL>('/api/v1/pnl', tok, queryParams)
 
-      // The read-only token may not be accepted on `/pnl`; the standard token
-      // is, so a read signed from the SDK's own key retries once with it. The
-      // fallback sits outside `retryOnRevoked`, so a revocation the standard
-      // token reports never replaces the read-only one. The key is re-read at
-      // retry time because `REGISTER_API_KEY` can rotate it.
-      const response = await retryOnRevoked(params.address, token, read).catch(
-        async (err: unknown) => {
-          if (!(err instanceof LighterAuthRejectedError) || apiKey === null) {
-            throw err
-          }
-          const current = (await keyStore.get(params.address)) ?? apiKey
-          return read(
-            await getStandardAuthToken(
-              params.address,
-              current.apiKeyPrivateKey,
-              {
-                apiKeyIndex: current.apiKeyIndex,
-                accountIndex: current.accountIndex,
-              }
-            )
-          )
-        }
+      // The read-only token may not be accepted on `/pnl`; the standard token is.
+      const response = await retryWithStandardToken(
+        params.address,
+        apiKey,
+        token,
+        read
       )
 
       return mapPortfolioHistory(
@@ -1826,7 +1927,7 @@ export const createLighterProvider = (
 
     snapOrderSize,
 
-    estimateLiquidationPrice,
+    estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
 

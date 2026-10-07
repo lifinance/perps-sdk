@@ -1,5 +1,6 @@
 import {
   MarginMode,
+  type PerpsMarket,
   type Position,
   PositionMarginAdjustment,
   PositionSide,
@@ -15,6 +16,7 @@ import {
   calculateUnrealizedPnl,
   estimateAverageEntryPrice,
   estimateLiquidationPrice,
+  estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
   estimateUnrealizedPnl,
   positionSupportsMarginAdjustment,
@@ -255,6 +257,82 @@ describe('estimateLiquidationPrice', () => {
         leverage: 10,
         isLong: true,
         maintenanceMarginRate: 1,
+      })
+    ).toBeUndefined()
+  })
+})
+
+describe('estimateLiquidationPriceAtMarketRate', () => {
+  const market = (overrides: Partial<PerpsMarket>): PerpsMarket => ({
+    providerId: 'lighter',
+    id: '1',
+    categoryId: 'lighter',
+    baseAsset: {
+      providerId: 'lighter',
+      id: '1',
+      displaySymbol: 'BTC',
+      logoURI: '',
+    },
+    quoteAsset: {
+      providerId: 'lighter',
+      id: 'USDC',
+      displaySymbol: 'USDC',
+      logoURI: '',
+    },
+    szDecimals: 5,
+    priceDecimals: 1,
+    maxLeverage: 50,
+    onlyIsolated: false,
+    positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+    maintenanceMarginRate: 0.012,
+    ...overrides,
+  })
+
+  it('estimates a long liquidation from the market maintenance margin rate', () => {
+    // entry * (1 - 1/leverage) / (1 - mmr) = 61729.6 * 0.9 / 0.988
+    const liq = estimateLiquidationPriceAtMarketRate(market({}), {
+      entryPrice: 61729.6,
+      leverage: 10,
+      isLong: true,
+    })
+    expect(liq).toBeCloseTo(56231.417, 2)
+  })
+
+  it('estimates a short liquidation from the market maintenance margin rate', () => {
+    // entry * (1 + 1/leverage) / (1 + mmr) = 61729.6 * 1.1 / 1.012
+    const liq = estimateLiquidationPriceAtMarketRate(market({}), {
+      entryPrice: 61729.6,
+      leverage: 10,
+      isLong: false,
+    })
+    expect(liq).toBeCloseTo(67097.391, 2)
+  })
+
+  it('gives an exact result for a market with a round rate', () => {
+    // entry * (1 - 1/leverage) / (1 - mmr) = 95 * 0.9 / 0.95
+    expect(
+      estimateLiquidationPriceAtMarketRate(
+        market({ maintenanceMarginRate: 0.05 }),
+        { entryPrice: 95, leverage: 10, isLong: true }
+      )
+    ).toBe(90)
+  })
+
+  it('returns undefined when the market carries no maintenanceMarginRate', () => {
+    expect(
+      estimateLiquidationPriceAtMarketRate(
+        market({ maintenanceMarginRate: undefined }),
+        { entryPrice: 61729.6, leverage: 10, isLong: true }
+      )
+    ).toBeUndefined()
+  })
+
+  it('returns undefined for zero leverage', () => {
+    expect(
+      estimateLiquidationPriceAtMarketRate(market({}), {
+        entryPrice: 61729.6,
+        leverage: 0,
+        isLong: true,
       })
     ).toBeUndefined()
   })

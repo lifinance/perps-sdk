@@ -8,5 +8,6 @@ Some helpers read SDK structures instead:
 
 - `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`.
 - `findMatchingPosition`, `walkOrderbook` and `buildQuote` take positions, book levels or a quote input.
+- `estimateLiquidationPriceAtMarketRate(market, params)` takes a `PerpsMarket` and the entry, leverage and side, and gives a `number | undefined`.
 - `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` take a `Position` and give a `boolean`.
 - `classifyFill` and `classifyFillFromPosition` take `DecimalString`s and give a `FillClassification`.
