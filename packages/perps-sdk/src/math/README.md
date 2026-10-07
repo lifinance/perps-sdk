@@ -9,4 +9,4 @@ Some helpers read SDK structures instead:
 - `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`.
 - `findMatchingPosition`, `walkOrderbook` and `buildQuote` take positions, book levels or a quote input.
 - `positionSupportsMarginAdjustment` and `positionSupportsMarginRemoval` take a `Position` and give a `boolean`.
-- `classifyFill` and `classifyFillFromPosition` take `DecimalString`s and give a `FillClassification`. Each throws `PerpsError(ValidationError)` on a malformed decimal string.
+- `classifyFill` and `classifyFillFromPosition` take `DecimalString`s and give a `FillClassification`. Each gives `BUY` or `SELL` on a malformed decimal string and never throws.

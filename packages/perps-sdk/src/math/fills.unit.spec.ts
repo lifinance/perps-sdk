@@ -1,8 +1,4 @@
-import {
-  FillClassification,
-  OrderSide,
-  PerpsErrorCode,
-} from '@lifi/perps-types'
+import { FillClassification, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { classifyFill, classifyFillFromPosition } from './fills.js'
 
@@ -15,13 +11,13 @@ import { classifyFill, classifyFillFromPosition } from './fills.js'
 describe('classifyFillFromPosition (shared)', () => {
   describe('starting flat (start === 0)', () => {
     it('classifies a buy as OPENED_LONG', () => {
-      expect(classifyFillFromPosition('0', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.BUY, '1')).toBe(
         FillClassification.OPENED_LONG
       )
     })
 
     it('classifies a sell as OPENED_SHORT', () => {
-      expect(classifyFillFromPosition('0', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.SELL, '1')).toBe(
         FillClassification.OPENED_SHORT
       )
     })
@@ -29,25 +25,25 @@ describe('classifyFillFromPosition (shared)', () => {
 
   describe('starting long (start > 0)', () => {
     it('classifies a sell that fully unwinds as CLOSED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '1')).toBe(
         FillClassification.CLOSED_LONG
       )
     })
 
     it('classifies a sell that flips negative as SWITCHED_SHORT', () => {
-      expect(classifyFillFromPosition('1', 'A', '2')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '2')).toBe(
         FillClassification.SWITCHED_SHORT
       )
     })
 
     it('classifies a buy that grows the position as INCREASED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.BUY, '1')).toBe(
         FillClassification.INCREASED_LONG
       )
     })
 
     it('classifies a partial sell as REDUCED_LONG', () => {
-      expect(classifyFillFromPosition('2', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('2', OrderSide.SELL, '1')).toBe(
         FillClassification.REDUCED_LONG
       )
     })
@@ -55,25 +51,25 @@ describe('classifyFillFromPosition (shared)', () => {
 
   describe('starting short (start < 0)', () => {
     it('classifies a buy that fully unwinds as CLOSED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '1')).toBe(
         FillClassification.CLOSED_SHORT
       )
     })
 
     it('classifies a buy that flips positive as SWITCHED_LONG', () => {
-      expect(classifyFillFromPosition('-1', 'B', '2')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '2')).toBe(
         FillClassification.SWITCHED_LONG
       )
     })
 
     it('classifies a sell that deepens the short as INCREASED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.SELL, '1')).toBe(
         FillClassification.INCREASED_SHORT
       )
     })
 
     it('classifies a partial buy as REDUCED_SHORT', () => {
-      expect(classifyFillFromPosition('-2', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-2', OrderSide.BUY, '1')).toBe(
         FillClassification.REDUCED_SHORT
       )
     })
@@ -153,50 +149,46 @@ describe('classifyFill (deprecated — PnL heuristic)', () => {
     '1e-8',
     '',
     'n/a',
-  ])('throws ValidationError naming realizedPnl for %j', (realizedPnl) => {
-    expect(() => classifyFill(OrderSide.BUY, realizedPnl)).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.ValidationError,
-        message: expect.stringContaining('classifyFill(realizedPnl)'),
-      })
+  ])('gives the side for a malformed realizedPnl %j', (realizedPnl) => {
+    expect(classifyFill(OrderSide.BUY, realizedPnl)).toBe(
+      FillClassification.BUY
+    )
+    expect(classifyFill(OrderSide.SELL, realizedPnl)).toBe(
+      FillClassification.SELL
     )
   })
 })
 
-describe('classifyFillFromPosition validation', () => {
-  const malformed = ['abc', '10oops', '1e-8', '']
+describe('classifyFillFromPosition with a malformed input', () => {
+  const malformed = ['abc', '10oops', '1e-8', '', '$10']
 
-  it.each(
-    malformed
-  )('throws ValidationError naming startPosition for %j', (startPosition) => {
-    expect(() => classifyFillFromPosition(startPosition, 'B', '1')).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.ValidationError,
-        message: expect.stringContaining(
-          'classifyFillFromPosition(startPosition)'
-        ),
-      })
+  it.each(malformed)('gives the side for startPosition %j', (startPosition) => {
+    expect(classifyFillFromPosition(startPosition, OrderSide.BUY, '1')).toBe(
+      FillClassification.BUY
+    )
+    expect(classifyFillFromPosition(startPosition, OrderSide.SELL, '1')).toBe(
+      FillClassification.SELL
     )
   })
 
-  it.each(malformed)('throws ValidationError naming sz for %j', (sz) => {
-    expect(() => classifyFillFromPosition('1', 'A', sz)).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.ValidationError,
-        message: expect.stringContaining('classifyFillFromPosition(sz)'),
-      })
+  it.each(malformed)('gives the side for sz %j', (sz) => {
+    expect(classifyFillFromPosition('1', OrderSide.BUY, sz)).toBe(
+      FillClassification.BUY
+    )
+    expect(classifyFillFromPosition('1', OrderSide.SELL, sz)).toBe(
+      FillClassification.SELL
     )
   })
 
   it('compares exactly where float addition rounds', () => {
-    expect(classifyFillFromPosition('0.3', 'A', '0.1')).toBe(
+    expect(classifyFillFromPosition('0.3', OrderSide.SELL, '0.1')).toBe(
       FillClassification.REDUCED_LONG
     )
-    expect(classifyFillFromPosition('0.3', 'A', '0.3')).toBe(
+    expect(classifyFillFromPosition('0.3', OrderSide.SELL, '0.3')).toBe(
       FillClassification.CLOSED_LONG
     )
-    expect(classifyFillFromPosition('1.0000000000000001', 'A', '1')).toBe(
-      FillClassification.REDUCED_LONG
-    )
+    expect(
+      classifyFillFromPosition('1.0000000000000001', OrderSide.SELL, '1')
+    ).toBe(FillClassification.REDUCED_LONG)
   })
 })

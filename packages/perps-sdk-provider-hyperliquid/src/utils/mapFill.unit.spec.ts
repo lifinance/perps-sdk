@@ -4,7 +4,6 @@ import {
   LiquidityRole,
   OrderSide,
   OrderType,
-  PerpsErrorCode,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
@@ -67,13 +66,13 @@ const baseFill = (overrides: Partial<HlUserFill> = {}): HlUserFill => ({
 describe('classifyFillFromPosition', () => {
   describe('starting flat (start === 0)', () => {
     it('classifies a buy as OPENED_LONG', () => {
-      expect(classifyFillFromPosition('0', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.BUY, '1')).toBe(
         FillClassification.OPENED_LONG
       )
     })
 
     it('classifies a sell as OPENED_SHORT', () => {
-      expect(classifyFillFromPosition('0', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('0', OrderSide.SELL, '1')).toBe(
         FillClassification.OPENED_SHORT
       )
     })
@@ -81,25 +80,25 @@ describe('classifyFillFromPosition', () => {
 
   describe('starting long (start > 0)', () => {
     it('classifies a sell that fully unwinds as CLOSED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '1')).toBe(
         FillClassification.CLOSED_LONG
       )
     })
 
     it('classifies a sell that flips negative as SWITCHED_SHORT', () => {
-      expect(classifyFillFromPosition('1', 'A', '2')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.SELL, '2')).toBe(
         FillClassification.SWITCHED_SHORT
       )
     })
 
     it('classifies a buy that grows the position as INCREASED_LONG', () => {
-      expect(classifyFillFromPosition('1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('1', OrderSide.BUY, '1')).toBe(
         FillClassification.INCREASED_LONG
       )
     })
 
     it('classifies a partial sell as REDUCED_LONG', () => {
-      expect(classifyFillFromPosition('2', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('2', OrderSide.SELL, '1')).toBe(
         FillClassification.REDUCED_LONG
       )
     })
@@ -107,25 +106,25 @@ describe('classifyFillFromPosition', () => {
 
   describe('starting short (start < 0)', () => {
     it('classifies a buy that fully unwinds as CLOSED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '1')).toBe(
         FillClassification.CLOSED_SHORT
       )
     })
 
     it('classifies a buy that flips positive as SWITCHED_LONG', () => {
-      expect(classifyFillFromPosition('-1', 'B', '2')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.BUY, '2')).toBe(
         FillClassification.SWITCHED_LONG
       )
     })
 
     it('classifies a sell that deepens the short as INCREASED_SHORT', () => {
-      expect(classifyFillFromPosition('-1', 'A', '1')).toBe(
+      expect(classifyFillFromPosition('-1', OrderSide.SELL, '1')).toBe(
         FillClassification.INCREASED_SHORT
       )
     })
 
     it('classifies a partial buy as REDUCED_SHORT', () => {
-      expect(classifyFillFromPosition('-2', 'B', '1')).toBe(
+      expect(classifyFillFromPosition('-2', OrderSide.BUY, '1')).toBe(
         FillClassification.REDUCED_SHORT
       )
     })
@@ -350,10 +349,9 @@ describe('mapFill (Hyperliquid)', () => {
       expect(fill.classification).toBe(FillClassification.OPENED_LONG)
     })
 
-    it('throws ValidationError for a perp fill with a malformed startPosition', () => {
-      expect(() => map(baseFill({ startPosition: '10oops' }))).toThrow(
-        expect.objectContaining({ code: PerpsErrorCode.ValidationError })
-      )
+    it('maps a perp fill with a malformed startPosition and classifies it by side', () => {
+      const fill = map(baseFill({ startPosition: '10oops', side: 'A' }))
+      expect(fill.classification).toBe(FillClassification.SELL)
     })
   })
 })
