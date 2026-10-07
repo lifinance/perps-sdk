@@ -78,6 +78,7 @@ export {
   calculateUnrealizedPnl,
   estimateAverageEntryPrice,
   estimateLiquidationPrice,
+  estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
   estimateUnrealizedPnl,
   positionSupportsMarginAdjustment,
@@ -184,6 +185,7 @@ export type {
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
+  GetWithdrawalTypesParams,
   GetWithdrawFlowParams,
   ModifyOrdersParams,
   PerpsClientOptions,
@@ -230,6 +232,7 @@ export type {
   ProviderGetPositionsParams,
   ProviderGetQuoteParams,
   ProviderGetWithdrawableBalancesParams,
+  ProviderGetWithdrawalTypesParams,
   ProviderGetWithdrawFlowParams,
   QuoteListener,
   SignActionProgress,
@@ -238,7 +241,8 @@ export type {
 export type {
   ProviderWithdrawableBalance,
   WithdrawableBalance,
-  WithdrawalRoute,
+  WithdrawalSourceTypes,
+  WithdrawalTypeOption,
   WithdrawFlow,
   WithdrawFlowReady,
   WithdrawFlowSetupRequired,
@@ -308,7 +312,10 @@ export type {
 } from './wire/orderAmounts.js'
 export { calculateOrderAmounts } from './wire/orderAmounts.js'
 export type { RefuelAmountInput } from './wire/refuel.js'
-export { calculateRefuelAmount } from './wire/refuel.js'
+export {
+  calculateRefuelAmount,
+  REFUEL_FEE_MARGIN_PERCENT,
+} from './wire/refuel.js'
 export { snapOrderPrice, snapOrderSize } from './wire/snap.js'
 export { calculateTransferable } from './wire/transferable.js'
 export { calculateWithdrawMax } from './wire/withdraw.js'

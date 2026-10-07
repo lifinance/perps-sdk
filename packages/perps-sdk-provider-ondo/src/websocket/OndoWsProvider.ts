@@ -30,6 +30,7 @@ import {
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { OndoTokenStore } from '../auth/OndoTokenStore.js'
+import { ondoSessionRejectedError } from '../auth/sessionToken.js'
 import {
   DEFAULT_ONDO_API_URL,
   DEFAULT_ONDO_WS_URL,
@@ -55,6 +56,7 @@ import {
   mapOrderUpdates,
   mapPosition,
   OndoApiClient,
+  OndoSessionExpiredError,
 } from '../utils/index.js'
 import { intervalFromBarSpan, mapInterval } from '../utils/ohlcvInterval.js'
 
@@ -637,7 +639,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * Seed the account-summary figures from the REST balance so the first emit
    * is complete before any positions frame lands. Throws {@link PerpsError}
    * with `SetupRequired` when the SIWE session is missing, matching the other
-   * authenticated channels.
+   * authenticated channels, and with `Unauthorized` when the venue rejects it.
    */
   private async seedAccountSummary(
     address: Address,
@@ -647,7 +649,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (generation !== this.accountSummaryGeneration) {
       return
     }
-    const balance = await this.readBalance(token.token)
+    const balance = await this.readBalance(address, token)
     if (generation !== this.accountSummaryGeneration) {
       return
     }
@@ -668,7 +670,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     ) {
       return
     }
-    const balance = await this.readBalance(token.token)
+    const balance = await this.readBalance(address, token)
     if (
       this.accountSummary === undefined ||
       generation !== this.accountSummaryGeneration
@@ -685,11 +687,28 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.accountSummaryChain.reset()
   }
 
-  private async readBalance(authToken: string): Promise<OndoAccountBalance> {
-    const balance = await this.restClient().get<OndoBalanceSummary>(
-      '/v1/perps/balance',
-      { authToken }
-    )
+  /**
+   * Read the venue balance with `token`. A venue 401 evicts the stored session
+   * for `address` and throws {@link PerpsError} with `Unauthorized`, so the
+   * next account subscribe reports `SetupRequired`.
+   */
+  private async readBalance(
+    address: Address,
+    token: OndoAuthToken
+  ): Promise<OndoAccountBalance> {
+    let balance: OndoBalanceSummary
+    try {
+      balance = await this.restClient().get<OndoBalanceSummary>(
+        '/v1/perps/balance',
+        { authToken: token.token }
+      )
+    } catch (err) {
+      if (!(err instanceof OndoSessionExpiredError)) {
+        throw err
+      }
+      await this.tokenStore.remove(address)
+      throw ondoSessionRejectedError('account summary', err)
+    }
     return {
       walletBalance: balance.walletBalance,
       unrealizedPnl: balance.unrealizedPnl,

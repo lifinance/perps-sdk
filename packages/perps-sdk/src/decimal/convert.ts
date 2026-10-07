@@ -48,7 +48,7 @@ export const decimalToBaseUnits = (
   return scaled.toNumber()
 }
 
-const BASE_UNITS_PATTERN = /^-?\d+$/
+export const BASE_UNITS_PATTERN = /^-?\d+$/
 
 /**
  * Convert a base-unit amount (integer string) to a decimal string.

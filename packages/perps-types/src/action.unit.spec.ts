@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Balance } from './account.js'
 import type {
   ActionParamsMap,
   ActionResult,
@@ -17,6 +18,7 @@ import type {
   SiweSignedActionStep,
   TriggerOrderInput,
   UpdateLeverageParams,
+  WithdrawalAssetRef,
   WithdrawalParams,
 } from './action.js'
 import {
@@ -174,23 +176,41 @@ describe('RevokeAgentParams', () => {
 })
 
 describe('WithdrawalParams', () => {
-  it('accepts the Lighter assetId and route', () => {
+  it('accepts a source and opaque withdrawalOptions', () => {
     const params: WithdrawalParams = {
       destination: '0x1234567890123456789012345678901234567890',
       amount: '10',
-      assetId: '3',
-      route: 'spot',
+      source: { categoryId: 'spot', asset: { id: '3' } },
+      withdrawalOptions: { mode: 'standard' },
     }
 
-    expect(params.route).toBe('spot')
+    expect(params.source?.categoryId).toBe('spot')
+    expect(params.withdrawalOptions).toEqual({ mode: 'standard' })
   })
 
-  it('rejects a route other than perps or spot', () => {
+  it('takes a Balance as the source', () => {
+    const balance: Balance = {
+      categoryId: 'perps',
+      asset: {
+        providerId: 'lighter',
+        id: '3',
+        displaySymbol: 'USDC',
+        logoURI: 'https://example.com/usdc.png',
+      },
+      units: '5',
+      valueUsd: '5',
+    }
+    const source: WithdrawalAssetRef = balance
+
+    expect(source.asset.id).toBe('3')
+  })
+
+  it('rejects assetId and route fields', () => {
     const params: WithdrawalParams = {
       destination: '0x1234567890123456789012345678901234567890',
       amount: '10',
-      // @ts-expect-error — route is 'perps' | 'spot'
-      route: 'margin',
+      // @ts-expect-error — WithdrawalParams has no assetId
+      assetId: '3',
     }
 
     expect(params.amount).toBe('10')

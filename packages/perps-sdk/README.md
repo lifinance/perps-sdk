@@ -94,7 +94,7 @@ Account-specific reads go directly to the venue. `getOrders()` returns the
 `Order` union with regular, trigger, and TWAP rows. Its default filter includes
 PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 
-`getWithdrawableBalances()` returns the `(asset, route)` pairs an address can
+`getWithdrawableBalances()` returns the `(asset, category)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
 joins each row onto the registry `Asset` and drops a row below the per-asset
 venue minimum. A row carries `withdrawalFee`, in the asset's own units, when a
@@ -118,6 +118,17 @@ floored at zero. A `max` of zero funds no withdrawal. An absent
 
 An absent `withdrawalFee` means that no fee source is known. It does not prove
 that the venue charges no fee. `max` then equals `available`.
+
+`getWithdrawalTypes()` returns the withdrawal types an address can choose per
+withdrawable holding. Each row has a `source` (`categoryId` and `asset.id`) and
+one option per `WithdrawalType`. An option has its own `max` and the
+`withdrawalOptions` to send unchanged in `WithdrawalParams`, together with the
+row's `source`. Lighter implements it: every row offers `STANDARD`, and the
+collateral asset's perps row also offers `FAST` when Lighter's fast-withdraw
+operator accepts the account. The `FAST` `max` is also capped by the venue's
+fast-withdraw limits. Without a Lighter API key, or when a fast-withdraw read
+fails, Lighter offers `STANDARD` only. The client resolves `undefined` for
+Hyperliquid and Ondo.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
@@ -268,13 +279,19 @@ passes through a `number`:
   provider.
 - `calculateWithdrawMax(row)` gives `WithdrawableBalance.max` from
   `available`, `withdrawalFee` and `isFeeDeducted`.
-- `calculateRefuelAmount({ gasUsd, priceUsd, decimals })` divides the
-  recommended gas value by the source-token price, rounds **up** onto the
-  token grid and keeps trailing zeros to `decimals`, so a refuel never lands
-  short. It gives `undefined` when either input is not greater than zero.
+- `calculateRefuelAmount({ recommendedAmount, recommendedUsd, nativeBalance, priceUsd, decimals })`
+  gives the source-token amount that buys the native gas deficit. The
+  deficit is `recommendedAmount` minus `nativeBalance`, both in base units,
+  valued pro rata on `recommendedUsd`. The helper adds
+  `REFUEL_FEE_MARGIN_PERCENT` (20%) for the route fees, divides by
+  `priceUsd`, rounds **up** onto the token grid and keeps trailing zeros to
+  `decimals`, so a refuel never lands short. It gives `undefined` when the
+  wallet already holds the recommendation, or when the recommendation, its
+  USD value or the price is not greater than zero.
 
 Each one throws `PerpsError(ValidationError)`, naming the field, when an
-input is not a `DecimalString`.
+input is not a `DecimalString`. `calculateRefuelAmount` also throws when a
+base-unit input is not an integer string.
 
 ## Numbers
 

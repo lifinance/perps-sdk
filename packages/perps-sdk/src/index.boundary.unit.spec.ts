@@ -323,6 +323,10 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   ],
   estimateFees: [10000, 0.00035],
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
+  estimateLiquidationPriceAtMarketRate: [
+    { ...MARKET, maintenanceMarginRate: 0.01 },
+    { entryPrice: 100, leverage: 10, isLong: true },
+  ],
   estimateNewLeverage: [
     {
       currentNotional: 1000,
@@ -479,7 +483,15 @@ const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
       price: '1000',
     },
   ],
-  calculateRefuelAmount: [{ gasUsd: '4', priceUsd: '3', decimals: 6 }],
+  calculateRefuelAmount: [
+    {
+      recommendedAmount: '2000000000000000',
+      recommendedUsd: '5',
+      nativeBalance: '0',
+      priceUsd: '3',
+      decimals: 6,
+    },
+  ],
   calculateTransferable: ['12', '10'],
   calculateWithdrawMax: [
     { available: '10', withdrawalFee: '0.5', isFeeDeducted: false },

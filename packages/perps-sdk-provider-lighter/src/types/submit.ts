@@ -86,6 +86,21 @@ export interface LtFastwithdrawInfoResponse {
 }
 
 /**
+ * `GET /api/v1/transferFeeInfo` (Lighter `TransferFeeInfo`).
+ *
+ * `transfer_fee_usdc` is the fee for an L2 transfer from `account_index` to
+ * `to_account_index`, in the same L2 6-decimal integer scale as
+ * {@link LtFastwithdrawInfoResponse}.
+ *
+ * @public
+ */
+export interface LtTransferFeeInfoResponse {
+  code: number
+  message?: string
+  transfer_fee_usdc: number
+}
+
+/**
  * `POST /api/v1/fastwithdraw` (Lighter `ResultCode`).
  *
  * Returns only `{code, message}` — no `tx_hash`, unlike `/sendTx`. The Lighter

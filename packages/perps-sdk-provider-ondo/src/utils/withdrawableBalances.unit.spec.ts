@@ -10,7 +10,7 @@ describe('ondoWithdrawableBalances', () => {
     expect(ondoWithdrawableBalances('usdc', balance('599'), '1.50')).toEqual([
       {
         assetId: 'usdc',
-        route: 'perps',
+        categoryId: 'ondo',
         available: '599',
         max: '597.5',
         withdrawalFee: '1.5',
@@ -23,7 +23,7 @@ describe('ondoWithdrawableBalances', () => {
     expect(ondoWithdrawableBalances('usdc', balance('599'), '0.00')).toEqual([
       {
         assetId: 'usdc',
-        route: 'perps',
+        categoryId: 'ondo',
         available: '599',
         max: '599',
         withdrawalFee: '0',
@@ -36,7 +36,7 @@ describe('ondoWithdrawableBalances', () => {
     const [row] = ondoWithdrawableBalances('usdc', balance('599'))
     expect(row).toEqual({
       assetId: 'usdc',
-      route: 'perps',
+      categoryId: 'ondo',
       available: '599',
       max: '599',
     })

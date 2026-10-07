@@ -1,4 +1,8 @@
-import { PerpsErrorCode, type Subscription } from '@lifi/perps-types'
+import {
+  PerpsErrorCode,
+  type ProvidersResponse,
+  type Subscription,
+} from '@lifi/perps-types'
 import { PerpsError } from '../errors/PerpsError.js'
 import { getProviders } from '../services/getProviders.js'
 import type { GetQuoteParams } from '../services/getQuote.js'
@@ -70,6 +74,7 @@ export class PerpsWsClient {
   private readonly options: PerpsWsClientOptions
   private providers = new Map<string, WsProvider>()
   private initPromises = new Map<string, Promise<WsProvider>>()
+  private discovery: Promise<ProvidersResponse> | undefined
   private closed = false
 
   constructor(client: PerpsSDKClient, options: PerpsWsClientOptions = {}) {
@@ -220,7 +225,7 @@ export class PerpsWsClient {
       )
     }
 
-    const { providers } = await getProviders(this.client)
+    const { providers } = await this.discoverProviders()
     this.assertOpen()
 
     const providerInfo = providers.find((d) => d.key === provider)
@@ -235,5 +240,23 @@ export class PerpsWsClient {
     })
     this.providers.set(provider, wsProvider)
     return wsProvider
+  }
+
+  /**
+   * Shares one in-flight `/providers` request between concurrent venue
+   * inits. The slot clears on settlement, so a later init fetches fresh
+   * metadata and a rejection is never cached.
+   */
+  private discoverProviders(): Promise<ProvidersResponse> {
+    if (this.discovery) {
+      return this.discovery
+    }
+    const discovery = getProviders(this.client).finally(() => {
+      if (this.discovery === discovery) {
+        this.discovery = undefined
+      }
+    })
+    this.discovery = discovery
+    return discovery
   }
 }

@@ -294,6 +294,16 @@ export interface GetWithdrawableBalancesParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getWithdrawalTypes}.
+ *
+ * @public
+ */
+export interface GetWithdrawalTypesParams {
+  provider: string
+  address: Address
+}
+
+/**
  * Parameters for {@link PerpsClient.getPortfolioHistory}.
  *
  * @public

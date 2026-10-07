@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ActionType, PerpsErrorCode, SigningMethod } from './enums.js'
+import {
+  ActionType,
+  PerpsErrorCode,
+  SigningMethod,
+  WithdrawalType,
+} from './enums.js'
 
 describe('PerpsErrorCode.Unauthorized', () => {
   it('carries the auth-range value 2013', () => {
@@ -273,5 +278,16 @@ describe('provider-independent onboarding ActionType members', () => {
     expect(ActionType.META_ONBOARD).not.toBe(
       ActionType.META_CREATE_REFERRAL_CODE
     )
+  })
+})
+
+describe('WithdrawalType wire values', () => {
+  it('carries each member name as its value', () => {
+    expect(Object.entries(WithdrawalType)).toEqual([
+      ['FAST', 'FAST'],
+      ['STANDARD', 'STANDARD'],
+      ['NATIVE', 'NATIVE'],
+      ['BRIDGE', 'BRIDGE'],
+    ])
   })
 })

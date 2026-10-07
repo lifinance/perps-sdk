@@ -11,7 +11,6 @@ export { LighterApiClient } from './apiClient.js'
 export { assetMarginModeInt, isAssetMarginEnabled } from './assetCollateral.js'
 export { fetchDetailedAccount } from './fetchDetailedAccount.js'
 export { lighterAsset } from './lighterAsset.js'
-export { estimateLiquidationPrice } from './liquidation.js'
 export { mapFill } from './mapFill.js'
 export { mapMarketContext } from './mapMarketContext.js'
 export { isOpenPosition, mapOpenPositions } from './mapOpenPositions.js'
@@ -32,3 +31,11 @@ export {
   resolveTimeInForce,
 } from './wireEncoding.js'
 export { lighterWithdrawableBalances } from './withdrawableBalances.js'
+export type {
+  LighterFastWithdrawal,
+  LighterWithdrawalOptions,
+} from './withdrawalTypes.js'
+export {
+  lighterFastWithdrawal,
+  lighterWithdrawalTypes,
+} from './withdrawalTypes.js'

@@ -18,11 +18,7 @@ import {
 } from '../constants.js'
 import type { OndoApiKey } from '../types/auth.js'
 import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
-import {
-  type OndoApiClient,
-  OndoApiError,
-  OndoSessionExpiredError,
-} from '../utils/apiClient.js'
+import { type OndoApiClient, OndoApiError } from '../utils/apiClient.js'
 import {
   buildOndoProvisionPayload,
   listOndoDepositAddress,
@@ -38,6 +34,7 @@ import {
   type OndoApiKeyStore,
 } from './OndoApiKeyStore.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
+import { requireOndoSessionToken } from './sessionToken.js'
 
 /** @internal */
 export interface OndoSignActionsDeps {
@@ -133,12 +130,7 @@ async function resolveApiKey(
   if (existing !== null && hasOndoApiKeyScopes(existing)) {
     return existing
   }
-  const token = await deps.tokenStore.get(address)
-  if (token === null) {
-    throw new OndoSessionExpiredError(
-      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-    )
-  }
+  const token = await requireOndoSessionToken(deps.tokenStore, address)
   const listedKeys =
     (await deps.client.get<OndoApiKeyInfo[] | null>('/v1/api_keys', {
       authToken: token.token,
@@ -209,12 +201,7 @@ async function addWithdrawalAddress(
   address: Address,
   ctx: SignActionsContext | undefined
 ): Promise<void> {
-  const token = await deps.tokenStore.get(address)
-  if (token === null) {
-    throw new OndoSessionExpiredError(
-      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-    )
-  }
+  const token = await requireOndoSessionToken(deps.tokenStore, address)
   const userWallet = requireUserWallet(ctx)
   const withdrawalAddress = getAddress(address)
   const challenge = await deps.client.post<OndoSiweChallenge>(
@@ -242,19 +229,14 @@ async function addWithdrawalAddress(
  * Execute a backend-authored session request directly against the venue with
  * the stored session JWT. The pre-serialized wire body is parsed back to an
  * object and re-sent by the client; no signature covers the bytes. An absent
- * session throws {@link OndoSessionExpiredError} so callers re-run SIWE login.
+ * session throws `PerpsErrorCode.SetupRequired` so callers run the SIWE login.
  */
 async function executeSessionRequest(
   deps: OndoSignActionsDeps,
   address: Address,
   request: HmacActionStep['request']
 ): Promise<void> {
-  const token = await deps.tokenStore.get(address)
-  if (token === null) {
-    throw new OndoSessionExpiredError(
-      `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-    )
-  }
+  const token = await requireOndoSessionToken(deps.tokenStore, address)
   await deps.client.send(request.method, request.path, {
     body: request.body === undefined ? undefined : JSON.parse(request.body),
     authToken: token.token,
@@ -352,12 +334,10 @@ export async function ondoSignActions(
         }
         switch (step.action) {
           case ActionType.CREATE_DEPOSIT_ADDRESS: {
-            const token = await deps.tokenStore.get(address)
-            if (token === null) {
-              throw new OndoSessionExpiredError(
-                `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-              )
-            }
+            const token = await requireOndoSessionToken(
+              deps.tokenStore,
+              address
+            )
             const account = await deps.client.get<{ accountID?: unknown }>(
               '/v1/account',
               { authToken: token.token }
@@ -376,12 +356,10 @@ export async function ondoSignActions(
           }
 
           case ActionType.ACCEPT_PROVIDER_TERMS: {
-            const token = await deps.tokenStore.get(address)
-            if (token === null) {
-              throw new OndoSessionExpiredError(
-                `No valid Ondo session token stored for ${address}. Run the SIWE login first.`
-              )
-            }
+            const token = await requireOndoSessionToken(
+              deps.tokenStore,
+              address
+            )
             await deps.client.post(
               '/v1/agreement',
               {
