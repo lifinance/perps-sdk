@@ -7,7 +7,6 @@ import {
   isActiveMarket,
   isActiveOrderStatus,
   isDecimalString,
-  isDecimalStringGreaterThan,
   isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
@@ -24,6 +23,7 @@ import {
   safeIsDecimalStringZero,
   safeMultiplyDecimalString,
   safeNumberToDecimalString,
+  safeSubtractDecimalString,
   subtractDecimalString,
   toAssetDisplay,
   toPerpsMarketDisplay,
@@ -100,6 +100,7 @@ import {
   spotPriceById,
   sumUnrealizedPnl,
 } from '../utils/index.js'
+import { mapOrderRow } from '../utils/mapOrder.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
@@ -1182,7 +1183,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
               cloid: basic.cloid ?? response.order.order.cloid,
             },
           }
-          return mapOrder(detail, market)
+          return mapOrderRow(basic.coin, this.registry, (resolved) =>
+            mapOrder(detail, resolved)
+          )
         })
       )
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
@@ -1552,15 +1555,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const priceById = spotPriceById(markets, this.mergedMids())
     const balances = data.spotState.balances
       .filter((balance) => !assetIsOutcome(balance.coin))
-      .map((balance) => ({
-        balance,
-        total: unknownToDecimalString(
-          balance.total,
-          'spotState.balances.total',
-          this.providerKey
-        ),
-      }))
-      .filter(({ total }) => isDecimalStringGreaterThan(total, '0'))
+      .filter(
+        (balance) => safeIsDecimalStringGreaterThan(balance.total, '0') === true
+      )
+      .map((balance) => ({ balance, total: balance.total }))
     const pipeline = this.unifiedSummaryByUser.get(user)
     // Known spot markets await a price; unlisted tokens keep their unpriced balance.
     if (
@@ -1574,21 +1572,15 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
       return
     }
-    const rows = balances.map(({ balance, total }) => ({
-      ...spotBalance(spotAssetFromToken(balance), total, priceById),
-      locked: balance.hold,
-      transferable: calculateTransferable(
-        subtractDecimalString(
-          total,
-          unknownToDecimalString(
-            balance.hold,
-            'spotState.balances.hold',
-            this.providerKey
-          )
-        ),
-        total
-      ),
-    }))
+    const rows = balances.map(({ balance, total }) => {
+      const free = safeSubtractDecimalString(total, balance.hold)
+      return {
+        ...spotBalance(spotAssetFromToken(balance), total, priceById),
+        locked: balance.hold,
+        transferable:
+          free === undefined ? '0' : calculateTransferable(free, total),
+      }
+    })
     this.emit(`spotState:${user}`, {
       channel: 'spotBalances',
       data: rows,

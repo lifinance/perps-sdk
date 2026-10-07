@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   type DexMarginSummary,
   perpsTotals,
-  safeSumDecimalStrings,
   sumUnrealizedPnl,
 } from './venueTotals.js'
 
@@ -120,26 +119,16 @@ describe('sumUnrealizedPnl', () => {
     ).toBe('0.25')
   })
 
-  it('throws an SDKError when a position unrealizedPnl is not a decimal', () => {
-    expect(() => sumUnrealizedPnl([position('NaN')])).toThrow(
-      expect.objectContaining({ code: PerpsErrorCode.SDKError })
-    )
-  })
-})
-
-describe('safeSumDecimalStrings', () => {
-  it('returns zero for no term', () => {
-    expect(safeSumDecimalStrings([])).toBe('0')
-  })
-
-  it('adds every term at full decimal precision', () => {
-    expect(safeSumDecimalStrings(['0.1', '0.2', '-0.05'])).toBe('0.25')
-  })
-
-  it('returns undefined and warns once when one term is not a decimal', () => {
+  it('skips a term that does not match the decimal pattern, sums the rest and warns once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(safeSumDecimalStrings(['0.1', 'abc', '0.2'])).toBeUndefined()
+    expect(
+      sumUnrealizedPnl([position('0.1'), position('NaN'), position('0.2')])
+    ).toBe('0.3')
+    expect(sumUnrealizedPnl([position('abc')])).toBe('0')
     expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      "[hyperliquid] skipping a `position.unrealizedPnl` term that does not match the decimal pattern: 'NaN'"
+    )
     warn.mockRestore()
   })
 })

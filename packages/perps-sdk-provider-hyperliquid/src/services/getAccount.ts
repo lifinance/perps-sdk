@@ -5,6 +5,7 @@ import {
   isDecimalStringGreaterThan,
   type ProviderGetAccountParams,
   type SDKRequestOptions,
+  safeAddDecimalStrings,
   subtractDecimalString,
   toPerpsMarketDisplay,
   unknownToDecimalString,
@@ -38,7 +39,6 @@ import {
 } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { isOpenAssetPosition, mapPosition } from '../utils/mapPosition.js'
-import { safeSumDecimalStrings } from '../utils/venueTotals.js'
 import { requireAccountExists } from './getAccountExists.js'
 
 /**
@@ -274,12 +274,12 @@ export const getAccount = async (
     quoteAssetByCategory
   )
 
-  const marginUsed = safeSumDecimalStrings(
+  const marginUsed = safeAddDecimalStrings(
     dexStates.flatMap(({ marginSummary }) =>
       marginSummary === undefined ? [] : [marginSummary.totalMarginUsed]
     )
   )
-  const unrealizedPnl = safeSumDecimalStrings(
+  const unrealizedPnl = safeAddDecimalStrings(
     positions.map((position) => position.unrealizedPnl)
   )
 

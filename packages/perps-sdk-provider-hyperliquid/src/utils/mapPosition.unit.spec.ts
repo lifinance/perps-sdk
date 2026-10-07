@@ -224,6 +224,10 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.entryPrice).toBe('0')
     expect(result.liquidationPrice).toBe('0')
   })
+
+  it('maps an empty liquidationPx to "0"', () => {
+    expect(map(makeAp({ liquidationPx: '' })).liquidationPrice).toBe('0')
+  })
 })
 
 describe('isOpenAssetPosition', () => {
