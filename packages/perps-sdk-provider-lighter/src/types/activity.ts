@@ -78,6 +78,7 @@ export interface LtPositionFunding {
    * `FundingActivity.amount`.
    */
   change: string
+  /** Hourly funding rate of this payment, in percent. */
   rate: string
   position_size: string
   position_side: string
