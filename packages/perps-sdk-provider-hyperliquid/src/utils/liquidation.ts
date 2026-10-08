@@ -61,6 +61,8 @@ export const safeCalculateMaintenanceMarginRate = createSafeFunction(
  * @param leverage - User-selected leverage (e.g., `'10'`)
  * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Sets
  *   mmr = 1 / (2 × maxLeverage).
+ * @returns The estimate, or `undefined` when `leverage` is at or above
+ *   `2 × maxLeverage`, as {@link estimateLiquidationPrice} documents.
  * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
  *   number above zero, or on an input that `estimateLiquidationPrice` rejects.
  * @public
@@ -70,7 +72,7 @@ export function calculateLiquidationPrice(
   leverage: string,
   isLong: boolean,
   maxLeverage: number
-): string {
+): string | undefined {
   return estimateLiquidationPrice({
     entryPrice,
     leverage,

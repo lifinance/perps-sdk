@@ -118,6 +118,26 @@ describe('calculateLiquidationPrice', () => {
     expect(isDecimalStringGreaterThan(longDiff, shortDiff)).toBe(true)
   })
 
+  it.each([
+    true,
+    false,
+  ])('returns undefined when leverage exceeds 2 × maxLeverage (isLong %s)', (isLong) => {
+    // mmr = 1 / (2 × 10) = 0.05 and 1 / 40 < 0.05
+    expect(
+      calculateLiquidationPrice('86130.49', '40', isLong, 10)
+    ).toBeUndefined()
+  })
+
+  it.each([
+    true,
+    false,
+  ])('returns undefined when leverage equals 2 × maxLeverage (isLong %s)', (isLong) => {
+    // mmr = 1 / (2 × 50) = 0.01 and 1 / 100 = 0.01
+    expect(
+      calculateLiquidationPrice('100000', '100', isLong, 50)
+    ).toBeUndefined()
+  })
+
   it('should return 0 for zero entry price', () => {
     expect(calculateLiquidationPrice('0', '10', true, 50)).toBe('0')
   })

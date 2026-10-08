@@ -7,6 +7,7 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import {
   calculateEffectiveLeverage,
   calculateLiquidationDistance,
@@ -300,6 +301,68 @@ describe('estimateLiquidationPrice', () => {
       `\`maintenanceMarginRate\` must not be ${input.maintenanceMarginRate} for this side.`
     )
   })
+
+  it.each([
+    true,
+    false,
+  ])('returns undefined when 1 / leverage is below the maintenance margin rate (isLong %s)', (isLong) => {
+    expect(
+      estimateLiquidationPrice({
+        entryPrice: '86130.49',
+        leverage: '40',
+        isLong,
+        maintenanceMarginRate: '0.05',
+      })
+    ).toBeUndefined()
+  })
+
+  it.each([
+    true,
+    false,
+  ])('returns undefined when 1 / leverage equals the maintenance margin rate (isLong %s)', (isLong) => {
+    expect(
+      estimateLiquidationPrice({
+        entryPrice: '100',
+        leverage: '20',
+        isLong,
+        maintenanceMarginRate: '0.05',
+      })
+    ).toBeUndefined()
+  })
+
+  it.each([
+    { leverage: '1', maintenanceMarginRate: '0.5' },
+    { leverage: '10', maintenanceMarginRate: '0.01' },
+    { leverage: '19.99', maintenanceMarginRate: '0.05' },
+    { leverage: '99', maintenanceMarginRate: '0.01' },
+  ])('gives a long result below entry and a short result above entry (%o)', (input) => {
+    const entryPrice = '86130.49'
+    const long = estimateLiquidationPrice({
+      entryPrice,
+      isLong: true,
+      ...input,
+    })
+    const short = estimateLiquidationPrice({
+      entryPrice,
+      isLong: false,
+      ...input,
+    })
+    expect(long).toBeDefined()
+    expect(short).toBeDefined()
+    expect(isDecimalStringGreaterThan(entryPrice, long!)).toBe(true)
+    expect(isDecimalStringGreaterThan(short!, entryPrice)).toBe(true)
+  })
+
+  it('throws a ValidationError for an input that does not match the decimal pattern before the margin check', () => {
+    expect(() =>
+      estimateLiquidationPrice({
+        entryPrice: '100',
+        leverage: 'abc',
+        isLong: true,
+        maintenanceMarginRate: '0.05',
+      })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+  })
 })
 
 describe('estimateLiquidationPriceAtMarketRate', () => {
@@ -364,6 +427,27 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
         market({ maintenanceMarginRate: undefined }),
         { entryPrice: '61729.6', leverage: '10', isLong: true }
       )
+    ).toBeUndefined()
+  })
+
+  it.each([
+    true,
+    false,
+  ])('returns undefined when 1 / leverage is at or below the market rate (isLong %s)', (isLong) => {
+    const ondoLike = market({ maintenanceMarginRate: '0.05' })
+    expect(
+      estimateLiquidationPriceAtMarketRate(ondoLike, {
+        entryPrice: '86130.49',
+        leverage: '40',
+        isLong,
+      })
+    ).toBeUndefined()
+    expect(
+      estimateLiquidationPriceAtMarketRate(ondoLike, {
+        entryPrice: '86130.49',
+        leverage: '20',
+        isLong,
+      })
     ).toBeUndefined()
   })
 
@@ -906,11 +990,12 @@ describe('wouldImmediatelyLiquidate', () => {
       }
       return wouldImmediatelyLiquidate({
         liquidationPrice,
-        currentPrice: '100',
+        currentPrice: '98',
         isLong: true,
       })
     }
-    expect(liquidates('50')).toBe(true)
+    // 25x: 100 - 100 × (0.04 - 0.03) / 0.97 ≈ 98.97, at or above 98
+    expect(liquidates('25')).toBe(true)
     expect(liquidates('10')).toBe(false)
   })
 })
