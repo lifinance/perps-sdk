@@ -48,7 +48,9 @@ export type LtWsMarketStats = {
   mid_price: string
   open_interest: string
   last_trade_price: string
+  /** Estimated next hourly funding rate, in percent. */
   current_funding_rate: string
+  /** Last settled hourly funding rate, in percent. */
   funding_rate: string
   funding_timestamp: number
   daily_base_token_volume: number
