@@ -151,6 +151,7 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
+import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   fetchDetailedAccount,
   type LighterFastWithdrawal,
@@ -1809,10 +1810,12 @@ export const createLighterProvider = (
         // `get`, not `require`: a market id the backend list no longer carries
         // drops only its own row instead of rejecting the whole feed. The
         // registry warns once per unresolved id. A delisted market still
-        // resolves, so its rows stay.
+        // resolves, so its rows stay. A `rate` that does not match the decimal
+        // pattern also drops only its own row.
         ...history.fundings.position_fundings.flatMap((f): ActivityItem[] => {
           const market = marketRegistry.get(String(f.market_id))
-          if (market === undefined) {
+          const fundingRate = fundingPercentToFraction(f.rate)
+          if (market === undefined || fundingRate === undefined) {
             return []
           }
           return [
@@ -1824,7 +1827,7 @@ export const createLighterProvider = (
               market,
               amount: f.change,
               positionSize: f.position_size,
-              fundingRate: f.rate,
+              fundingRate,
             },
           ]
         }),

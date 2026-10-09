@@ -5244,6 +5244,24 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     warn.mockRestore()
   })
 
+  it('drops a funding row whose rate does not match the decimal pattern', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubHistory({ fundings: [{ ...fundingRow(3, 0), rate: '' }] })
+    const provider = lighterProvider({
+      storage: await storageWithReadOnlyToken('tok'),
+    })
+    provider.bind(client)
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      limit: 50,
+    })
+
+    expect(items.map((i) => i.id)).toEqual(['dep-1', 'wdr-1', 'tr-1'])
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
   it('drops a liquidation row whose market the registry cannot resolve', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubHistory({ liquidations: [liquidationRow(7, 998)] })
@@ -5286,6 +5304,7 @@ describe('LighterProvider — getActivity unresolvable market rows', () => {
     expect(funding).toMatchObject({
       type: ActivityType.FUNDING,
       market: { id: '1', isDelisted: true },
+      fundingRate: '0.000001',
     })
     const liquidation = items.find((i) => i.id === 'liquidation-8')
     expect(liquidation).toMatchObject({

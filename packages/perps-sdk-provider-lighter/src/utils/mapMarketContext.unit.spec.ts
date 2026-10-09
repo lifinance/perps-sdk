@@ -1,11 +1,12 @@
 import { isDecimalString } from '@lifi/perps-sdk'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 import { mapMarketContext } from './mapMarketContext.js'
 
 // Wire shape from the live market_stats channel: prices, funding rates, and
 // open interest arrive as decimal strings, the daily volume and change
-// figures as JSON numbers.
+// figures as JSON numbers. Funding rates are hourly percent: '0.0012' is
+// 0.0012 %/h.
 const perpStats: LtWsMarketStats = {
   market_id: 1,
   index_price: '94998',
@@ -13,8 +14,8 @@ const perpStats: LtWsMarketStats = {
   mid_price: '95001',
   open_interest: '1234.5',
   last_trade_price: '95002',
-  current_funding_rate: '0.0001',
-  funding_rate: '0.00009',
+  current_funding_rate: '0.0012',
+  funding_rate: '0.0001',
   funding_timestamp: 1704067200000,
   daily_base_token_volume: 89302.6339,
   daily_quote_token_volume: 213600918.580087,
@@ -48,9 +49,33 @@ describe('mapMarketContext (Lighter)', () => {
     expect(result.volume24h).toBe('213600918.580087')
     expect(result.openInterest).toBe('1234.5')
     expect(result.funding).toEqual({
-      rate: '0.0001',
+      rate: '0.000012',
       nextFundingTime: 1704070800000,
     })
+  })
+
+  it.each([
+    ['0.0012', '0.000012'],
+    ['-0.0008', '-0.000008'],
+    ['0.5', '0.005'],
+    ['0', '0'],
+  ])('maps the percent funding rate %s to the fraction %s', (percent, fraction) => {
+    const result = mapMarketContext({
+      ...perpStats,
+      current_funding_rate: percent,
+    })
+
+    expect(result.funding?.rate).toBe(fraction)
+  })
+
+  it('omits funding but keeps the record when the funding rate does not match the decimal pattern', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = mapMarketContext({ ...perpStats, current_funding_rate: '' })
+
+    expect(result).not.toHaveProperty('funding')
+    expect(result.markPrice).toBe('95000')
+    expect(result.openInterest).toBe('1234.5')
+    warn.mockRestore()
   })
 
   it('maps a spot stats record, falling mark back to mid with no funding/OI', () => {
