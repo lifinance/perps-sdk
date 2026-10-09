@@ -1,8 +1,10 @@
 import {
+  type AssetRegistry,
   addDecimalString,
   calculateTransferable,
   compareDecimalStrings,
   DecodeChain,
+  getAssetRegistry,
   getMarketRegistry,
   isActiveMarket,
   isActiveOrderStatus,
@@ -154,6 +156,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private readonly clearinghouseRefs = new Map<string, number>()
   private readonly client: PerpsSDKClient | undefined
   private readonly registry: MarketRegistry | undefined
+  private readonly assetRegistry: AssetRegistry | undefined
   private readonly accountChecksByUser = new Map<string, Promise<void>>()
   // Spot-funded modes need both spot valuation and clearinghouse margin state.
   private readonly abstractionByUser = new Map<
@@ -242,6 +245,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     )
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
+    this.assetRegistry = client && getAssetRegistry(client, providerKey)
     const orderApiUrl = new URL(wsUrl)
     orderApiUrl.protocol = orderApiUrl.protocol === 'wss:' ? 'https:' : 'http:'
     this.orderApiUrl = orderApiUrl.origin
@@ -1331,6 +1335,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       }
     }
     try {
+      await this.assetRegistry?.sync()
       if (count === 0) {
         await this.registerSub(wireKey, payload)
       }
@@ -1595,7 +1600,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const rows = balances.map(({ balance, total }) => {
       const free = safeSubtractDecimalString(total, balance.hold)
       return {
-        ...spotBalance(spotAssetFromToken(balance), total, priceById),
+        ...spotBalance(
+          spotAssetFromToken(
+            balance,
+            this.assetRegistry?.get(String(balance.token))
+          ),
+          total,
+          priceById
+        ),
         locked: balance.hold,
         transferable:
           free === undefined ? '0' : calculateTransferable(free, total),

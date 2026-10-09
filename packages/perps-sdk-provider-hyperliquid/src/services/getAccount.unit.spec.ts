@@ -8,6 +8,7 @@ import {
   HL_SPOT_CLEARINGHOUSE_STATE,
   HL_UNIFIED_SPOT_CLEARINGHOUSE_STATE,
   HL_USER_FEES,
+  USDC_ASSET,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { getAccountSummary } from '../accountSummary.js'
@@ -122,6 +123,50 @@ describe('getAccount', () => {
       HL_CLEARINGHOUSE_STATE.marginSummary.totalMarginUsed
     )
     expect(result.unrealizedPnl).toBe('100')
+  })
+
+  it('gives each spot balance asset the decimals of the registry asset with the same id', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        spotClearinghouseState: {
+          ...HL_SPOT_CLEARINGHOUSE_STATE,
+          balances: [
+            ...HL_SPOT_CLEARINGHOUSE_STATE.balances,
+            {
+              coin: 'PURR',
+              token: 1,
+              total: '2',
+              hold: '0',
+              entryNtl: '0',
+            },
+          ],
+        },
+      },
+      HL_MARKETS,
+      [],
+      [{ ...USDC_ASSET, decimals: 8 }]
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(
+      result.collateralBalances.find((b) => b.categoryId === 'spot')?.asset
+    ).toStrictEqual({
+      providerId: 'hyperliquid',
+      id: '0',
+      displaySymbol: 'USDC',
+      logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+      decimals: 8,
+    })
+    expect(result.balances.map((b) => b.asset)).toStrictEqual([
+      {
+        providerId: 'hyperliquid',
+        id: '1',
+        displaySymbol: 'PURR',
+        logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
+      },
+    ])
   })
 
   it('skips an outcome market position and an outcome spot token', async () => {
@@ -353,6 +398,9 @@ describe('getAccount', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/assets')) {
+          return new Response(JSON.stringify({ assets: [USDC_ASSET] }))
+        }
         if (url.includes('/marketsContext')) {
           return new Response(JSON.stringify({ prices: [] }))
         }
@@ -414,6 +462,9 @@ describe('getAccount', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/assets')) {
+          return new Response(JSON.stringify({ assets: [USDC_ASSET] }))
+        }
         if (url.includes('/marketsContext')) {
           return new Response(JSON.stringify({ prices: [] }))
         }
@@ -587,6 +638,9 @@ describe('getAccount', () => {
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/assets')) {
+          return new Response(JSON.stringify({ assets: [USDC_ASSET] }))
+        }
         if (url.includes('/marketsContext')) {
           return new Response(JSON.stringify({ prices: [] }))
         }
