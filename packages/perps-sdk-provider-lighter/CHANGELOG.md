@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 37.0.1
+
+### Patch Changes
+
+- [#613](https://github.com/lifinance/perps-sdk/pull/613) [`f5576df`](https://github.com/lifinance/perps-sdk/commit/f5576df01db43bac2a8d774751e4a6cd888d225a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Lighter and Lighter Robinhood funding rates are now decimal fractions, as the `FundingInfo.rate` and `FundingActivity.fundingRate` contracts say. Before, the provider passed the venue percent value through, so funding showed 100 times too high.
+
+- [#616](https://github.com/lifinance/perps-sdk/pull/616) [`f336ff4`](https://github.com/lifinance/perps-sdk/commit/f336ff45ac67c4acac7847ec37f5e0c511478667) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read Lighter order, client order and trade ids from the exact string fields, so ids above 2^53 no longer round in `Order.orderId`, `Order.clientOrderId`, `Fill.id`, `Fill.orderId` and the `getOrder` lookup.
+
 ## 37.0.0
 
 ### Major Changes
