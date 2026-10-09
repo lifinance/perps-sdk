@@ -15,9 +15,9 @@ import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const dist = join(packageRoot, 'dist')
 
-/** No emitted JavaScript may carry the 13 MB binary — it stays a fetched asset. */
+/** No emitted JavaScript may carry the ~6.8 MB binary — it stays a fetched asset. */
 const MAX_JS_BYTES = 200_000
-const MIN_WASM_BYTES = 10_000_000
+const MIN_WASM_BYTES = 5_000_000
 const WASM_MAGIC = '\0asm'
 
 const failures = []

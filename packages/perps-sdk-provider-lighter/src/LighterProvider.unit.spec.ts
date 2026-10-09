@@ -71,19 +71,73 @@ import {
 // initializes its signer with and issues deterministic auth tokens.
 const wasm = vi.hoisted(() => {
   const createClientCalls: {
-    url: string
     chainId: number
     apiKeyIndex: number
     accountIndex: number
   }[] = []
   let authTokenCalls = 0
   let generatedKeys = 0
-  // The Go signer signs with whichever key `CreateClient` last bound to the
-  // slot, so the fake keeps that binding and records the key per issued token.
+  // The Go signer signs with whichever key the last client creation bound to
+  // the slot, so the fake keeps that binding and records the key per issued
+  // token.
   const keyBySlot = new Map<string, string>()
   const keyByToken = new Map<string, string>()
   const slotOf = (apiKeyIndex: number, accountIndex: number): string =>
     `${apiKeyIndex}:${accountIndex}`
+  // A fresh exports object per test also gives each test a fresh signer client
+  // registry, which the SDK keys by the exports object.
+  const createExports = () => ({
+    _createClient: (
+      _seed: string,
+      chainId: number,
+      accountIndex: number,
+      _nonce: number,
+      apiKeyIndex: number
+    ) => {
+      generatedKeys += 1
+      const suffix = generatedKeys.toString(16).padStart(2, '0')
+      const prv = `${'bb'.repeat(31)}${suffix}`
+      createClientCalls.push({ chainId, apiKeyIndex, accountIndex })
+      keyBySlot.set(slotOf(apiKeyIndex, accountIndex), `0x${prv}`)
+      return Promise.resolve({
+        pk: `${'aa'.repeat(31)}${suffix}`,
+        prv,
+        body: 'lighter-change-pub-key',
+        pubKeySuccess: true,
+      })
+    },
+    _createClientByPrv: (
+      privateKey: string,
+      chainId: number,
+      accountIndex: number,
+      _nonce: number,
+      apiKeyIndex: number
+    ) => {
+      createClientCalls.push({ chainId, apiKeyIndex, accountIndex })
+      keyBySlot.set(slotOf(apiKeyIndex, accountIndex), privateKey)
+      return Promise.resolve({
+        pk: 'dd'.repeat(32),
+        prv: privateKey.replace(/^0x/, ''),
+        body: 'lighter-change-pub-key',
+        pubKeySuccess: true,
+      })
+    },
+    _signChangePubKey: () =>
+      Promise.resolve({
+        txInfo: '{"AccountIndex":42}',
+        txHash: `0x${'ee'.repeat(32)}`,
+      }),
+    _createAuthToken: (accountIndex: number, apiKeyIndex: number) => {
+      authTokenCalls += 1
+      const token = `std-${authTokenCalls}`
+      const boundKey = keyBySlot.get(slotOf(apiKeyIndex, accountIndex))
+      if (boundKey !== undefined) {
+        keyByToken.set(token, boundKey)
+      }
+      return Promise.resolve({ token, deadline: 0 })
+    },
+  })
+  let exports = createExports()
   return {
     createClientCalls,
     get authTokenCalls() {
@@ -101,51 +155,16 @@ const wasm = vi.hoisted(() => {
       generatedKeys = 0
       keyBySlot.clear()
       keyByToken.clear()
+      exports = createExports()
     },
-    exports: {
-      GenerateAPIKey: () => {
-        generatedKeys += 1
-        const suffix = generatedKeys.toString(16).padStart(2, '0')
-        return {
-          publicKey: `0x${'aa'.repeat(31)}${suffix}`,
-          privateKey: `0x${'bb'.repeat(31)}${suffix}`,
-        }
-      },
-      CreateClient: (
-        url: string,
-        privateKey: string,
-        chainId: number,
-        apiKeyIndex: number,
-        accountIndex: number
-      ) => {
-        createClientCalls.push({ url, chainId, apiKeyIndex, accountIndex })
-        keyBySlot.set(slotOf(apiKeyIndex, accountIndex), privateKey)
-        return {}
-      },
-      SignChangePubKey: () => ({
-        txType: 8,
-        txInfo: '{"AccountIndex":42}',
-        txHash: `0x${'ee'.repeat(32)}`,
-        messageToSign: 'lighter-change-pub-key',
-      }),
-      CreateAuthToken: (
-        _deadline: number,
-        apiKeyIndex: number,
-        accountIndex: number
-      ) => {
-        authTokenCalls += 1
-        const authToken = `std-${authTokenCalls}`
-        const boundKey = keyBySlot.get(slotOf(apiKeyIndex, accountIndex))
-        if (boundKey !== undefined) {
-          keyByToken.set(authToken, boundKey)
-        }
-        return { authToken }
-      },
+    get exports() {
+      return exports
     },
   }
 })
 
-vi.mock('./signers/wasmLoader.js', () => ({
+vi.mock('./signers/wasmLoader.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./signers/wasmLoader.js')>()),
   loadLighterWasm: async () => wasm.exports,
   resetLighterWasmCache: () => {},
 }))
@@ -623,7 +642,6 @@ describe('LighterProvider — provider-owned credential stores', () => {
     const optionKeys: (keyof LighterProviderOptions)[] = [
       'storage',
       'restUrl',
-      'tokenLifetimeSeconds',
       'tokenRenewBufferSeconds',
     ]
     const options: LighterProviderOptions = Object.fromEntries(
@@ -6087,7 +6105,7 @@ describe('LighterProvider — two deployments on one client', () => {
     expect(authHeader(rhCall)).not.toBe('main-tok')
   })
 
-  it('signs each deployment with its own zkLighter chain id and endpoint', async () => {
+  it('signs each deployment with its own zkLighter chain id', async () => {
     const storage = createMemoryStorage()
     await storage.set(
       apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
@@ -6107,13 +6125,11 @@ describe('LighterProvider — two deployments on one client', () => {
 
     expect(wasm.createClientCalls).toEqual([
       {
-        url: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
         chainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
         apiKeyIndex: STORED_API_KEY.apiKeyIndex,
         accountIndex: STORED_API_KEY.accountIndex,
       },
       {
-        url: LIGHTER_RH_DEPLOYMENT.restUrl,
         chainId: LIGHTER_RH_DEPLOYMENT.signerChainId,
         apiKeyIndex: STORED_API_KEY.apiKeyIndex,
         accountIndex: STORED_API_KEY.accountIndex,

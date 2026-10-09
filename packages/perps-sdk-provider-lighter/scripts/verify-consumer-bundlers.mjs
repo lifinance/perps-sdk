@@ -164,8 +164,8 @@ const assertProbe = (probe) => {
     `signer is missing exports: ${probe.missing?.join(', ')}`
   )
   assert(
-    probe.generateApiKeyError === undefined,
-    `GenerateAPIKey reported ${probe.generateApiKeyError}`
+    probe.createClientError === undefined,
+    `_createClient reported ${probe.createClientError}`
   )
 }
 
@@ -250,6 +250,9 @@ const dependencies = (tarball) => ({
   '@lifi/perps-sdk-provider-lighter': `file:${tarball}`,
 })
 
+// The Go runtime prints its own start-up line on stdout before the probe result.
+const lastJsonLine = (stdout) => JSON.parse(stdout.trim().split('\n').at(-1))
+
 const targets = {
   'node-esm': async ({ root, tarball }) => {
     const dir = createFixture(root, 'node-esm', {
@@ -263,7 +266,7 @@ const targets = {
     })
     await install(dir)
     const stdout = await run('node', ['esm.mjs'], { cwd: dir })
-    assertProbe(JSON.parse(stdout))
+    assertProbe(lastJsonLine(stdout))
     return 'installed binary read through the file URL resolver'
   },
 
@@ -279,7 +282,7 @@ const targets = {
     })
     await install(dir)
     const stdout = await run('node', ['cjs.cjs'], { cwd: dir })
-    assertProbe(JSON.parse(stdout))
+    assertProbe(lastJsonLine(stdout))
     return 'installed binary read through the __filename resolver'
   },
 
