@@ -21,6 +21,7 @@ import type {
   ProviderCategory,
   ProviderFunding,
   SetupAction,
+  SetupAgreement,
   SetupOption,
   TradeNotice,
 } from './providers.js'
@@ -435,6 +436,13 @@ type _SetupOptionDescriptionShape = Expect<
 type _SetupOptionDescriptionIsOptional = Expect<
   Equals<Extract<RequiredKeys<SetupOption>, 'description'>, never>
 >
+type _SetupAgreementKeys = Expect<Equals<keyof SetupAgreement, 'title' | 'url'>>
+type _SetupAgreementsShape = Expect<
+  Equals<SetupAction['agreements'], SetupAgreement[] | undefined>
+>
+type _SetupAgreementsIsOptional = Expect<
+  Equals<Extract<RequiredKeys<SetupAction>, 'agreements'>, never>
+>
 type _SignerIsSingle = Expect<Equals<ProviderAction['signer'], PerpsSigner>>
 type _RelayShape = Expect<Equals<ProviderAction['relay'], ActionRelay>>
 type _NoOptionsField = Expect<Equals<Extract<keyof Provider, 'options'>, never>>
@@ -613,6 +621,9 @@ export type _TypeAssertions = [
   _SetupOptionBindsParams,
   _SetupOptionDescriptionShape,
   _SetupOptionDescriptionIsOptional,
+  _SetupAgreementKeys,
+  _SetupAgreementsShape,
+  _SetupAgreementsIsOptional,
   _SignerIsSingle,
   _RelayShape,
   _NoOptionsField,

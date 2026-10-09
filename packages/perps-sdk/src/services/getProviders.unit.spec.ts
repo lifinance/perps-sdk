@@ -1,6 +1,11 @@
+import type { ProvidersResponse, SetupAgreement } from '@lifi/perps-types'
+import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { mockProviders } from '../../test/handlers.js'
-import { createPerpsClient } from '../client/createPerpsClient.js'
+import { mockProviders, server } from '../../test/handlers.js'
+import {
+  createPerpsClient,
+  DEFAULT_API_URL,
+} from '../client/createPerpsClient.js'
 import { getProviders } from './getProviders.js'
 
 describe('getProviders', () => {
@@ -30,6 +35,30 @@ describe('getProviders', () => {
       false,
       true,
     ])
+  })
+
+  it('passes setup agreements through unchanged', async () => {
+    const agreements: SetupAgreement[] = [
+      { title: 'Terms of Use', url: 'https://example.invalid/terms' },
+      { title: 'Privacy Policy', url: 'https://example.invalid/privacy' },
+    ]
+    const [provider] = mockProviders.providers
+    const fixture: ProvidersResponse = {
+      providers: [
+        {
+          ...provider,
+          setup: [{ ...provider.setup[0], agreements }],
+        },
+      ],
+    }
+    server.use(
+      http.get(`${DEFAULT_API_URL}/providers`, () => HttpResponse.json(fixture))
+    )
+
+    const result = await getProviders(client)
+
+    expect(result.providers[0].setup[0].agreements).toEqual(agreements)
+    expect(result).toEqual(fixture)
   })
 
   it('should support AbortSignal', async () => {
