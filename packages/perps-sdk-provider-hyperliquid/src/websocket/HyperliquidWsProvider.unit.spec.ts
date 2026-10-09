@@ -18,6 +18,7 @@ import {
   HL_DELISTED_MARKET,
   HL_MARKETS,
   HL_SPOT_MARKET,
+  USDC_ASSET,
 } from '../../test/fixtures.js'
 import type {
   HlOrderDetail,
@@ -239,6 +240,9 @@ const marketsFailureResponse = () =>
     headers: { 'Content-Type': 'application/json' },
   })
 
+// The asset registry fetches `${apiUrl}/assets`; unset resolves the USDC asset.
+const assetsFetchMock = vi.fn()
+
 // The summary gate reads `userAbstraction` from `${apiUrl}/info` — serve it
 // here. Unset/cleared resolves `null` (= never set = standard mode).
 const abstractionFetchMock = vi.fn()
@@ -318,6 +322,11 @@ vi.stubGlobal(
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
+    }
+    if (url.includes('/assets')) {
+      return Response.json(
+        (await assetsFetchMock()) ?? { assets: [USDC_ASSET] }
+      )
     }
     if (!url.includes('/markets')) {
       throw new Error(`Unexpected fetch: ${url}`)
@@ -4956,6 +4965,48 @@ describe('accountSummary channel', () => {
       })
     } finally {
       provider.close()
+    }
+  })
+
+  it('gives each spot balance asset the decimals of the registry asset with the same id', async () => {
+    assetsFetchMock.mockResolvedValue({
+      assets: [{ ...USDC_ASSET, decimals: 8 }],
+    })
+    const provider = createEnrichingProvider()
+    try {
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+          { coin: 'PURR', token: 1, total: '2', hold: '0' },
+        ])
+      )
+      expect(
+        listener.mock.calls
+          .at(-1)?.[0]
+          .data.map((row: { asset: unknown }) => row.asset)
+      ).toStrictEqual([
+        {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+          decimals: 8,
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '1',
+          displaySymbol: 'PURR',
+          logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
+        },
+      ])
+    } finally {
+      provider.close()
+      assetsFetchMock.mockReset()
     }
   })
 
