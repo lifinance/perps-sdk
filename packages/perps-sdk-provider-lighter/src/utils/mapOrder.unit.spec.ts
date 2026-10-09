@@ -29,10 +29,15 @@ const MARKET: MarketDisplay = {
   },
 }
 
+// A market 33 order index above 2^53: `JSON.parse` rounds the numeric twin to
+// ...276, so only the string twin carries the exact id.
+const UNSAFE_ORDER_ID = '9570149379440277'
+const UNSAFE_ORDER_ID_PARSED = 9570149379440276
+
 const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   order_index: 1,
   client_order_index: 0,
-  order_id: 'lt-1',
+  order_id: '1',
   client_order_id: '0',
   market_index: 1,
   owner_account_index: 42,
@@ -67,11 +72,28 @@ const baseOrder = (overrides: Partial<LtOrder> = {}): LtOrder => ({
 
 describe('mapOrder (Lighter)', () => {
   it('separates the venue id and client id and omits an absent client id', () => {
-    const order = mapOrder(baseOrder({ client_order_index: 77 }), MARKET)
+    const order = mapOrder(
+      baseOrder({ client_order_index: 77, client_order_id: '77' }),
+      MARKET
+    )
     expect(order?.orderId).toBe('1')
     expect(order?.clientOrderId).toBe('77')
     expect(mapOrder(baseOrder(), MARKET)).not.toHaveProperty('clientOrderId')
     expect(order).not.toHaveProperty('explorerLink')
+  })
+
+  it('reads orderId and clientOrderId from the string ids, not the rounded indexes', () => {
+    const order = mapOrder(
+      baseOrder({
+        order_index: UNSAFE_ORDER_ID_PARSED,
+        order_id: UNSAFE_ORDER_ID,
+        client_order_index: UNSAFE_ORDER_ID_PARSED,
+        client_order_id: UNSAFE_ORDER_ID,
+      }),
+      MARKET
+    )
+    expect(order?.orderId).toBe(UNSAFE_ORDER_ID)
+    expect(order?.clientOrderId).toBe(UNSAFE_ORDER_ID)
   })
 
   it('maps a parent-dependent trigger with its parent id', () => {
@@ -384,9 +406,10 @@ describe('mapOrderUpdates (Lighter)', () => {
     const result = mapOrderUpdates(
       [
         baseOrder(),
-        baseOrder({ order_index: 2, status: 'filled' }),
+        baseOrder({ order_index: 2, order_id: '2', status: 'filled' }),
         baseOrder({
           order_index: 3,
+          order_id: '3',
           type: 'take-profit',
           trigger_status: 'parent-order',
           parent_order_id: '1',
@@ -408,8 +431,8 @@ describe('mapOrderUpdates (Lighter)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = mapOrderUpdates(
       [
-        baseOrder({ order_index: 7, type: 'unknown' }),
-        baseOrder({ order_index: 8 }),
+        baseOrder({ order_index: 7, order_id: '7', type: 'unknown' }),
+        baseOrder({ order_index: 8, order_id: '8' }),
       ],
       () => MARKET
     )
@@ -438,10 +461,37 @@ describe('mapOrderUpdates (Lighter)', () => {
   it('skips rows with no registered market but retains terminal eviction ids', () => {
     expect(
       mapOrderUpdates(
-        [baseOrder(), baseOrder({ order_index: 2, status: 'filled' })],
+        [
+          baseOrder(),
+          baseOrder({ order_index: 2, order_id: '2', status: 'filled' }),
+        ],
         () => undefined
       )
     ).toEqual({ orders: [], terminated: ['2'] })
+  })
+
+  it('evicts and warns with the string order id, not the rounded index', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = mapOrderUpdates(
+      [
+        baseOrder({
+          order_index: UNSAFE_ORDER_ID_PARSED,
+          order_id: UNSAFE_ORDER_ID,
+          status: 'filled',
+        }),
+        baseOrder({
+          order_index: UNSAFE_ORDER_ID_PARSED,
+          order_id: UNSAFE_ORDER_ID,
+          type: 'unknown',
+        }),
+      ],
+      () => MARKET
+    )
+    expect(result.terminated).toEqual([UNSAFE_ORDER_ID])
+    expect(warn).toHaveBeenCalledWith(
+      `[lighter:ws] skipping order row: ${UNSAFE_ORDER_ID}: Unknown Lighter order type: unknown`
+    )
+    warn.mockRestore()
   })
 
   it('skips a pre-book row with no registered market and evicts nothing', () => {

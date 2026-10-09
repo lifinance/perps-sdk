@@ -1617,7 +1617,7 @@ export const createLighterProvider = (
         // `accountOrders` reaches active and inactive rows alike, so a reused
         // client order index can match more than one row. Prefer the live one.
         const matches = orders
-          .filter((o) => String(o.client_order_index) === clientOrderIndex)
+          .filter((o) => o.client_order_id === clientOrderIndex)
           .flatMap((o) => mapDetail(o) ?? [])
         const hit =
           matches.find((o) => isActiveOrderStatus(o.status)) ?? matches[0]
@@ -1627,8 +1627,7 @@ export const createLighterProvider = (
         return hit
       }
 
-      const byOrderIndex = (o: LtOrder): boolean =>
-        String(o.order_index) === params.id
+      const byOrderIndex = (o: LtOrder): boolean => o.order_id === params.id
 
       const active = await retryOnRevoked(params.address, token, (t) =>
         fetchActiveOrders(
