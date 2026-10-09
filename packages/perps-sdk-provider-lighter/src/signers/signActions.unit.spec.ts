@@ -58,26 +58,37 @@ const SEND_ASSET_SIGNED = {
   txHash: 'send-asset-hash',
 }
 
+const REGISTER_MESSAGE = 'lighter-register-msg'
+
 const REGISTER_SIGNED = {
-  txType: 11,
+  txType: 8,
   txInfo: '{"L1Sig":""}',
   txHash: 'register-hash',
-  messageToSign: 'lighter-register-msg',
 }
+
+const APPROVE_INTEGRATOR_MESSAGE = 'lighter-approve-integrator-msg'
 
 const APPROVE_INTEGRATOR_SIGNED = {
   txType: 45,
   txInfo: '{"IntegratorAccountIndex":5,"L1Sig":""}',
   txHash: 'approve-integrator-hash',
-  messageToSign: 'lighter-approve-integrator-msg',
 }
+
+const TRANSFER_MESSAGE = 'lighter-transfer-msg'
 
 const TRANSFER_SIGNED = {
   txType: 12,
   txInfo: '{"ToAccountIndex":7,"L1Sig":""}',
   txHash: 'transfer-hash',
-  messageToSign: 'lighter-transfer-msg',
 }
+
+const withL1Sig = (
+  signed: { txType: number; txInfo: string; txHash: string },
+  l1Signature: string
+) => ({
+  ...signed,
+  txInfo: JSON.stringify({ ...JSON.parse(signed.txInfo), L1Sig: l1Signature }),
+})
 
 function makeDeps(
   overrides: Partial<LighterSigner> = {},
@@ -94,17 +105,37 @@ function makeDeps(
 } {
   const baseSigner = {
     sign: vi.fn(async () => STD_SIGNED),
-    generateAPIKey: vi.fn(async () => ({
+    createApiKey: vi.fn(async () => ({
       publicKey: '0xpub',
       privateKey: '0xpriv',
+      messageToSign: REGISTER_MESSAGE,
     })),
-    signChangePubKey: vi.fn(async () => REGISTER_SIGNED),
-    signApproveIntegrator: vi.fn(async () => APPROVE_INTEGRATOR_SIGNED),
-    signTransfer: vi.fn(async () => TRANSFER_SIGNED),
-    embedL1Signature: vi.fn(
-      (txInfo: string, l1: string) =>
-        JSON.parse(txInfo) &&
-        JSON.stringify({ ...JSON.parse(txInfo), L1Sig: l1 })
+    signChangePubKey: vi.fn(
+      async (
+        _context: unknown,
+        _nonce: number,
+        _skipNonce: boolean,
+        l1Signature: string
+      ) => withL1Sig(REGISTER_SIGNED, l1Signature)
+    ),
+    getL1Message: vi.fn(async (action: ActionType) =>
+      action === ActionType.TRANSFER
+        ? TRANSFER_MESSAGE
+        : APPROVE_INTEGRATOR_MESSAGE
+    ),
+    signL1Countersigned: vi.fn(
+      async (
+        action: ActionType,
+        _params: unknown,
+        _context: unknown,
+        l1Signature: string
+      ) =>
+        withL1Sig(
+          action === ActionType.TRANSFER
+            ? TRANSFER_SIGNED
+            : APPROVE_INTEGRATOR_SIGNED,
+          l1Signature
+        )
     ),
     createAuthToken: vi.fn(async () => 'auth-token-xyz'),
   }
@@ -617,12 +648,22 @@ describe('lighterSignActions', () => {
       expect(result[0].signedTx.txType).toBe(REGISTER_SIGNED.txType)
       expect(result[0].signedTx.txHash).toBe(REGISTER_SIGNED.txHash)
 
+      expect(signer.createApiKey).toHaveBeenCalledWith(
+        { accountIndex: 99, apiKeyIndex: 7 },
+        42,
+        false
+      )
       expect(
         (signer.signChangePubKey as ReturnType<typeof vi.fn>).mock.calls[0]
-      ).toEqual(['0xpub', '0xpriv', 42, 7, 99, 0])
+      ).toEqual([
+        { apiKeyPrivateKey: '0xpriv', apiKeyIndex: 7, accountIndex: 99 },
+        42,
+        false,
+        '0xl1sig',
+      ])
       expect(walletStub.signMessage).toHaveBeenCalledWith({
         account: walletStub.account,
-        message: REGISTER_SIGNED.messageToSign,
+        message: REGISTER_MESSAGE,
       })
 
       // The newly created keypair was persisted via the keystore.
@@ -803,16 +844,26 @@ describe('lighterSignActions', () => {
       expect(result[0].signedTx.txHash).toBe(APPROVE_INTEGRATOR_SIGNED.txHash)
 
       // Wasm-signed with the stored API key context and the step's params.
-      expect(
-        (signer.signApproveIntegrator as ReturnType<typeof vi.fn>).mock.calls[0]
-      ).toEqual([
+      const context = {
+        apiKeyPrivateKey: '0xabc',
+        apiKeyIndex: 42,
+        accountIndex: 99,
+      }
+      expect(signer.getL1Message).toHaveBeenCalledWith(
+        ActionType.APPROVE_INTEGRATOR,
         approveStep.wasmSignParams,
-        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
-      ])
+        context
+      )
+      expect(signer.signL1Countersigned).toHaveBeenCalledWith(
+        ActionType.APPROVE_INTEGRATOR,
+        approveStep.wasmSignParams,
+        context,
+        '0xapprovesig'
+      )
       // The wallet countersigns the wasm-provided L1 message body.
       expect(walletStub.signMessage).toHaveBeenCalledWith({
         account: walletStub.account,
-        message: APPROVE_INTEGRATOR_SIGNED.messageToSign,
+        message: APPROVE_INTEGRATOR_MESSAGE,
       })
     })
 
@@ -832,8 +883,10 @@ describe('lighterSignActions', () => {
 
     it('propagates a wasm signing failure and never prompts the wallet', async () => {
       const { deps, keyStore } = makeDeps({
-        signApproveIntegrator: vi.fn(async () => {
-          throw new Error('Lighter SignApproveIntegrator failed: bad nonce')
+        getL1Message: vi.fn(async () => {
+          throw new Error(
+            'Lighter getApproveIntegratorTransaction failed: bad nonce'
+          )
         }),
       } as unknown as Partial<LighterSigner>)
       await setStoredKey(keyStore)
@@ -851,7 +904,9 @@ describe('lighterSignActions', () => {
           ADDRESS,
           { userWallet: walletStub as never }
         )
-      ).rejects.toThrow('Lighter SignApproveIntegrator failed: bad nonce')
+      ).rejects.toThrow(
+        'Lighter getApproveIntegratorTransaction failed: bad nonce'
+      )
       expect(walletStub.signMessage).not.toHaveBeenCalled()
     })
 
@@ -883,7 +938,7 @@ describe('lighterSignActions', () => {
 
       await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
 
-      expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
+      expect(signer.signL1Countersigned).not.toHaveBeenCalled()
       expect(signer.sign).toHaveBeenCalledTimes(1)
     })
 
@@ -922,8 +977,8 @@ describe('lighterSignActions', () => {
         revokeStep.wasmSignParams,
         { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 }
       )
-      expect(signer.signApproveIntegrator).not.toHaveBeenCalled()
-      expect(signer.embedL1Signature).not.toHaveBeenCalled()
+      expect(signer.getL1Message).not.toHaveBeenCalled()
+      expect(signer.signL1Countersigned).not.toHaveBeenCalled()
       expect(walletStub.signMessage).not.toHaveBeenCalled()
     })
   })
@@ -977,14 +1032,26 @@ describe('lighterSignActions', () => {
       expect(result[0].signedTx.txHash).toBe(TRANSFER_SIGNED.txHash)
 
       // Wasm-signed with the stored API key context and the step's params.
-      expect((signer.signTransfer as Mock).mock.calls[0]).toEqual([
+      const context = {
+        apiKeyPrivateKey: '0xabc',
+        apiKeyIndex: 42,
+        accountIndex: 99,
+      }
+      expect((signer.getL1Message as Mock).mock.calls[0]).toEqual([
+        ActionType.TRANSFER,
         transferStep.wasmSignParams,
-        { apiKeyPrivateKey: '0xabc', apiKeyIndex: 42, accountIndex: 99 },
+        context,
+      ])
+      expect((signer.signL1Countersigned as Mock).mock.calls[0]).toEqual([
+        ActionType.TRANSFER,
+        transferStep.wasmSignParams,
+        context,
+        '0xtransfersig',
       ])
       // The wallet countersigns exactly the wasm-provided L1 message body.
       expect(walletStub.signMessage).toHaveBeenCalledWith({
         account: walletStub.account,
-        message: TRANSFER_SIGNED.messageToSign,
+        message: TRANSFER_MESSAGE,
       })
     })
 
@@ -1000,13 +1067,16 @@ describe('lighterSignActions', () => {
           ADDRESS
         )
       ).rejects.toThrow(/TRANSFER requires the end-user wallet/)
-      expect(signer.signTransfer).not.toHaveBeenCalled()
+      expect(signer.getL1Message).not.toHaveBeenCalled()
+      expect(signer.signL1Countersigned).not.toHaveBeenCalled()
     })
 
     it('propagates a wasm signing failure and never prompts the wallet', async () => {
       const { deps, keyStore } = makeDeps({
-        signTransfer: vi.fn(async () => {
-          throw new Error('Lighter SignTransfer failed: insufficient balance')
+        getL1Message: vi.fn(async () => {
+          throw new Error(
+            'Lighter getTransferTransaction failed: insufficient balance'
+          )
         }),
       } as unknown as Partial<LighterSigner>)
       await setStoredKey(keyStore)
@@ -1024,7 +1094,9 @@ describe('lighterSignActions', () => {
           ADDRESS,
           { userWallet: walletStub as never }
         )
-      ).rejects.toThrow('Lighter SignTransfer failed: insufficient balance')
+      ).rejects.toThrow(
+        'Lighter getTransferTransaction failed: insufficient balance'
+      )
       expect(walletStub.signMessage).not.toHaveBeenCalled()
     })
 
@@ -1053,8 +1125,8 @@ describe('lighterSignActions', () => {
       )) as WasmBlobSignedActionStep[]
 
       expect(result[0].signedTx).toEqual(SEND_ASSET_SIGNED)
-      expect(signer.signTransfer).not.toHaveBeenCalled()
-      expect(signer.embedL1Signature).not.toHaveBeenCalled()
+      expect(signer.getL1Message).not.toHaveBeenCalled()
+      expect(signer.signL1Countersigned).not.toHaveBeenCalled()
     })
   })
 
@@ -1103,16 +1175,13 @@ describe('lighterSignActions', () => {
         signer.createAuthToken as ReturnType<typeof vi.fn>
       ).mock.calls
       expect(createAuthCalls).toHaveLength(1)
-      const [deadline, ctx] = createAuthCalls[0]
-      const now = Math.floor(Date.now() / 1000)
-      // Issued per-call with a short (minutes) deadline, not the 1h default.
-      expect(deadline).toBeGreaterThan(now)
-      expect(deadline).toBeLessThanOrEqual(now + 5 * 60 + 2)
-      expect(ctx).toEqual({
-        apiKeyPrivateKey: '0xabc',
-        apiKeyIndex: 42,
-        accountIndex: 99,
-      })
+      expect(createAuthCalls[0]).toEqual([
+        {
+          apiKeyPrivateKey: '0xabc',
+          apiKeyIndex: 42,
+          accountIndex: 99,
+        },
+      ])
     })
 
     it('carries the auth token in the Authorization header, not the form body', async () => {

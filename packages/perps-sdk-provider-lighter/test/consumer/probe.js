@@ -3,22 +3,27 @@
 // this directory runs this and publishes the outcome as `globalThis.__probe`.
 
 export const SIGNER_FUNCTIONS = [
-  'GenerateAPIKey',
-  'CreateClient',
-  'CreateAuthToken',
-  'SignChangePubKey',
-  'SignCreateOrder',
-  'SignCancelOrder',
-  'SignCancelAllOrders',
-  'SignTransfer',
-  'SignWithdraw',
-  'SignUpdateLeverage',
-  'SignModifyOrder',
-  'SignUpdateMargin',
-  'SignApproveIntegrator',
-  'SignUpdateAccountConfig',
-  'SignUpdateAccountAssetConfig',
+  '_createClientByPrv',
+  '_createClient',
+  '_createAuthToken',
+  '_getChangePubKeyTransaction',
+  '_signChangePubKey',
+  '_signCreateOrder',
+  '_signCancelOrder',
+  '_signCancelAllOrders',
+  '_signModifyOrder',
+  '_getTransferTransaction',
+  '_signTransfer',
+  '_signWithdraw',
+  '_signUpdateLeverage',
+  '_signUpdateMargin',
+  '_getApproveIntegratorTransaction',
+  '_signApproveIntegrator',
+  '_signUpdateAccountConfig',
+  '_signUpdateAccountAssetConfig',
 ]
+
+const SEED = `0x${'11'.repeat(32)}`
 
 export const probeLighterSigner = async ({
   lighterProvider,
@@ -30,12 +35,12 @@ export const probeLighterSigner = async ({
     const missing = SIGNER_FUNCTIONS.filter(
       (name) => typeof wasm[name] !== 'function'
     )
-    const key = wasm.GenerateAPIKey()
+    const client = await wasm._createClient(SEED, 304, 1, 0, 3, false)()
     return {
-      ok: missing.length === 0 && Boolean(key.publicKey && key.privateKey),
+      ok: missing.length === 0 && Boolean(client.pk && client.prv),
       missing,
-      generateApiKeyError: key.error,
-      publicKeyPrefix: key.publicKey?.slice(0, 6),
+      createClientError: client.error,
+      publicKeyPrefix: client.pk?.slice(0, 6),
     }
   } catch (error) {
     return { ok: false, error: String(error?.message ?? error) }

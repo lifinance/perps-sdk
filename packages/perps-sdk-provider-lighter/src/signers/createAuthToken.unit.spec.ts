@@ -6,8 +6,7 @@ import {
 import type { LighterSigner } from './LighterSigner.js'
 
 describe('createAuthToken', () => {
-  it('forwards a 1h deadline + api key context to the signer by default', async () => {
-    const fixedNow = 1_700_000_000_000
+  it('forwards the api key context to the signer', async () => {
     const signerStub = {
       createAuthToken: vi.fn(async () => 'token-xyz'),
     } as unknown as LighterSigner
@@ -19,38 +18,14 @@ describe('createAuthToken', () => {
         apiKeyIndex: 7,
         accountIndex: 42,
       },
-      now: () => fixedNow,
     })
 
     expect(token).toBe('token-xyz')
     expect(
       (signerStub.createAuthToken as ReturnType<typeof vi.fn>).mock.calls[0]
     ).toEqual([
-      Math.floor(fixedNow / 1000) + 60 * 60,
       { apiKeyPrivateKey: '0xpriv', apiKeyIndex: 7, accountIndex: 42 },
     ])
-  })
-
-  it('honours a custom `lifetimeSeconds`', async () => {
-    const fixedNow = 1_700_000_000_000
-    const signerStub = {
-      createAuthToken: vi.fn(async () => 'tok'),
-    } as unknown as LighterSigner
-
-    await createAuthToken({
-      signer: signerStub,
-      apiKey: {
-        apiKeyPrivateKey: '0xpriv',
-        apiKeyIndex: 1,
-        accountIndex: 2,
-      },
-      lifetimeSeconds: 7200,
-      now: () => fixedNow,
-    })
-
-    const [deadline] = (signerStub.createAuthToken as ReturnType<typeof vi.fn>)
-      .mock.calls[0]
-    expect(deadline).toBe(Math.floor(fixedNow / 1000) + 7200)
   })
 })
 

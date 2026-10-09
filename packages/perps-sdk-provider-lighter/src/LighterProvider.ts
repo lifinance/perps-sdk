@@ -258,6 +258,9 @@ const wantsAnyType = (
   wanted: ReadonlySet<ActivityType>
 ): boolean => requested === undefined || requested.some((t) => wanted.has(t))
 
+// The WASM signer sets a standard token's deadline one hour from its clock.
+const STANDARD_TOKEN_LIFETIME_SECONDS = 60 * 60
+
 /**
  * Expiry requested when the SDK lazily creates a Lighter read-only token for
  * authenticated reads. One day under Lighter's 10-year maximum: the cap is
@@ -327,11 +330,9 @@ export interface LighterProviderOptions {
   /**
    * Lighter REST base URL. Defaults to the deployment's own endpoint; override
    * to point at a reverse proxy, self-hosted mirror or rate-limit gateway. The
-   * instance's signer and read-only token manager follow this URL.
+   * instance's REST client and read-only token manager follow this URL.
    */
   restUrl?: string
-  /** Token lifetime for on-demand standard-token creates (Lighter caps at 8h). Default 1h. */
-  tokenLifetimeSeconds?: number
   /** Re-create when the cached standard token's remaining life is below this. Default 60s. */
   tokenRenewBufferSeconds?: number
 }
@@ -399,13 +400,11 @@ export const createLighterProvider = (
   const collateral = deployment.collateral
   const storage = options.storage ?? localStorageAdapter
   const signer = new LighterSigner({
-    apiUrl: restUrl,
     signerChainId: deployment.signerChainId,
     collateralAssetIndex: collateral.assetIndex,
   })
   const keyStore = new LighterKeyStore(storage, providerKey)
   const apiKeyFreshness = createLighterApiKeyFreshness()
-  const tokenLifetimeSeconds = options.tokenLifetimeSeconds ?? 60 * 60
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
   // Single-flight + backoff for lazy read-only token creation. Without these,
@@ -461,9 +460,8 @@ export const createLighterProvider = (
         apiKeyIndex: indices.apiKeyIndex,
         accountIndex: indices.accountIndex,
       },
-      lifetimeSeconds: tokenLifetimeSeconds,
     })
-    const expiresAt = nowSec + tokenLifetimeSeconds
+    const expiresAt = nowSec + STANDARD_TOKEN_LIFETIME_SECONDS
     standardTokenByAddress.set(cacheKey, { token, expiresAt, signingKey })
     return token
   }

@@ -1,12 +1,16 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
 } from '../constants.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
-import { LighterSigner, type LighterSignerContext } from './LighterSigner.js'
+import {
+  createSignerSeed,
+  LighterSigner,
+  type LighterSignerContext,
+} from './LighterSigner.js'
 import { type LighterWasmExports, loadLighterWasm } from './wasmLoader.js'
 
 // Per-asset precision and minimums as live
@@ -20,6 +24,8 @@ const USDC_PERPS_WITHDRAWAL = {
   symbol: 'USDC',
 }
 
+const L1_SIGNATURE = `0x${'ab'.repeat(65)}`
+
 const ETH_SPOT_WITHDRAWAL = {
   asset_index: 1,
   route_type: 1,
@@ -31,15 +37,18 @@ const ETH_SPOT_WITHDRAWAL = {
 
 describe('LighterSigner', () => {
   let signer: LighterSigner
-  let keypair: { publicKey: string; privateKey: string }
+  let keypair: { publicKey: string; privateKey: string; messageToSign: string }
 
   beforeAll(async () => {
     signer = new LighterSigner({
-      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
     })
-    keypair = await signer.generateAPIKey()
+    keypair = await signer.createApiKey(
+      { accountIndex: 42, apiKeyIndex: 1 },
+      0,
+      false
+    )
   })
 
   const ctx = () => ({
@@ -48,14 +57,18 @@ describe('LighterSigner', () => {
     accountIndex: 42,
   })
 
-  it('generateAPIKey returns matching hex-encoded keypair', () => {
+  it('createApiKey returns a hex-encoded keypair', () => {
     expect(keypair.publicKey).toMatch(/^0x[0-9a-f]+$/i)
     expect(keypair.privateKey).toMatch(/^0x[0-9a-f]+$/i)
     expect(keypair.publicKey).not.toBe(keypair.privateKey)
   })
 
   it('generates a fresh random keypair each call', async () => {
-    const again = await signer.generateAPIKey()
+    const again = await signer.createApiKey(
+      { accountIndex: 42, apiKeyIndex: 1 },
+      0,
+      false
+    )
     expect(again.publicKey).toMatch(/^0x[0-9a-f]+$/i)
     expect(again.privateKey).toMatch(/^0x[0-9a-f]+$/i)
     expect(again.privateKey).not.toBe(keypair.privateKey)
@@ -142,6 +155,31 @@ describe('LighterSigner', () => {
     const parsed = JSON.parse(signed.txInfo)
     expect(parsed.Nonce).toBe(7)
     expect(parsed.AccountIndex).toBe(42)
+  })
+
+  it('signs CANCEL_ORDER with an order_index decimal string', async () => {
+    const signed = await signer.sign(
+      ActionType.CANCEL_ORDER,
+      { market_index: 0, order_index: '1152921504606846975', nonce: 7 },
+      ctx()
+    )
+    expect(signed.txInfo).toContain('"Index":1152921504606846975,')
+  })
+
+  it.each([
+    ['a string above the int64 maximum', '9223372036854775808'],
+    ['a string that is not an integer', '12.5'],
+    ['a string with a leading zero', '012'],
+    ['a number above 2^53', 2 ** 53 + 2],
+    ['a fractional number', 1.5],
+  ])('CANCEL_ORDER rejects an order_index of %s', async (_name, orderIndex) => {
+    await expect(
+      signer.sign(
+        ActionType.CANCEL_ORDER,
+        { market_index: 0, order_index: orderIndex, nonce: 7 },
+        ctx()
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
   })
 
   it('signs CANCEL_ALL_ORDERS', async () => {
@@ -241,9 +279,7 @@ describe('LighterSigner', () => {
     expect(JSON.parse(signed.txInfo).Amount).toBe(100_000)
   })
 
-  // The Go signer accepts `memo` as a 66-char `0x`-prefixed hex string, a bare
-  // 64-char hex string, or 32 raw bytes; anything else → "memo expected to be
-  // 32 bytes or 64 hex encoded or 66 if 0x hex encoded".
+  // `memo` is 32 raw bytes, 64 hex chars, or `0x` plus 64 hex chars.
   const MEMO_32_BYTES = 'a'.repeat(32)
 
   const TRANSFER_PARAMS = {
@@ -254,8 +290,11 @@ describe('LighterSigner', () => {
     nonce: 12,
   }
 
+  const signTransfer = (params: Record<string, unknown>) =>
+    signer.signL1Countersigned(ActionType.TRANSFER, params, ctx(), L1_SIGNATURE)
+
   it('signs TRANSFER (fastwithdraw signed-transfer flow)', async () => {
-    const signed = await signer.signTransfer(TRANSFER_PARAMS, ctx())
+    const signed = await signTransfer(TRANSFER_PARAMS)
     expect(signed.txType).toBe(12)
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
@@ -272,12 +311,33 @@ describe('LighterSigner', () => {
     // Memo is serialized as a byte array — every entry should be 0x61 ('a').
     expect(parsed.Memo).toHaveLength(32)
     expect(parsed.Memo.every((b: number) => b === 0x61)).toBe(true)
-    // L1Sig is empty until the caller injects the wallet signature.
-    expect(parsed.L1Sig).toBe('')
+    expect(parsed.L1Sig).toBe(L1_SIGNATURE)
   })
 
-  it('signTransfer returns the type-12 blob plus the Transfer L1 message body', async () => {
-    const signed = await signer.signTransfer(TRANSFER_PARAMS, ctx())
+  it.each([
+    ['64 hex chars', '61'.repeat(32)],
+    ['0x plus 64 hex chars', `0x${'61'.repeat(32)}`],
+  ])('signs TRANSFER with a memo of %s', async (_name, memo) => {
+    const signed = await signTransfer({ ...TRANSFER_PARAMS, memo })
+    expect(JSON.parse(signed.txInfo).Memo).toEqual(new Array(32).fill(0x61))
+  })
+
+  it.each([
+    ['31 bytes', 'a'.repeat(31)],
+    ['63 hex chars', '6'.repeat(63)],
+    ['64 chars that are not hex', 'g'.repeat(64)],
+  ])('TRANSFER rejects a memo of %s', async (_name, memo) => {
+    await expect(
+      signTransfer({ ...TRANSFER_PARAMS, memo })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+  })
+
+  it('getL1Message returns the Transfer L1 message body', async () => {
+    const message = await signer.getL1Message(
+      ActionType.TRANSFER,
+      TRANSFER_PARAMS,
+      ctx()
+    )
     // Byte-for-byte match with lighter-go `TemplateTransfer`
     // (`types/txtypes/utils.go`) rendered by `GetL1SignatureBody(chainId)` —
     // each numeric field is `getHex10FromUint64`: 16 zero-padded lowercase hex
@@ -296,32 +356,26 @@ describe('LighterSigner', () => {
       'chainId: 0x0000000000000130\n' +
       `memo: ${'61'.repeat(32)}\n` +
       'Only sign this message for a trusted client!'
-    expect(signed.messageToSign).toBe(expectedMessage)
+    expect(message).toBe(expectedMessage)
   })
 
   it('sign() refuses TRANSFER, so no transfer blob leaves without an L1 signature', async () => {
     await expect(
       signer.sign(ActionType.TRANSFER, TRANSFER_PARAMS, ctx())
-    ).rejects.toThrow(/Use signTransfer\(\) for TRANSFER/)
+    ).rejects.toThrow(/needs the user's L1 signature/)
   })
 
   it('TRANSFER rejects missing numeric param with a clear error', async () => {
     await expect(
-      signer.signTransfer(
-        // missing usdc_amount
-        { to_account: 7, fee: 100, memo: MEMO_32_BYTES, nonce: 12 },
-        ctx()
-      )
+      // missing usdc_amount
+      signTransfer({ to_account: 7, fee: 100, memo: MEMO_32_BYTES, nonce: 12 })
     ).rejects.toThrow(/usdc_amount/)
   })
 
   it('TRANSFER rejects missing memo (string field) with a clear error', async () => {
     await expect(
-      signer.signTransfer(
-        // missing memo
-        { to_account: 7, usdc_amount: 250_000, fee: 100, nonce: 12 },
-        ctx()
-      )
+      // missing memo
+      signTransfer({ to_account: 7, usdc_amount: 250_000, fee: 100, nonce: 12 })
     ).rejects.toThrow(/memo/)
   })
 
@@ -525,7 +579,7 @@ describe('LighterSigner', () => {
     expect(JSON.parse(signed.txInfo).L2TxAttributes).toBeNull()
   })
 
-  it('MODIFY_ORDER threads backend integrator fees into L2TxAttributes', async () => {
+  it('MODIFY_ORDER does not sign integrator fields', async () => {
     const signed = await signer.sign(
       ActionType.MODIFY_ORDER,
       {
@@ -542,15 +596,12 @@ describe('LighterSigner', () => {
       ctx()
     )
     expect(signed.txType).toBe(17)
-    expect(JSON.parse(signed.txInfo).L2TxAttributes).toEqual({
-      '1': 5,
-      '2': 250,
-      '3': 100,
-    })
+    expect(JSON.parse(signed.txInfo).L2TxAttributes).toBeNull()
   })
 
   it('signs APPROVE_INTEGRATOR into a type-45 blob with positional args in struct order', async () => {
-    const signed = await signer.signApproveIntegrator(
+    const signed = await signer.signL1Countersigned(
+      ActionType.APPROVE_INTEGRATOR,
       {
         integrator_account_index: 5,
         max_perps_taker_fee: 250,
@@ -560,11 +611,13 @@ describe('LighterSigner', () => {
         approval_expiry: 1_893_456_000,
         nonce: 3,
       },
-      ctx()
+      ctx(),
+      L1_SIGNATURE
     )
     expect(signed.txType).toBe(45)
     expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
     const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.L1Sig).toBe(L1_SIGNATURE)
     // Field-level positional-arg verification against lighter-go
     // `types/txtypes/approve_integrator.go` (rev c26ac340). Wrong arg order
     // would land these values in the wrong struct fields.
@@ -619,7 +672,6 @@ describe('LighterSigner', () => {
     'approval_expiry',
   ])('rejects REVOKE_INTEGRATOR when %s is non-zero', async (field) => {
     const freshSigner = new LighterSigner({
-      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
     })
@@ -652,7 +704,8 @@ describe('LighterSigner', () => {
 
   it('APPROVE_INTEGRATOR rejects a missing fee-cap param with a clear error', async () => {
     await expect(
-      signer.signApproveIntegrator(
+      signer.signL1Countersigned(
+        ActionType.APPROVE_INTEGRATOR,
         {
           integrator_account_index: 5,
           max_perps_taker_fee: 250,
@@ -661,13 +714,15 @@ describe('LighterSigner', () => {
           approval_expiry: 1_893_456_000,
           nonce: 3,
         },
-        ctx()
+        ctx(),
+        L1_SIGNATURE
       )
     ).rejects.toThrow(/max_spot_taker_fee/)
   })
 
-  it('signApproveIntegrator returns the type-45 blob plus the L2ApproveIntegrator L1 message body', async () => {
-    const signed = await signer.signApproveIntegrator(
+  it('getL1Message returns the L2ApproveIntegrator L1 message body', async () => {
+    const message = await signer.getL1Message(
+      ActionType.APPROVE_INTEGRATOR,
       {
         integrator_account_index: 5,
         max_perps_taker_fee: 250,
@@ -679,10 +734,6 @@ describe('LighterSigner', () => {
       },
       ctx()
     )
-    expect(signed.txType).toBe(45)
-    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
-    // L1Sig is empty until the caller injects the wallet signature.
-    expect(JSON.parse(signed.txInfo).L1Sig).toBe('')
 
     // Byte-for-byte match with lighter-go `TemplateL2ApproveIntegrator`
     // (`types/txtypes/utils.go`) rendered by `GetL1SignatureBody(chainId)` —
@@ -702,7 +753,7 @@ describe('LighterSigner', () => {
       'approval expiry: 0x0000000070dbd880\n' +
       'chainId: 0x0000000000000130\n' +
       'Only sign this message for a trusted client!'
-    expect(signed.messageToSign).toBe(expectedMessage)
+    expect(message).toBe(expectedMessage)
   })
 
   it('signs ACCOUNT_MODE into a type-41 blob carrying the trading mode', async () => {
@@ -784,67 +835,43 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/missing boolean field 'enabled'/)
   })
 
-  it('REGISTER_API_KEY through sign() throws (must use signChangePubKey)', async () => {
+  it('REGISTER_API_KEY through sign() throws', async () => {
     await expect(
       signer.sign(
         ActionType.REGISTER_API_KEY,
         { api_key_index: 1, nonce: 0 },
         ctx()
       )
-    ).rejects.toThrow(/signChangePubKey/)
+    ).rejects.toThrow(/needs the user's L1 signature/)
   })
 
-  it('APPROVE_INTEGRATOR through sign() throws (must use signApproveIntegrator)', async () => {
+  it('APPROVE_INTEGRATOR through sign() throws', async () => {
     await expect(
       signer.sign(
         ActionType.APPROVE_INTEGRATOR,
         { integrator_account_index: 45, nonce: 0 },
         ctx()
       )
-    ).rejects.toThrow(/signApproveIntegrator/)
+    ).rejects.toThrow(/needs the user's L1 signature/)
   })
 
-  it('signChangePubKey returns txInfo with empty L1Sig and an EIP-191 message', async () => {
-    const result = await signer.signChangePubKey(
-      keypair.publicKey,
-      keypair.privateKey,
-      0,
-      1,
-      42
-    )
+  it('createApiKey returns the register message and signChangePubKey embeds the L1 signature', async () => {
+    const result = await signer.signChangePubKey(ctx(), 0, false, L1_SIGNATURE)
     const parsed = JSON.parse(result.txInfo)
-    expect(parsed.L1Sig).toBe('')
+    expect(result.txType).toBe(8)
+    expect(parsed.L1Sig).toBe(L1_SIGNATURE)
     expect(parsed.ApiKeyIndex).toBe(1)
     expect(parsed.AccountIndex).toBe(42)
-    expect(result.messageToSign).toContain('Register Lighter Account')
-    expect(result.messageToSign).toContain(keypair.publicKey)
+    expect(keypair.messageToSign).toContain('Register Lighter Account')
+    expect(keypair.messageToSign).toContain(keypair.publicKey.slice(2))
   })
 
-  it('createAuthToken returns a non-empty token for the /changeAccountTier ACCOUNT_TYPE contract', async () => {
+  it('createAuthToken returns a token for the /changeAccountTier ACCOUNT_TYPE contract', async () => {
     // ACCOUNT_TYPE is dispatched as a WASM_BLOB action but `/changeAccountTier`
     // is HTTP-only — its "signature" is the same Lighter auth token the read
     // endpoints consume, not a wasm-signed tx blob.
-    const deadline = Math.floor(Date.now() / 1000) + 60
-    const token = await signer.createAuthToken(deadline, ctx())
-    expect(typeof token).toBe('string')
-    expect(token.length).toBeGreaterThan(0)
-  })
-
-  it('embedL1Signature injects the signature into txInfo JSON', async () => {
-    const result = await signer.signChangePubKey(
-      keypair.publicKey,
-      keypair.privateKey,
-      0,
-      1,
-      42
-    )
-    const withSig = signer.embedL1Signature(result.txInfo, '0xdeadbeef')
-    const parsed = JSON.parse(withSig)
-    expect(parsed.L1Sig).toBe('0xdeadbeef')
-    // All non-L1Sig fields preserved
-    expect(parsed.AccountIndex).toBe(42)
-    expect(parsed.ApiKeyIndex).toBe(1)
-    expect(parsed.PubKey).toBeTruthy()
+    const token = await signer.createAuthToken(ctx())
+    expect(token).toMatch(/^\d+:42:1:[0-9a-f]+$/)
   })
 
   it('rejects params missing required numeric fields', async () => {
@@ -862,7 +889,6 @@ describe('LighterSigner', () => {
     const wasm = await loadLighterWasm()
     return Object.assign(
       new LighterSigner({
-        apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
         signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
         collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
       }),
@@ -870,25 +896,35 @@ describe('LighterSigner', () => {
     )
   }
 
-  it('generateAPIKey classifies a WASM failure as an invalid signature', async () => {
+  const slot = { accountIndex: 42, apiKeyIndex: 1 }
+
+  it('createApiKey classifies a WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      GenerateAPIKey: () => ({ error: 'random scalar unavailable' }),
+      _createClient: () => Promise.resolve({ error: 'seed rejected' }),
     })
 
-    const failure = failedSigner.generateAPIKey()
+    const failure = failedSigner.createApiKey(slot, 0, false)
     await expect(failure).rejects.toBeInstanceOf(PerpsError)
     await expect(failure).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
-  it('generateAPIKey classifies an incomplete WASM result as an SDK invariant failure', async () => {
+  it('createApiKey classifies a client with no L1 message as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      GenerateAPIKey: () => ({ publicKey: '0x1234' }),
+      _createClient: () =>
+        Promise.resolve({
+          pk: '12',
+          prv: '34',
+          body: '',
+          pubKeySuccess: false,
+        }),
     })
 
-    await expect(failedSigner.generateAPIKey()).rejects.toMatchObject({
-      code: PerpsErrorCode.SDKError,
+    await expect(
+      failedSigner.createApiKey(slot, 0, false)
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
@@ -902,7 +938,8 @@ describe('LighterSigner', () => {
 
   it('sign classifies a WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      SignCancelOrder: () => ({ error: 'cancel signing failed' }),
+      _signCancelOrder: () =>
+        Promise.resolve({ error: 'cancel signing failed' }),
     })
 
     await expect(
@@ -917,8 +954,8 @@ describe('LighterSigner', () => {
   })
 
   it('rejects an exponent-notation withdrawal amount before SignWithdraw', async () => {
-    const signWithdraw = vi.fn<LighterWasmExports['SignWithdraw']>()
-    const guardedSigner = await signerWithWasm({ SignWithdraw: signWithdraw })
+    const signWithdraw = vi.fn<LighterWasmExports['_signWithdraw']>()
+    const guardedSigner = await signerWithWasm({ _signWithdraw: signWithdraw })
 
     const failure = guardedSigner.sign(
       ActionType.WITHDRAWAL,
@@ -941,31 +978,26 @@ describe('LighterSigner', () => {
 
   it('signChangePubKey classifies a WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      SignChangePubKey: () => ({ error: 'change-pub-key signing failed' }),
+      _signChangePubKey: () =>
+        Promise.resolve({ error: 'change-pub-key signing failed' }),
     })
 
     await expect(
-      failedSigner.signChangePubKey(
-        keypair.publicKey,
-        keypair.privateKey,
-        0,
-        1,
-        42
-      )
+      failedSigner.signChangePubKey(ctx(), 0, false, L1_SIGNATURE)
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
-  it('signApproveIntegrator classifies a WASM failure as an invalid signature', async () => {
+  it('signL1Countersigned classifies an APPROVE_INTEGRATOR WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      SignApproveIntegrator: () => ({
-        error: 'integrator approval signing failed',
-      }),
+      _signApproveIntegrator: () =>
+        Promise.resolve({ error: 'integrator approval signing failed' }),
     })
 
     await expect(
-      failedSigner.signApproveIntegrator(
+      failedSigner.signL1Countersigned(
+        ActionType.APPROVE_INTEGRATOR,
         {
           integrator_account_index: 5,
           max_perps_taker_fee: 250,
@@ -975,57 +1007,144 @@ describe('LighterSigner', () => {
           approval_expiry: 1_893_456_000,
           nonce: 3,
         },
-        ctx()
+        ctx(),
+        L1_SIGNATURE
       )
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
-  it('signTransfer classifies a WASM failure as an invalid signature', async () => {
+  it('signL1Countersigned classifies a TRANSFER WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      SignTransfer: () => ({ error: 'transfer signing failed' }),
+      _signTransfer: () =>
+        Promise.resolve({ error: 'transfer signing failed' }),
     })
 
     await expect(
-      failedSigner.signTransfer(TRANSFER_PARAMS, ctx())
+      failedSigner.signL1Countersigned(
+        ActionType.TRANSFER,
+        TRANSFER_PARAMS,
+        ctx(),
+        L1_SIGNATURE
+      )
     ).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
-  it('embedL1Signature classifies malformed signer output as an SDK invariant failure', () => {
-    expect(() =>
-      signer.embedL1Signature('not JSON', '0xdeadbeef')
-    ).toThrowError(
-      expect.objectContaining({
-        code: PerpsErrorCode.SDKError,
-      })
-    )
-  })
-
   it('createAuthToken classifies a WASM failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      CreateAuthToken: () => ({ error: 'auth-token signing failed' }),
+      _createAuthToken: () =>
+        Promise.resolve({ error: 'auth-token signing failed' }),
     })
 
-    await expect(
-      failedSigner.createAuthToken(Math.floor(Date.now() / 1000) + 60, ctx())
-    ).rejects.toMatchObject({
+    await expect(failedSigner.createAuthToken(ctx())).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
   })
 
   it('classifies WASM client initialization failure as an invalid signature', async () => {
     const failedSigner = await signerWithWasm({
-      CreateClient: () => ({ error: 'private key rejected' }),
+      _createClientByPrv: () =>
+        Promise.resolve({ error: 'private key rejected' }),
     })
 
-    await expect(
-      failedSigner.createAuthToken(Math.floor(Date.now() / 1000) + 60, ctx())
-    ).rejects.toMatchObject({
+    await expect(failedSigner.createAuthToken(ctx())).rejects.toMatchObject({
       code: PerpsErrorCode.SignatureInvalid,
     })
+  })
+})
+
+describe('createSignerSeed', () => {
+  it('returns 32 bytes from crypto.getRandomValues as 0x hex', () => {
+    const getRandomValues = vi.spyOn(globalThis.crypto, 'getRandomValues')
+    try {
+      expect(createSignerSeed()).toMatch(/^0x[0-9a-f]{64}$/)
+      expect(getRandomValues).toHaveBeenCalledTimes(1)
+      expect(getRandomValues.mock.calls[0]?.[0]).toHaveLength(32)
+    } finally {
+      getRandomValues.mockRestore()
+    }
+  })
+
+  it('returns a different seed each call', () => {
+    expect(createSignerSeed()).not.toBe(createSignerSeed())
+  })
+})
+
+describe('LighterSigner — WASM client per account', () => {
+  const config = {
+    signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+    collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+  }
+  const cancel = { market_index: 0, order_index: 1, nonce: 1 }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const setUp = async () => {
+    const createClientByPrv = vi.spyOn(
+      await loadLighterWasm(),
+      '_createClientByPrv'
+    )
+    const signerA = new LighterSigner(config)
+    const signerB = new LighterSigner(config)
+    const slot = { accountIndex: 50, apiKeyIndex: 4 }
+    const keyA = (await signerA.createApiKey(slot, 0, false)).privateKey
+    const keyB = (await signerA.createApiKey(slot, 0, false)).privateKey
+    return { createClientByPrv, signerA, signerB, keyA, keyB, slot }
+  }
+
+  it('reuses the client while the key and slot stay the same', async () => {
+    const { createClientByPrv, signerA, signerB, keyA, slot } = await setUp()
+    const ctx = { ...slot, apiKeyPrivateKey: keyA }
+
+    await signerA.sign(ActionType.CANCEL_ORDER, cancel, ctx)
+    await signerB.sign(ActionType.CANCEL_ORDER, cancel, ctx)
+
+    expect(createClientByPrv).toHaveBeenCalledTimes(1)
+  })
+
+  it('recreates the client when another signer signs the account with another key', async () => {
+    const { createClientByPrv, signerA, signerB, keyA, keyB, slot } =
+      await setUp()
+
+    await signerA.sign(ActionType.CANCEL_ORDER, cancel, {
+      ...slot,
+      apiKeyPrivateKey: keyA,
+    })
+    const signed = await signerB.sign(ActionType.CANCEL_ORDER, cancel, {
+      ...slot,
+      apiKeyPrivateKey: keyB,
+    })
+
+    expect(createClientByPrv.mock.calls.map((call) => call[0])).toEqual([
+      keyA,
+      keyB,
+    ])
+    expect(JSON.parse(signed.txInfo).ApiKeyIndex).toBe(slot.apiKeyIndex)
+  })
+
+  it('recreates the client when the API key index changes', async () => {
+    const { createClientByPrv, signerA, keyA, slot } = await setUp()
+
+    await signerA.sign(ActionType.CANCEL_ORDER, cancel, {
+      ...slot,
+      apiKeyPrivateKey: keyA,
+    })
+    const signed = await signerA.sign(ActionType.CANCEL_ORDER, cancel, {
+      ...slot,
+      apiKeyIndex: 5,
+      apiKeyPrivateKey: keyA,
+    })
+
+    expect(createClientByPrv.mock.calls.map((call) => call[4])).toEqual([
+      slot.apiKeyIndex,
+      5,
+    ])
+    expect(JSON.parse(signed.txInfo).ApiKeyIndex).toBe(5)
   })
 })
 
@@ -1040,7 +1159,8 @@ describe('LighterSigner — per-instance collateral asset', () => {
     signer: LighterSigner,
     ctx: LighterSignerContext
   ) => {
-    const transfer = await signer.signTransfer(
+    const transfer = await signer.signL1Countersigned(
+      ActionType.TRANSFER,
       {
         to_account: 7,
         usdc_amount: 250_000,
@@ -1048,7 +1168,8 @@ describe('LighterSigner — per-instance collateral asset', () => {
         memo: MEMO_32_BYTES,
         nonce: 2,
       },
-      ctx
+      ctx,
+      L1_SIGNATURE
     )
     const sendAsset = await signer.sign(
       ActionType.SEND_ASSET,
@@ -1070,14 +1191,15 @@ describe('LighterSigner — per-instance collateral asset', () => {
     signer: LighterSigner,
     accountIndex: number
   ): Promise<LighterSignerContext> => ({
-    apiKeyPrivateKey: (await signer.generateAPIKey()).privateKey,
+    apiKeyPrivateKey: (
+      await signer.createApiKey({ accountIndex, apiKeyIndex: 3 }, 0, false)
+    ).privateKey,
     apiKeyIndex: 3,
     accountIndex,
   })
 
   it('signs both TRANSFER paths against the configured collateral index', async () => {
     const signer = new LighterSigner({
-      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: FIXTURE_ASSET_INDEX,
     })
@@ -1091,7 +1213,6 @@ describe('LighterSigner — per-instance collateral asset', () => {
 
   it('signs WITHDRAWAL against the caller selection, not the configured collateral index', async () => {
     const signer = new LighterSigner({
-      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: FIXTURE_ASSET_INDEX,
     })
@@ -1107,7 +1228,6 @@ describe('LighterSigner — per-instance collateral asset', () => {
 
   it('signs the lighter-rh deployment against USDG, its own collateral slot', async () => {
     const signer = new LighterSigner({
-      apiUrl: LIGHTER_RH_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_RH_DEPLOYMENT.signerChainId,
       collateralAssetIndex: LIGHTER_RH_DEPLOYMENT.collateral.assetIndex,
     })
@@ -1122,7 +1242,6 @@ describe('LighterSigner — per-instance collateral asset', () => {
 
   it('signs the mainnet deployment against USDC (3)', async () => {
     const signer = new LighterSigner({
-      apiUrl: LIGHTER_MAINNET_DEPLOYMENT.restUrl,
       signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
       collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
     })

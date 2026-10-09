@@ -25,9 +25,8 @@ import {
 } from '../utils/registeredApiKey.js'
 import type { LighterApiKey, LighterKeyStore } from './LighterKeyStore.js'
 import type {
-  LighterSignedBlob,
+  LighterL1CountersignedAction,
   LighterSigner,
-  LighterSignerContext,
 } from './LighterSigner.js'
 
 /**
@@ -67,13 +66,6 @@ export interface LighterSignActionsDeps {
  * @internal
  */
 const TOKEN_AUTH_MUTATION_KINDS = new Set(['changeAccountTier', 'referralUse'])
-
-/**
- * Lifetime of the per-call auth token issued for a token-authenticated venue
- * mutation. Minutes, not the read endpoints' hours: it authenticates one POST
- * that completes immediately, so it never lingers usable.
- */
-const TOKEN_AUTH_MUTATION_DEADLINE_SECONDS = 5 * 60
 
 /**
  * Window in which one `/apikeys` read stands for the next. 30s keeps a burst
@@ -258,11 +250,10 @@ function clientOrderIndexOf(
 /**
  * REGISTER_API_KEY flow:
  *   1. Look up the user's Lighter accountIndex (Lighter REST).
- *   2. Generate a fresh Lighter API keypair via the WASM signer.
- *   3. Call SignChangePubKey to produce the WASM blob + EIP-191 message.
- *   4. Have the user's L1 Ethereum wallet sign the message.
- *   5. Inject the L1 signature into the ChangePubKey txInfo JSON.
- *   6. Persist the keypair and return the signed blob.
+ *   2. Create a new Lighter API keypair and its ChangePubKey L1 message.
+ *   3. Have the user's L1 Ethereum wallet sign the message.
+ *   4. Sign the ChangePubKey with that L1 signature.
+ *   5. Persist the keypair and return the signed blob.
  *
  * Requires the end-user's wallet in `ctx.userWallet` — the L1 signature is the
  * user's consent to rotate keys.
@@ -301,27 +292,29 @@ async function signRegisterApiKey(
       'REGISTER_API_KEY wasmSignParams is missing `nonce`.'
     )
   }
-  const skipNonce = params.skip_nonce === 1 ? 1 : 0
+  const skipNonce = params.skip_nonce === 1
 
   const accountIndex = await deps.resolveAccountIndex(address)
 
-  const keypair = await deps.signer.generateAPIKey()
-  const changePubKey = await deps.signer.signChangePubKey(
-    keypair.publicKey,
-    keypair.privateKey,
+  const keypair = await deps.signer.createApiKey(
+    { accountIndex, apiKeyIndex },
     nonce,
-    apiKeyIndex,
-    accountIndex,
     skipNonce
   )
 
   const l1Signature = await walletSigner.signMessage({
     account: walletSigner.account,
-    message: changePubKey.messageToSign,
+    message: keypair.messageToSign,
   })
 
-  const txInfoWithL1Sig = deps.signer.embedL1Signature(
-    changePubKey.txInfo,
+  const signedTx = await deps.signer.signChangePubKey(
+    {
+      apiKeyPrivateKey: keypair.privateKey,
+      apiKeyIndex,
+      accountIndex,
+    },
+    nonce,
+    skipNonce,
     l1Signature
   )
 
@@ -341,11 +334,7 @@ async function signRegisterApiKey(
       ...step.wasmSignParams,
       new_public_key: keypair.publicKey,
     },
-    signedTx: {
-      txType: changePubKey.txType,
-      txInfo: txInfoWithL1Sig,
-      txHash: changePubKey.txHash,
-    },
+    signedTx,
   }
 }
 
@@ -354,25 +343,21 @@ async function signRegisterApiKey(
  * the end-user's Ethereum wallet:
  *   1. Guard that the caller supplied `ctx.userWallet`.
  *   2. Load the user's stored API key (no keypair generation).
- *   3. Wasm-sign the blob via `signMethod`, obtaining the EIP-191 L1 message
- *      the wallet must countersign.
+ *   3. Get the EIP-191 L1 message for the action.
  *   4. Have the user's L1 Ethereum wallet sign that message.
- *   5. Inject the L1 signature into the txInfo JSON as `L1Sig`.
+ *   5. Sign the action with that L1 signature.
  *
  * `actionLabel` names the caller's action in the missing-wallet error
- * message. `signMethod` is the caller's wasm-signing call; each caller keeps
- * its own doc comment stating why its flow needs the L1 signature.
+ * message. Each caller keeps its own doc comment stating why its flow needs the
+ * L1 signature.
  */
 async function signL1CountersignedWasmAction(
   deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep,
   ctx: SignActionsContext | undefined,
-  actionLabel: 'APPROVE_INTEGRATOR' | 'TRANSFER',
-  signMethod: (
-    wasmSignParams: Record<string, unknown>,
-    context: LighterSignerContext
-  ) => Promise<LighterSignedBlob & { messageToSign: string }>
+  action: LighterL1CountersignedAction,
+  actionLabel: 'APPROVE_INTEGRATOR' | 'TRANSFER'
 ): Promise<WasmBlobSignedActionStep> {
   const walletSigner = ctx?.userWallet
   if (!walletSigner) {
@@ -384,30 +369,33 @@ async function signL1CountersignedWasmAction(
   }
 
   const apiKey = await requireApiKey(deps, address)
-  const signed = await signMethod(step.wasmSignParams, {
+  const context = {
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
-  })
+  }
+  const messageToSign = await deps.signer.getL1Message(
+    action,
+    step.wasmSignParams,
+    context
+  )
 
   const l1Signature = await walletSigner.signMessage({
     account: walletSigner.account,
-    message: signed.messageToSign,
+    message: messageToSign,
   })
 
-  const txInfoWithL1Sig = deps.signer.embedL1Signature(
-    signed.txInfo,
+  const signedTx = await deps.signer.signL1Countersigned(
+    action,
+    step.wasmSignParams,
+    context,
     l1Signature
   )
 
   return {
     action: step.action,
     wasmSignParams: step.wasmSignParams,
-    signedTx: {
-      txType: signed.txType,
-      txInfo: txInfoWithL1Sig,
-      txHash: signed.txHash,
-    },
+    signedTx,
   }
 }
 
@@ -428,9 +416,8 @@ async function signApproveIntegrator(
     address,
     step,
     ctx,
-    'APPROVE_INTEGRATOR',
-    (wasmSignParams, context) =>
-      deps.signer.signApproveIntegrator(wasmSignParams, context)
+    ActionType.APPROVE_INTEGRATOR,
+    'APPROVE_INTEGRATOR'
   )
 }
 
@@ -451,9 +438,8 @@ async function signTransfer(
     address,
     step,
     ctx,
-    'TRANSFER',
-    (wasmSignParams, context) =>
-      deps.signer.signTransfer(wasmSignParams, context)
+    ActionType.TRANSFER,
+    'TRANSFER'
   )
 }
 
@@ -482,9 +468,7 @@ async function executeTokenAuthMutation(
   step: WasmBlobActionStep
 ): Promise<void> {
   const apiKey = await requireApiKey(deps, address)
-  const deadline =
-    Math.floor(Date.now() / 1000) + TOKEN_AUTH_MUTATION_DEADLINE_SECONDS
-  const authToken = await deps.signer.createAuthToken(deadline, {
+  const authToken = await deps.signer.createAuthToken({
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,

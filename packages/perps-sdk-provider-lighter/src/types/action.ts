@@ -30,7 +30,8 @@ export type LtCreateOrderWasmParams = {
  */
 export type LtCancelOrderWasmParams = {
   market_index: number
-  order_index: number
+  /** An int64 decimal string, or a number while it is a safe integer. */
+  order_index: string | number
 }
 
 /**
@@ -40,7 +41,8 @@ export type LtCancelOrderWasmParams = {
  */
 export type LtModifyOrderWasmParams = {
   market_index: number
-  order_index: number
+  /** An int64 decimal string, or a number while it is a safe integer. */
+  order_index: string | number
   base_amount: number
   price: number
   trigger_price: number
