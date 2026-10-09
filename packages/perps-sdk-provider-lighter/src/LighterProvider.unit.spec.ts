@@ -342,6 +342,7 @@ const TRADES_RESPONSE = {
   trades: [
     {
       trade_id: 7,
+      trade_id_str: '7',
       tx_hash: '0xfeed',
       type: 'trade',
       market_id: 0,
@@ -350,6 +351,10 @@ const TRADES_RESPONSE = {
       usd_amount: '25000',
       ask_id: 11,
       bid_id: 22,
+      ask_id_str: '11',
+      bid_id_str: '22',
+      ask_client_id_str: '0',
+      bid_client_id_str: '0',
       ask_account_id: 99,
       bid_account_id: 42,
       is_maker_ask: true,
@@ -3171,7 +3176,7 @@ describe('LighterProvider — getOrders pagination contract', () => {
     order_index: orderIndex,
     client_order_index: 0,
     order_id: String(orderIndex),
-    client_order_id: String(orderIndex),
+    client_order_id: '0',
     market_index: 0,
     owner_account_index: 42,
     initial_base_amount: '0.1',
@@ -5352,6 +5357,11 @@ describe('LighterProvider — getOrder', () => {
 })
 
 describe('LighterProvider — one-call order reads', () => {
+  // A market 33 order index above 2^53: `JSON.parse` rounds the numeric twin
+  // to ...276, so only the string twin carries the exact id.
+  const UNSAFE_ORDER_ID = '9570149379440277'
+  const UNSAFE_ORDER_ID_PARSED = 9570149379440276
+
   const TWO_MARKETS_RESPONSE = {
     markets: [
       MARKETS_RESPONSE.markets[0],
@@ -5461,8 +5471,8 @@ describe('LighterProvider — one-call order reads', () => {
           code: 0,
           next_cursor: '',
           orders: [
-            makeOrder({ order_index: 900, market_index: 0 }),
-            makeOrder({ order_index: 901, market_index: 1 }),
+            makeOrder({ order_index: 900, order_id: '900', market_index: 0 }),
+            makeOrder({ order_index: 901, order_id: '901', market_index: 1 }),
           ],
         })
       }
@@ -5496,7 +5506,9 @@ describe('LighterProvider — one-call order reads', () => {
         return respond({
           code: 0,
           next_cursor: '',
-          orders: [makeOrder({ order_index: 901, market_index: 1 })],
+          orders: [
+            makeOrder({ order_index: 901, order_id: '901', market_index: 1 }),
+          ],
         })
       }
       return undefined
@@ -5516,7 +5528,12 @@ describe('LighterProvider — one-call order reads', () => {
   it('resolves an active order by client order index through one accountOrders request', async () => {
     overrideFetch((u) =>
       u.includes('/api/v1/accountOrders')
-        ? respond({ code: 200, orders: [makeOrder({ client_order_index: 7 })] })
+        ? respond({
+            code: 200,
+            orders: [
+              makeOrder({ client_order_index: 7, client_order_id: '7' }),
+            ],
+          })
         : undefined
     )
 
@@ -5542,6 +5559,7 @@ describe('LighterProvider — one-call order reads', () => {
             orders: [
               makeOrder({
                 client_order_index: 8,
+                client_order_id: '8',
                 status: 'filled',
                 remaining_base_amount: '0',
                 filled_base_amount: '0.1',
@@ -5572,10 +5590,17 @@ describe('LighterProvider — one-call order reads', () => {
             orders: [
               makeOrder({
                 client_order_index: 7,
+                client_order_id: '7',
                 order_index: 800,
+                order_id: '800',
                 status: 'canceled',
               }),
-              makeOrder({ client_order_index: 7, order_index: 901 }),
+              makeOrder({
+                client_order_index: 7,
+                client_order_id: '7',
+                order_index: 901,
+                order_id: '901',
+              }),
             ],
           })
         : undefined
@@ -5594,7 +5619,12 @@ describe('LighterProvider — one-call order reads', () => {
   it('ignores an accountOrders row whose client order index differs', async () => {
     overrideFetch((u) =>
       u.includes('/api/v1/accountOrders')
-        ? respond({ code: 200, orders: [makeOrder({ client_order_index: 9 })] })
+        ? respond({
+            code: 200,
+            orders: [
+              makeOrder({ client_order_index: 9, client_order_id: '9' }),
+            ],
+          })
         : undefined
     )
 
@@ -5649,6 +5679,54 @@ describe('LighterProvider — one-call order reads', () => {
     expect(requestsTo('/api/v1/accountOrders')).toEqual([])
   })
 
+  it('matches a bare order id above 2^53 on order_id, not the rounded order_index', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountActiveOrders')
+        ? respond({
+            code: 0,
+            next_cursor: '',
+            orders: [
+              makeOrder({
+                order_index: UNSAFE_ORDER_ID_PARSED,
+                order_id: UNSAFE_ORDER_ID,
+              }),
+            ],
+          })
+        : undefined
+    )
+
+    const order = await (await boundProvider()).getOrder({
+      address: ADDRESS,
+      id: UNSAFE_ORDER_ID,
+    })
+
+    expect(order.orderId).toBe(UNSAFE_ORDER_ID)
+    expect(requestsTo('/api/v1/accountInactiveOrders')).toEqual([])
+  })
+
+  it('matches a client order index above 2^53 on client_order_id', async () => {
+    overrideFetch((u) =>
+      u.includes('/api/v1/accountOrders')
+        ? respond({
+            code: 200,
+            orders: [
+              makeOrder({
+                client_order_index: UNSAFE_ORDER_ID_PARSED,
+                client_order_id: UNSAFE_ORDER_ID,
+              }),
+            ],
+          })
+        : undefined
+    )
+
+    const order = await (await boundProvider()).getOrder({
+      address: ADDRESS,
+      id: `${LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX}${UNSAFE_ORDER_ID}`,
+    })
+
+    expect(order.clientOrderId).toBe(UNSAFE_ORDER_ID)
+  })
+
   it('falls back to the inactive orders for an order_index that no longer rests', async () => {
     overrideFetch((u) => {
       if (u.includes('/api/v1/accountActiveOrders')) {
@@ -5693,6 +5771,7 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
   // 50000 → realized PnL (50000 - 40000) × 1 = 10000.
   const REDUCING_TRADE = {
     trade_id: 9,
+    trade_id_str: '9',
     tx_hash: '0xfeed',
     type: 'trade',
     market_id: 0,
@@ -5701,6 +5780,10 @@ describe('LighterProvider — getFills logos and realized PnL', () => {
     usd_amount: '50000',
     ask_id: 7,
     bid_id: 8,
+    ask_id_str: '7',
+    bid_id_str: '8',
+    ask_client_id_str: '0',
+    bid_client_id_str: '0',
     ask_account_id: 42,
     bid_account_id: 0,
     is_maker_ask: false,
@@ -5771,6 +5854,7 @@ describe('LighterProvider — getFills unresolvable market rows', () => {
   const tradeRow = (tradeId: number, marketId: number) => ({
     ...TRADES_RESPONSE.trades[0],
     trade_id: tradeId,
+    trade_id_str: String(tradeId),
     market_id: marketId,
   })
 

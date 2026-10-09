@@ -20,6 +20,9 @@ import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtOrder } from '../types/index.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
+// Lighter sends client index 0 as the string "0" for an order placed without one.
+const NO_CLIENT_ORDER_ID = '0'
+
 const mapOrderType = (type: string): Order['type'] => {
   switch (type.replace(/-/g, '_')) {
     case 'market':
@@ -142,10 +145,10 @@ export const mapOrder = (
       : undefined
   const status = mapOrderStatus(order)
   const base: OrderBase = {
-    orderId: String(order.order_index),
-    ...(order.client_order_index === 0
+    orderId: order.order_id,
+    ...(order.client_order_id === NO_CLIENT_ORDER_ID
       ? {}
-      : { clientOrderId: String(order.client_order_index) }),
+      : { clientOrderId: order.client_order_id }),
     market,
     side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
     status,
@@ -218,12 +221,12 @@ export const mapOrderUpdates = (
       wsLog.droppedRow(
         LIGHTER_PROVIDER_KEY,
         'order',
-        `${raw.order_index}: ${error.message}`
+        `${raw.order_id}: ${error.message}`
       )
       continue
     }
     if (!isActiveOrderStatus(status)) {
-      terminated.push(String(raw.order_index))
+      terminated.push(raw.order_id)
     }
     if (order !== undefined) {
       orders.push(order)

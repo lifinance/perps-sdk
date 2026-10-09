@@ -52,8 +52,14 @@ const PLACEHOLDER_TX_HASH =
 const SETTLED_TX_HASH =
   '3981a9639035409777f73feb18bb96c6c07fa55127863e58f2319691924a59b0e448ab560c1b135d'
 
+// A market 33 order index above 2^53: `JSON.parse` rounds the numeric twin to
+// ...276, so only the `_str` twin carries the exact id.
+const UNSAFE_ORDER_ID = '9570149379440277'
+const UNSAFE_ORDER_ID_PARSED = 9570149379440276
+
 const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   trade_id: 7,
+  trade_id_str: '7',
   tx_hash: '0xabc',
   type: 'trade',
   market_id: 1,
@@ -62,6 +68,10 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
   usd_amount: NOTIONAL,
   ask_id: 100,
   bid_id: 200,
+  ask_id_str: '100',
+  bid_id_str: '200',
+  ask_client_id_str: '0',
+  bid_client_id_str: '0',
   ask_account_id: 0,
   bid_account_id: ACCOUNT_INDEX,
   is_maker_ask: false,
@@ -81,10 +91,17 @@ const baseTrade = (overrides: Partial<LtTrade> = {}): LtTrade => ({
 })
 
 describe('mapFill (Lighter)', () => {
-  it('stringifies trade_id into Fill.id', () => {
+  it('reads Fill.id from trade_id_str, not the rounded trade_id', () => {
     expect(
-      mapValidFill(baseTrade({ trade_id: 7 }), ACCOUNT_INDEX, MARKET).id
-    ).toBe('7')
+      mapValidFill(
+        baseTrade({
+          trade_id: UNSAFE_ORDER_ID_PARSED,
+          trade_id_str: UNSAFE_ORDER_ID,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      ).id
+    ).toBe(UNSAFE_ORDER_ID)
   })
 
   it('carries the resolved market identity onto the fill verbatim', () => {
@@ -444,33 +461,35 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
-  describe('orderId selects bid_id / ask_id by viewer side', () => {
-    it('buyer path: viewer on bid → orderId from bid_id', () => {
+  describe('orderId selects bid_id_str / ask_id_str by viewer side', () => {
+    it('buyer path: viewer on bid → orderId from bid_id_str', () => {
       const fill = mapValidFill(
         baseTrade({
           bid_account_id: ACCOUNT_INDEX,
           ask_account_id: 0,
-          bid_id: 42,
-          ask_id: 99,
+          bid_id: UNSAFE_ORDER_ID_PARSED,
+          bid_id_str: UNSAFE_ORDER_ID,
+          ask_id_str: '99',
         }),
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.orderId).toBe('42')
+      expect(fill.orderId).toBe(UNSAFE_ORDER_ID)
     })
 
-    it('seller path: viewer on ask → orderId from ask_id', () => {
+    it('seller path: viewer on ask → orderId from ask_id_str', () => {
       const fill = mapValidFill(
         baseTrade({
           ask_account_id: ACCOUNT_INDEX,
           bid_account_id: 0,
-          bid_id: 42,
-          ask_id: 77,
+          ask_id: UNSAFE_ORDER_ID_PARSED,
+          ask_id_str: UNSAFE_ORDER_ID,
+          bid_id_str: '42',
         }),
         ACCOUNT_INDEX,
         MARKET
       )
-      expect(fill.orderId).toBe('77')
+      expect(fill.orderId).toBe(UNSAFE_ORDER_ID)
     })
   })
 

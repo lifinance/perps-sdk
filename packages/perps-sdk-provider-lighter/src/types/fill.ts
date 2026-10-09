@@ -16,6 +16,7 @@
  */
 export type LtTrade = {
   trade_id: number
+  trade_id_str: string
   tx_hash: string
   type: string
   market_id: number
@@ -24,6 +25,10 @@ export type LtTrade = {
   usd_amount: string
   ask_id: number
   bid_id: number
+  ask_id_str: string
+  bid_id_str: string
+  ask_client_id_str: string
+  bid_client_id_str: string
   ask_account_id: number
   bid_account_id: number
   is_maker_ask: boolean

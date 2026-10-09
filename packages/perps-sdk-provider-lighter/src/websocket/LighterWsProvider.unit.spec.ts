@@ -12,6 +12,7 @@ import {
 } from '../constants.js'
 import { lighterProvider } from '../LighterProvider.js'
 import type { LtWsUserStatsMessage } from '../types/index.js'
+import { mapFill, mapOrder } from '../utils/index.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
 
 type LighterWsProviderInternals = {
@@ -43,8 +44,8 @@ const marketsFailureResponse = () =>
 const RAW_ORDER = {
   order_index: 1,
   client_order_index: 0,
-  order_id: 'ord1',
-  client_order_id: '',
+  order_id: '1',
+  client_order_id: '0',
   market_index: 0,
   owner_account_index: 42,
   initial_base_amount: '1.0',
@@ -72,6 +73,7 @@ const RAW_ORDER = {
 
 const RAW_TRADE = {
   trade_id: 1,
+  trade_id_str: '1',
   tx_hash: '0xabc',
   type: 'trade',
   market_id: 0,
@@ -80,6 +82,10 @@ const RAW_TRADE = {
   usd_amount: '25000',
   ask_id: 1,
   bid_id: 2,
+  ask_id_str: '1',
+  bid_id_str: '2',
+  ask_client_id_str: '0',
+  bid_client_id_str: '0',
   ask_account_id: 99,
   bid_account_id: 42,
   is_maker_ask: true,
@@ -115,6 +121,10 @@ const RAW_POSITION = {
 
 const TEST_ADDR = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 const ACCOUNT_IDX = 42
+// A market 33 order index above 2^53: `JSON.parse` rounds the numeric twin to
+// ...276, so only the string twin carries the exact id.
+const UNSAFE_ORDER_ID = '9570149379440277'
+const UNSAFE_ORDER_ID_PARSED = 9570149379440276
 const LAST_FUNDING_PAYMENT_TIME = 1704067200000
 const NEXT_FUNDING_PAYMENT_TIME = 1704070800000
 
@@ -508,6 +518,7 @@ describe('LighterWsProvider', () => {
           trades: [
             {
               trade_id: 16164557907,
+              trade_id_str: '16164557907',
               size: '0.1336',
               price: '2181.83',
               is_maker_ask: false,
@@ -815,7 +826,12 @@ describe('LighterWsProvider', () => {
                 remaining_base_amount: '0.4',
                 filled_base_amount: '0.6',
               },
-              { ...RAW_ORDER, order_index: 2, status: 'canceled-expired' },
+              {
+                ...RAW_ORDER,
+                order_index: 2,
+                order_id: '2',
+                status: 'canceled-expired',
+              },
             ],
           },
         })
@@ -845,10 +861,11 @@ describe('LighterWsProvider', () => {
           channel: `account_all_orders:${ACCOUNT_IDX}`,
           orders: {
             '99': [
-              { ...RAW_ORDER, order_index: 3, market_index: 99 },
+              { ...RAW_ORDER, order_index: 3, order_id: '3', market_index: 99 },
               {
                 ...RAW_ORDER,
                 order_index: 4,
+                order_id: '4',
                 market_index: 99,
                 status: 'canceled-expired',
               },
@@ -869,7 +886,12 @@ describe('LighterWsProvider', () => {
       const listener = vi.fn()
       inject(p, `orderUpdates:${TEST_ADDR}`, listener)
 
-      const ethOrder = { ...RAW_ORDER, order_id: 'ord2', market_index: 1 }
+      const ethOrder = {
+        ...RAW_ORDER,
+        order_index: 2,
+        order_id: '2',
+        market_index: 1,
+      }
       ;(p as any).handleMessage(
         JSON.stringify({
           type: 'update/account_all_orders',
@@ -903,6 +925,69 @@ describe('LighterWsProvider', () => {
       expect(event.data).toHaveLength(1)
       expect(event.data[0].id).toBe('1')
       expect(event.data[0].market.baseAsset.logoURI).toBe(BTC_LOGO)
+      p.close()
+    })
+
+    it('emits the exact ids above 2^53 that the REST mappers produce', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const fillListener = vi.fn()
+      const orderListener = vi.fn()
+      inject(p, `fills:${TEST_ADDR}`, fillListener)
+      inject(p, `orderUpdates:${TEST_ADDR}`, orderListener)
+
+      // The wire carries the exact numeric twin; `JSON.parse` rounds it.
+      const toWire = (frame: unknown): string =>
+        JSON.stringify(frame).replaceAll(
+          String(UNSAFE_ORDER_ID_PARSED),
+          UNSAFE_ORDER_ID
+        )
+      const tradeFrame = toWire({
+        type: 'update/account_all_trades',
+        channel: `account_all_trades:${ACCOUNT_IDX}`,
+        trades: {
+          '0': [
+            {
+              ...RAW_TRADE,
+              trade_id: UNSAFE_ORDER_ID_PARSED,
+              trade_id_str: UNSAFE_ORDER_ID,
+              bid_id: UNSAFE_ORDER_ID_PARSED,
+              bid_id_str: UNSAFE_ORDER_ID,
+            },
+          ],
+        },
+      })
+      const orderFrame = toWire({
+        type: 'update/account_all_orders',
+        channel: `account_all_orders:${ACCOUNT_IDX}`,
+        orders: {
+          '0': [
+            {
+              ...RAW_ORDER,
+              order_index: UNSAFE_ORDER_ID_PARSED,
+              order_id: UNSAFE_ORDER_ID,
+              client_order_index: UNSAFE_ORDER_ID_PARSED,
+              client_order_id: UNSAFE_ORDER_ID,
+            },
+          ],
+        },
+      })
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(tradeFrame)
+      internals.handleMessage(orderFrame)
+
+      const [fill] = fillListener.mock.calls[0][0].data
+      expect(fill.id).toBe(UNSAFE_ORDER_ID)
+      expect(fill.orderId).toBe(UNSAFE_ORDER_ID)
+      expect(fill).toEqual(
+        mapFill(JSON.parse(tradeFrame).trades['0'][0], ACCOUNT_IDX, fill.market)
+      )
+      const [order] = orderListener.mock.calls[0][0].data.orders
+      expect(order.orderId).toBe(UNSAFE_ORDER_ID)
+      expect(order.clientOrderId).toBe(UNSAFE_ORDER_ID)
+      expect(order).toEqual(
+        mapOrder(JSON.parse(orderFrame).orders['0'][0], order.market)
+      )
       p.close()
     })
 

@@ -249,7 +249,7 @@ const ACTIVE_ORDERS = {
     {
       order_index: 88,
       client_order_index: 0,
-      order_id: 'lt-88',
+      order_id: '88',
       client_order_id: '0',
       market_index: BTC_MARKET_ID,
       owner_account_index: ACCOUNT_INDEX,
@@ -284,7 +284,7 @@ const ACTIVE_ORDERS = {
     {
       order_index: 89,
       client_order_index: 0,
-      order_id: 'lt-89',
+      order_id: '89',
       client_order_id: '0',
       market_index: BTC_MARKET_ID,
       owner_account_index: ACCOUNT_INDEX,
@@ -323,6 +323,7 @@ const TRADES = {
   trades: [
     {
       trade_id: 7,
+      trade_id_str: '7',
       tx_hash: '0xabc',
       type: 'trade',
       market_id: BTC_MARKET_ID,
@@ -331,6 +332,10 @@ const TRADES = {
       usd_amount: '0.047',
       ask_id: 100,
       bid_id: 200,
+      ask_id_str: '100',
+      bid_id_str: '200',
+      ask_client_id_str: '0',
+      bid_client_id_str: '0',
       ask_account_id: 0,
       bid_account_id: ACCOUNT_INDEX,
       is_maker_ask: false,

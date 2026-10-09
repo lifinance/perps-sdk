@@ -161,8 +161,8 @@ export const mapFill = (
       : tickToFeeAmount(trade.usd_amount, feeTick, integratorFeeTick)
 
   return {
-    id: trade.trade_id.toString(),
-    orderId: String(isBuyer ? trade.bid_id : trade.ask_id),
+    id: trade.trade_id_str,
+    orderId: isBuyer ? trade.bid_id_str : trade.ask_id_str,
     market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
     type: OrderType.LIMIT,

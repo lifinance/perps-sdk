@@ -45,7 +45,7 @@ const MARKET: Market = {
 const order = (overrides: Partial<LtOrder> = {}): LtOrder => ({
   order_index: 88,
   client_order_index: 0,
-  order_id: 'lt-88',
+  order_id: '88',
   client_order_id: '0',
   market_index: 1,
   owner_account_index: 42,
@@ -141,10 +141,16 @@ describe('Lighter getOrders lifecycle reads', () => {
       order(),
       order({
         order_index: 90,
+        order_id: '90',
         filled_base_amount: '0',
         filled_quote_amount: '0',
       }),
-      order({ type: 'twap-sub', order_index: 89, parent_order_id: '88' }),
+      order({
+        type: 'twap-sub',
+        order_index: 89,
+        order_id: '89',
+        parent_order_id: '88',
+      }),
     ])
     const result = await provider.getOrders({ address: ADDRESS, marketId: '1' })
     expect(result.orders).toMatchObject([
@@ -178,8 +184,13 @@ describe('Lighter getOrders lifecycle reads', () => {
       [],
       [
         order({ status: 'filled' }),
-        order({ type: 'limit', order_index: 91, status: 'canceled-expired' }),
-        order({ order_index: 92, status: 'canceled' }),
+        order({
+          type: 'limit',
+          order_index: 91,
+          order_id: '91',
+          status: 'canceled-expired',
+        }),
+        order({ order_index: 92, order_id: '92', status: 'canceled' }),
       ],
       'next-page'
     )
@@ -213,8 +224,11 @@ describe('Lighter getOrders lifecycle reads', () => {
 
   it('combines active and terminal filters without retaining unrequested statuses', async () => {
     const { provider, requests } = await setup(
-      [order(), order({ order_index: 89, filled_base_amount: '0' })],
-      [order({ order_index: 90, status: 'filled' })]
+      [
+        order(),
+        order({ order_index: 89, order_id: '89', filled_base_amount: '0' }),
+      ],
+      [order({ order_index: 90, order_id: '90', status: 'filled' })]
     )
     const result = await provider.getOrders({
       address: ADDRESS,
@@ -231,7 +245,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   it('does not repeat the active snapshot on a mixed history continuation page', async () => {
     const { provider, requests } = await setup(
       [order()],
-      [order({ order_index: 90, status: 'filled' })]
+      [order({ order_index: 90, order_id: '90', status: 'filled' })]
     )
     const result = await provider.getOrders({
       address: ADDRESS,
@@ -287,7 +301,12 @@ describe('Lighter getOrders lifecycle reads', () => {
       [],
       [
         order({ status: 'filled' }),
-        order({ order_index: 91, market_index: 999, status: 'filled' }),
+        order({
+          order_index: 91,
+          order_id: '91',
+          market_index: 999,
+          status: 'filled',
+        }),
       ]
     )
     const result = await provider.getOrders({
@@ -300,7 +319,14 @@ describe('Lighter getOrders lifecycle reads', () => {
   it('keeps a history row whose market is delisted', async () => {
     const { provider } = await setup(
       [],
-      [order({ order_index: 91, market_index: 2, status: 'filled' })],
+      [
+        order({
+          order_index: 91,
+          order_id: '91',
+          market_index: 2,
+          status: 'filled',
+        }),
+      ],
       '',
       [MARKET, { ...MARKET, id: '2', isDelisted: true }]
     )
@@ -324,7 +350,7 @@ describe('Lighter getOrders lifecycle reads', () => {
   it('uses the same order shape for list reads and single-order reads', async () => {
     const { provider } = await setup(
       [],
-      [order({ status: 'filled', client_order_index: 7 })]
+      [order({ status: 'filled', client_order_index: 7, client_order_id: '7' })]
     )
     const params: ProviderGetOrdersParams = {
       address: ADDRESS,
