@@ -105,6 +105,17 @@ export interface SetupOption<T extends ActionType = ActionType> {
 }
 
 /**
+ * A document, such as terms of use or a privacy policy, that the user must
+ * accept before a setup step executes.
+ *
+ * @public
+ */
+export interface SetupAgreement {
+  title: string
+  url: string
+}
+
+/**
  * One `Provider.setup` step. A choice step (`options !== null`) declares no
  * `params`: each option carries its own bound params.
  *
@@ -115,6 +126,12 @@ export interface SetupAction extends ProviderAction {
   options: SetupOption[] | null
   /** A `Provider.actions` entry that undoes the satisfied step, or `null`. */
   revoke: ActionType | null
+  /**
+   * Documents the step asks the user to accept. A UI must show each entry as
+   * a link with its own checkbox, and must execute the step only after the
+   * user accepts all entries.
+   */
+  agreements?: SetupAgreement[]
 }
 
 /**
