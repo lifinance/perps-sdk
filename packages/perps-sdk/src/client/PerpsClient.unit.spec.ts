@@ -2538,8 +2538,27 @@ describe('PerpsClient', () => {
   })
 
   describe('getWithdrawalTypes', () => {
-    const pluginWith = (plugin: Record<string, unknown>): PerpsClient =>
-      new PerpsClient({
+    const USDC: Asset = {
+      providerId: provider,
+      id: '3',
+      displaySymbol: 'USDC',
+      logoURI: '',
+      decimals: 6,
+      l1Decimals: 6,
+      l1Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      minWithdrawalAmount: '1.000000',
+    }
+
+    const pluginWith = (
+      plugin: Record<string, unknown>,
+      assets: Asset[] = [USDC]
+    ): PerpsClient => {
+      server.use(
+        http.get(`${DEFAULT_API_URL}/assets`, () =>
+          HttpResponse.json({ assets })
+        )
+      )
+      return new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [
@@ -2551,8 +2570,75 @@ describe('PerpsClient', () => {
           } as unknown as PerpsProviderPlugin,
         ],
       })
+    }
 
-    it('returns the plugin rows unchanged and passes the address and options', async () => {
+    const standardAndFast = (fastMax: string): WithdrawalSourceTypes[] => [
+      {
+        source: { categoryId: 'perps', asset: { id: '3' } },
+        options: [
+          {
+            type: WithdrawalType.STANDARD,
+            max: '11.009697',
+            withdrawalOptions: { mode: 'standard' },
+          },
+          {
+            type: WithdrawalType.FAST,
+            max: fastMax,
+            withdrawalOptions: { mode: 'fast', toAccountIndex: 7, fee: 3 },
+          },
+        ],
+      },
+    ]
+
+    const typesFor = (
+      rows: WithdrawalSourceTypes[],
+      assets?: Asset[]
+    ): Promise<WithdrawalSourceTypes[] | undefined> =>
+      pluginWith(
+        { getWithdrawalTypes: vi.fn(async () => rows) },
+        assets
+      ).getWithdrawalTypes({ provider, address: userAddress })
+
+    it('removes an option whose max is below the asset minimum', async () => {
+      const rows = standardAndFast('0.134502')
+      await expect(typesFor(rows)).resolves.toEqual([
+        { source: rows[0]?.source, options: [rows[0]?.options[0]] },
+      ])
+    })
+
+    it('keeps every option whose max is at or above the asset minimum', async () => {
+      await expect(typesFor(standardAndFast('25'))).resolves.toEqual(
+        standardAndFast('25')
+      )
+      await expect(typesFor(standardAndFast('1'))).resolves.toEqual(
+        standardAndFast('1')
+      )
+    })
+
+    it('keeps the options when the asset has no minimum', async () => {
+      const { minWithdrawalAmount: _, ...noMinimum } = USDC
+      await expect(
+        typesFor(standardAndFast('0.134502'), [noMinimum])
+      ).resolves.toEqual(standardAndFast('0.134502'))
+    })
+
+    it('keeps the options when the registry does not carry the asset', async () => {
+      await expect(typesFor(standardAndFast('0.134502'), [])).resolves.toEqual(
+        standardAndFast('0.134502')
+      )
+    })
+
+    it('throws when the asset minimum is not a decimal', async () => {
+      await expect(
+        typesFor(standardAndFast('25'), [
+          { ...USDC, minWithdrawalAmount: 'not-a-decimal' },
+        ])
+      ).rejects.toThrow(
+        "Asset '3' field `minWithdrawalAmount` is not a valid decimal."
+      )
+    })
+
+    it('returns the plugin rows and passes the address and options', async () => {
       const rows: WithdrawalSourceTypes[] = [
         {
           source: { categoryId: 'perps', asset: { id: '3' } },
@@ -2573,7 +2659,7 @@ describe('PerpsClient', () => {
           { provider, address: userAddress },
           options
         )
-      ).resolves.toBe(rows)
+      ).resolves.toEqual(rows)
       expect(getWithdrawalTypes).toHaveBeenCalledWith(
         { address: userAddress },
         options

@@ -127,8 +127,9 @@ row's `source`. Lighter implements it: every row offers `STANDARD`, and the
 collateral asset's perps row also offers `FAST` when Lighter's fast-withdraw
 operator accepts the account. The `FAST` `max` is also capped by the venue's
 fast-withdraw limits. Without a Lighter API key, or when a fast-withdraw read
-fails, Lighter offers `STANDARD` only. The client resolves `undefined` for
-Hyperliquid and Ondo.
+fails, Lighter offers `STANDARD` only. The client removes each option whose
+`max` is below the asset's `minWithdrawalAmount`. The client resolves
+`undefined` for Hyperliquid and Ondo.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
