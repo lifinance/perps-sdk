@@ -600,7 +600,8 @@ export interface PerpsProviderPlugin {
    * does no I/O.
    *
    * @returns The estimated liquidation price, or `undefined` when `market`
-   *   lacks the margin metadata the model needs.
+   *   lacks the margin metadata the model needs or `leverage` leaves no
+   *   margin above the maintenance requirement.
    * @throws {PerpsError} `ValidationError` when an input does not match the
    *   decimal pattern or is degenerate, such as a zero leverage.
    */

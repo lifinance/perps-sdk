@@ -178,6 +178,9 @@ export const safeCalculateEffectiveLeverage = createSafeFunction(
  *
  * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
  *   (`'0.01'` = 1%).
+ * @returns The estimate, or `undefined` when `1 / leverage` is at or below
+ *   `maintenanceMarginRate`: the position opens at or past liquidation, so
+ *   the model has no price on the correct side of entry.
  * @throws {PerpsError} `ValidationError` when an input does not match the
  *   decimal pattern, `leverage` is zero, or `maintenanceMarginRate` gives a
  *   zero denominator (`1` for a long, `-1` for a short).
@@ -188,7 +191,7 @@ export function estimateLiquidationPrice(params: {
   leverage: string
   isLong: boolean
   maintenanceMarginRate: string
-}): string {
+}): string | undefined {
   const entryPrice = decimalStringToBig(params.entryPrice)
   const leverage = decimalStringToBig(params.leverage)
   const mmr = decimalStringToBig(params.maintenanceMarginRate)
@@ -203,10 +206,11 @@ export function estimateLiquidationPrice(params: {
       `must not be ${params.isLong ? '1' : '-1'} for this side`
     )
   }
-  const marginAvailable = new DivBig(1)
-    .div(leverage)
-    .minus(mmr)
-    .times(entryPrice)
+  const marginFractionAvailable = new DivBig(1).div(leverage).minus(mmr)
+  if (marginFractionAvailable.lte(0)) {
+    return undefined
+  }
+  const marginAvailable = marginFractionAvailable.times(entryPrice)
   return bigToDecimalString(
     entryPrice.minus(marginAvailable.times(side).div(denominator))
   )
@@ -223,7 +227,8 @@ export const safeEstimateLiquidationPrice = createSafeFunction(
  * `market.maintenanceMarginRate`.
  *
  * @returns The estimate, or `undefined` when the market carries no
- *   `maintenanceMarginRate`.
+ *   `maintenanceMarginRate` or {@link estimateLiquidationPrice} gives
+ *   `undefined`.
  * @throws {PerpsError} `ValidationError` on an input that
  *   {@link estimateLiquidationPrice} rejects.
  * @public
