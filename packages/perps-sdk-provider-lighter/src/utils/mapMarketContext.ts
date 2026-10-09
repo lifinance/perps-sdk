@@ -1,6 +1,7 @@
 import { numberToDecimalString } from '@lifi/perps-sdk'
 import type { MarketContext } from '@lifi/perps-types'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
+import { fundingPercentToFraction } from './fundingRate.js'
 
 const FUNDING_PERIOD_MS = 60 * 60 * 1000
 
@@ -29,11 +30,26 @@ const dailyFigures = (stats: {
     : {}),
 })
 
+const fundingInfo = (
+  stats: LtWsMarketStats
+): Pick<MarketContext, 'funding'> => {
+  const rate = fundingPercentToFraction(stats.current_funding_rate)
+  return rate === undefined
+    ? {}
+    : {
+        funding: {
+          rate,
+          nextFundingTime: stats.funding_timestamp + FUNDING_PERIOD_MS,
+        },
+      }
+}
+
 /**
  * Map a Lighter market-stats record to a {@link MarketContext}: `index_price`
  * is the oracle, `mid_price` the mid. Perp records carry the venue
  * `mark_price`, funding and open interest; spot records have none, so mark
- * falls back to the mid and the perp-only fields stay `undefined`.
+ * falls back to the mid and the perp-only fields stay `undefined`. The venue
+ * funding rate is hourly percent; `funding.rate` is its decimal fraction.
  * @public
  */
 export const mapMarketContext = (
@@ -48,10 +64,7 @@ export const mapMarketContext = (
       oraclePrice: stats.index_price,
       ...dailyFigures(stats),
       openInterest: stats.open_interest,
-      funding: {
-        rate: stats.current_funding_rate,
-        nextFundingTime: stats.funding_timestamp + FUNDING_PERIOD_MS,
-      },
+      ...fundingInfo(stats),
     }
   }
   return {

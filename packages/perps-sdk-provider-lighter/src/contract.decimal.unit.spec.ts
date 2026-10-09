@@ -482,4 +482,8 @@ describe('lighter emits a DecimalString on every typed field', () => {
     expect(context.priceChange24h).toBe('0.0000001')
     expect(context.volume24h).toBe('0.0000005')
   })
+
+  it('spells a sub-micro percent funding rate as a plain-notation fraction', () => {
+    expect(mapMarketContext(SUB_MICRO_STATS).funding?.rate).toBe('0.000000001')
+  })
 })
