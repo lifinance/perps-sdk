@@ -1,6 +1,8 @@
-// The Go runtime installs functions (SignCreateOrder, SignCancelOrder, etc.)
-// onto `globalThis` when `go.run(instance)` starts the main goroutine.
+// The Go runtime installs the `_`-prefixed signer functions onto `globalThis`
+// when `go.run(instance)` starts the main goroutine.
 
+import { PerpsError } from '@lifi/perps-sdk'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { createGoRuntime } from './generated/wasmExecRuntime.js'
 import {
   lighterWasmBinaryUrl,
@@ -8,154 +10,299 @@ import {
 } from './wasmBinaryUrl.js'
 
 /**
- * Function table installed by the Lighter Go WASM runtime. Methods mirror the
- * venue signer ABI and return a result containing either signed transaction
- * fields or an error; positional argument contracts are documented per method.
+ * Pending result of a signer export. lighter-go `web-wasm` returns a function
+ * that starts the work and returns a Promise; an export may also return the
+ * Promise itself.
+ *
+ * @public
+ */
+export type LighterWasmPending<T> =
+  | (() => Promise<T | LighterWasmError>)
+  | Promise<T | LighterWasmError>
+
+/** @public */
+export interface LighterWasmError {
+  error: string
+}
+
+/**
+ * L1 message an Ethereum wallet must sign before the matching `_sign*` call.
+ * `pubKeySuccess` is false when the Go side could not build `body`.
+ *
+ * @public
+ */
+export interface LighterWasmL1Body {
+  body: string
+  pubKeySuccess: boolean
+}
+
+/**
+ * Client created from a seed or a private key. `pk` and `prv` are hex without
+ * a `0x` prefix; `body` is the ChangePubKey L1 message for the creation nonce.
+ *
+ * @public
+ */
+export interface LighterWasmClient extends LighterWasmL1Body {
+  pk: string
+  prv: string
+}
+
+/** @public */
+export interface LighterWasmTx {
+  txHash: string
+  txInfo: string
+}
+
+/** Auth token with a one-hour deadline that the Go side sets. @public */
+export interface LighterWasmAuthToken {
+  token: string
+  deadline: number
+}
+
+/**
+ * A transfer memo: 32 byte values. The Go side ignores a memo that is not a
+ * JS Array, and signs a zero memo instead.
+ *
+ * @public
+ */
+export type LighterWasmMemo = number[]
+
+/**
+ * Function table that lighter-go `web-wasm` installs. The Go side holds one
+ * client per account index, so every export after `_createClient` /
+ * `_createClientByPrv` signs with the latest client for its account. A
+ * non-number where Go reads an integer panics and stops the Go runtime.
+ * Amounts that the Go side parses as text must be decimal integer strings.
  *
  * @public
  */
 export interface LighterWasmExports {
-  GenerateAPIKey: () => {
-    publicKey?: string
-    privateKey?: string
-    error?: string
-  }
-  CreateClient: (
-    url: string,
-    privateKey: string,
+  _createClient: (
+    seed: string,
     chainId: number,
-    apiKeyIndex: number,
-    accountIndex: number
-  ) => { error?: string }
-  /**
-   * Returns `{authToken}` on success — note the field name is `authToken`,
-   * NOT `token`. Reading the wrong field silently fails (Go sets nothing
-   * else on the result), which is why early code paths returned undefined
-   * tokens with no error.
-   */
-  CreateAuthToken: (
-    deadline: number,
-    apiKeyIndex: number,
-    accountIndex: number
-  ) => { authToken?: string; error?: string }
-  /**
-   * Signature mirrors lighter-python's `signer.SignChangePubKey(...)` call —
-   * 5 positional args including `skipNonce` (use 0 to embed our supplied
-   * nonce; 1 to leave it out for server-fill scenarios). Earlier versions
-   * here had only 4 args, which silently shifted all arguments by one and
-   * produced txInfo with garbage AccountIndex / ApiKeyIndex fields →
-   * Lighter rejected with code 20001 "invalid param".
-   */
-  SignChangePubKey: (
-    pubKeyHex: string,
-    skipNonce: number,
+    accountIndex: number,
     nonce: number,
     apiKeyIndex: number,
-    accountIndex: number
-  ) => SignResult & { messageToSign?: string }
-  /**
-   * Go WASM exports take positional primitives, so TS cannot type the
-   * arguments — `WASM_FUNCTION_NAMES` only validates that each function
-   * *exists* at load time, never its arity or order. A `.wasm` bump that
-   * shifts or adds an argument therefore compiles, passes the existence
-   * check, and only fails at runtime (Lighter code 20001 "invalid param").
-   * The expected positional contract below is the authority; it MUST stay in
-   * sync with the call site in `LighterSigner.dispatch`. All sign exports end
-   * with `(nonce, apiKeyIndex, accountIndex)`.
-   *
-   * 19 args: marketIndex, clientOrderIndex, baseAmount, price, isAsk,
-   * orderType, timeInForce, reduceOnly, triggerPrice, orderExpiry,
-   * integratorAccountIndex, integratorTakerFee, integratorMakerFee,
-   * selfTradeBehaviorMode, selfTradeEqualityMode, skipNonce, then the trailing
-   * three.
-   */
-  SignCreateOrder: (...args: unknown[]) => SignResult
-  /** 6 args: marketIndex, orderIndex, skipNonce, then the trailing three. */
-  SignCancelOrder: (...args: unknown[]) => SignResult
-  /**
-   * 7 args: timeInForce, time, cancelAllMarketIndex, skipNonce, then the
-   * trailing three.
-   */
-  SignCancelAllOrders: (...args: unknown[]) => SignResult
-  /**
-   * 11 args: toAccountIndex, assetIndex, fromRouteType, toRouteType, amount,
-   * usdcFee, memo, skipNonce, then the trailing three. `memo` is copied into a
-   * Go `[32]byte`, so its UTF-8 byte length must be exactly 32 or Go rejects it
-   * before signing. `messageToSign` is the EIP-191 `Transfer` L1 body that
-   * binds the destination account and the amount to the owner's Ethereum
-   * wallet; a cross-account transfer needs the resulting `L1Sig`, a
-   * same-account route move does not.
-   */
-  SignTransfer: (...args: unknown[]) => SignResult & { messageToSign?: string }
-  /** 7 args: assetIndex, routeType, amount, skipNonce, then the trailing three. */
-  SignWithdraw: (...args: unknown[]) => SignResult
-  /**
-   * 7 args: marketIndex, fraction, marginMode, skipNonce, then the trailing
-   * three.
-   */
-  SignUpdateLeverage: (...args: unknown[]) => SignResult
-  /**
-   * 14 args: marketIndex, orderIndex, baseAmount, price, triggerPrice,
-   * integratorAccountIndex, integratorTakerFee, integratorMakerFee,
-   * selfTradeBehaviorMode, selfTradeEqualityMode, skipNonce, then the trailing
-   * three.
-   */
-  SignModifyOrder: (...args: unknown[]) => SignResult
-  /**
-   * 7 args: marketIndex, usdcAmount, direction, skipNonce, then the trailing
-   * three.
-   */
-  SignUpdateMargin: (...args: unknown[]) => SignResult
-  /**
-   * 10 args: integratorAccountIndex, maxPerpsTakerFee, maxPerpsMakerFee,
-   * maxSpotTakerFee, maxSpotMakerFee, approvalExpiry, skipNonce, then the
-   * trailing three. Fees are uint32 ppm of `FeeTick` (1_000_000); a non-nil
-   * fee requires a non-nil integrator index. `messageToSign` is the EIP-191
-   * `L2ApproveIntegrator` L1 body the user's wallet must countersign — the
-   * venue rejects the tx without the resulting `L1Sig`.
-   */
-  SignApproveIntegrator: (
-    ...args: unknown[]
-  ) => SignResult & { messageToSign?: string }
-  /**
-   * 5 args: accountTradingMode (0 = Classic/Simple, 1 = Unified), skipNonce,
-   * then the trailing three. `accountTradingMode` is validated to {0, 1} by
-   * lighter-go before signing.
-   */
-  SignUpdateAccountConfig: (...args: unknown[]) => SignResult
-  /**
-   * 6 args: assetIndex, assetMarginMode (0 = MarginDisabled, 1 = MarginEnabled),
-   * skipNonce, then the trailing three. Keyed per spot asset, not per market —
-   * signs `L2UpdateAccountAssetConfigTx` (tx type 42).
-   */
-  SignUpdateAccountAssetConfig: (...args: unknown[]) => SignResult
-}
-
-/** @internal */
-export interface SignResult {
-  txType?: number
-  txInfo?: string
-  txHash?: string
-  error?: string
+    skipNonce: boolean
+  ) => LighterWasmPending<LighterWasmClient>
+  _createClientByPrv: (
+    privateKey: string,
+    chainId: number,
+    accountIndex: number,
+    nonce: number,
+    apiKeyIndex: number,
+    skipNonce: boolean
+  ) => LighterWasmPending<LighterWasmClient>
+  _createAuthToken: (
+    accountIndex: number,
+    apiKeyIndex: number
+  ) => LighterWasmPending<LighterWasmAuthToken>
+  _getChangePubKeyTransaction: (
+    accountIndex: number,
+    nonce: number,
+    apiKeyIndex: number
+  ) => LighterWasmPending<LighterWasmL1Body>
+  _signChangePubKey: (
+    accountIndex: number,
+    l1Signature: string,
+    nonce: number,
+    apiKeyIndex: number
+  ) => LighterWasmPending<LighterWasmTx>
+  /** `orderExpiry` -1 means 28 days from the Go clock. A nil (0) integrator value leaves that attribute unset. */
+  _signCreateOrder: (
+    accountIndex: number,
+    marketIndex: number,
+    clientOrderIndex: number,
+    baseAmount: string,
+    price: string,
+    isAsk: number,
+    orderType: number,
+    timeInForce: number,
+    reduceOnly: number,
+    triggerPrice: string,
+    orderExpiry: number,
+    nonce: number,
+    integratorAccountIndex: number,
+    integratorTakerFee: number,
+    integratorMakerFee: number
+  ) => LighterWasmPending<LighterWasmTx>
+  _signCancelOrder: (
+    accountIndex: number,
+    marketIndex: number,
+    orderIndex: string,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  /** An omitted `cancelMarketIndex`, or 255, cancels on every market. */
+  _signCancelAllOrders: (
+    accountIndex: number,
+    timeInForce: number,
+    time: number,
+    nonce: number,
+    cancelMarketIndex?: number
+  ) => LighterWasmPending<LighterWasmTx>
+  _signModifyOrder: (
+    accountIndex: number,
+    marketIndex: number,
+    orderIndex: string,
+    baseAmount: number,
+    price: number,
+    triggerPrice: number,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  _getTransferTransaction: (
+    accountIndex: number,
+    nonce: number,
+    apiKeyIndex: number,
+    toAccountIndex: number,
+    assetIndex: number,
+    fromRouteType: number,
+    toRouteType: number,
+    amount: number,
+    usdcFee: number,
+    memo: LighterWasmMemo
+  ) => LighterWasmPending<LighterWasmL1Body>
+  /** An empty `l1Signature` leaves `L1Sig` empty. */
+  _signTransfer: (
+    accountIndex: number,
+    l1Signature: string,
+    nonce: number,
+    apiKeyIndex: number,
+    toAccountIndex: number,
+    assetIndex: number,
+    fromRouteType: number,
+    toRouteType: number,
+    amount: number,
+    usdcFee: number,
+    memo: LighterWasmMemo
+  ) => LighterWasmPending<LighterWasmTx>
+  _signWithdraw: (
+    accountIndex: number,
+    assetIndex: number,
+    routeType: number,
+    amount: string,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  _signUpdateLeverage: (
+    accountIndex: number,
+    marketIndex: number,
+    fraction: number,
+    marginMode: number,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  _signUpdateMargin: (
+    accountIndex: number,
+    marketIndex: number,
+    usdcAmount: number,
+    direction: number,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  /** Fees are uint32 ppm of `FeeTick` (1_000_000). */
+  _getApproveIntegratorTransaction: (
+    accountIndex: number,
+    nonce: number,
+    apiKeyIndex: number,
+    integratorAccountIndex: number,
+    maxPerpsTakerFee: number,
+    maxPerpsMakerFee: number,
+    maxSpotTakerFee: number,
+    maxSpotMakerFee: number,
+    approvalExpiry: number
+  ) => LighterWasmPending<LighterWasmL1Body>
+  /** An empty `l1Signature` leaves `L1Sig` empty. */
+  _signApproveIntegrator: (
+    accountIndex: number,
+    l1Signature: string,
+    nonce: number,
+    apiKeyIndex: number,
+    integratorAccountIndex: number,
+    maxPerpsTakerFee: number,
+    maxPerpsMakerFee: number,
+    maxSpotTakerFee: number,
+    maxSpotMakerFee: number,
+    approvalExpiry: number
+  ) => LighterWasmPending<LighterWasmTx>
+  /** `accountTradingMode`: 0 = Classic/Simple, 1 = Unified. */
+  _signUpdateAccountConfig: (
+    accountIndex: number,
+    accountTradingMode: number,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
+  /** `assetMarginMode`: 0 = MarginDisabled, 1 = MarginEnabled. */
+  _signUpdateAccountAssetConfig: (
+    accountIndex: number,
+    assetIndex: number,
+    assetMarginMode: number,
+    nonce: number
+  ) => LighterWasmPending<LighterWasmTx>
 }
 
 const WASM_FUNCTION_NAMES = [
-  'GenerateAPIKey',
-  'CreateClient',
-  'CreateAuthToken',
-  'SignChangePubKey',
-  'SignCreateOrder',
-  'SignCancelOrder',
-  'SignCancelAllOrders',
-  'SignTransfer',
-  'SignWithdraw',
-  'SignUpdateLeverage',
-  'SignModifyOrder',
-  'SignUpdateMargin',
-  'SignApproveIntegrator',
-  'SignUpdateAccountConfig',
-  'SignUpdateAccountAssetConfig',
+  '_createClientByPrv',
+  '_createClient',
+  '_createAuthToken',
+  '_getChangePubKeyTransaction',
+  '_signChangePubKey',
+  '_signCreateOrder',
+  '_signCancelOrder',
+  '_signCancelAllOrders',
+  '_signModifyOrder',
+  '_getTransferTransaction',
+  '_signTransfer',
+  '_signWithdraw',
+  '_signUpdateLeverage',
+  '_signUpdateMargin',
+  '_getApproveIntegratorTransaction',
+  '_signApproveIntegrator',
+  '_signUpdateAccountConfig',
+  '_signUpdateAccountAssetConfig',
+] as const satisfies readonly (keyof LighterWasmExports)[]
+
+// Installed by the binary but never called. They are removed from globalThis
+// with the used exports, because each one signs with the account's API key.
+const UNUSED_WASM_FUNCTION_NAMES = [
+  '_signRevokePubKey',
+  '_getRevokePubKeyTransaction',
+  '_signCreateSubAccount',
+  '_signCreatePublicPool',
+  '_signUpdatePublicPool',
+  '_signMintShares',
+  '_signBurnShares',
+  '_signCreateGroupedOrders',
+  '_getAirdropAllocationMessage',
+  '_signStakeAssets',
+  '_signUnstakeAssets',
 ] as const
+
+/**
+ * Call one signer export and wait for its result. A `{error}` result becomes a
+ * {@link PerpsError} with code `SignatureInvalid`.
+ *
+ * @internal
+ */
+export async function callLighterWasm<T>(
+  label: string,
+  pending: LighterWasmPending<T>
+): Promise<T> {
+  const result = await (typeof pending === 'function' ? pending() : pending)
+  if (isWasmError(result)) {
+    throw new PerpsError(
+      PerpsErrorCode.SignatureInvalid,
+      `Lighter ${label} failed: ${result.error}`
+    )
+  }
+  return result
+}
+
+function isWasmError<T>(
+  result: T | LighterWasmError
+): result is LighterWasmError {
+  return (
+    typeof result === 'object' &&
+    result !== null &&
+    'error' in result &&
+    typeof result.error === 'string'
+  )
+}
 
 let cachedExports: Promise<LighterWasmExports> | undefined
 
@@ -302,6 +449,9 @@ async function loadWasmUncached(): Promise<LighterWasmExports> {
       )
     }
     ;(exports as Record<string, unknown>)[name] = fn
+    delete globals[name]
+  }
+  for (const name of UNUSED_WASM_FUNCTION_NAMES) {
     delete globals[name]
   }
 

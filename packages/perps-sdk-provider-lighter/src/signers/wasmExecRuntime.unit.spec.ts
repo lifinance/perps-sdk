@@ -29,8 +29,8 @@ describe('packaged WASM binary asset', () => {
 
   it('points at the installed binary on Node', () => {
     const bytes = readFileSync(lighterWasmBinaryUrl)
-    // The Go signer binary is ~12 MB; a truncated or wrong file is not.
-    expect(bytes.byteLength).toBeGreaterThan(10_000_000)
+    // The Go signer binary is ~6.8 MB; a truncated or wrong file is not.
+    expect(bytes.byteLength).toBeGreaterThan(5_000_000)
     expect(bytes.subarray(0, 4).toString('binary')).toBe('\0asm')
   })
 

@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 38.0.0
+
+### Major Changes
+
+- [#617](https://github.com/lifinance/perps-sdk/pull/617) [`47b7357`](https://github.com/lifinance/perps-sdk/commit/47b7357b3f963d72bbf87ef1c96660f9f1d071b9) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter signer now uses the lighter-go `web-wasm/` build. Cancel and modify orders sign an `order_index` above 2^53 exactly: `order_index` accepts an int64 decimal string or a safe-integer number.
+
+  Breaking changes:
+
+  - `LighterWasmExports` now types the `web-wasm/` exports. Each export returns a result or an `{ error }` object, or a Promise of one.
+  - The `tokenLifetimeSeconds` option of `createLighterProvider` is removed. The WASM signer sets the standard token deadline to one hour.
+  - A modify order no longer signs the integrator fee fields, because the `web-wasm/` modify export does not accept them.
+  - The `wasm/lighter-signer.wasm` asset is approximately 7.5 MB. On start, the Go runtime writes one "Webassembly Started" line to the console.
+
 ## 37.0.1
 
 ### Patch Changes

@@ -5,6 +5,7 @@ import type {
   ActionParamsMap,
   ActionResult,
   ActionStep,
+  Asset,
   AvailableToTrade,
   CreateActionResponse,
   DecimalString,
@@ -231,6 +232,25 @@ function isNonNegativeDecimal(value: string): boolean {
     )
   } catch {
     return false
+  }
+}
+
+/** @throws {PerpsError} When `asset.minWithdrawalAmount` is not a decimal. */
+function minWithdrawalAmountOf(asset: Asset): DecimalString | undefined {
+  if (asset.minWithdrawalAmount === undefined) {
+    return undefined
+  }
+  try {
+    return unknownToDecimalString(
+      asset.minWithdrawalAmount,
+      'minWithdrawalAmount',
+      'perps-sdk'
+    )
+  } catch {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Asset '${asset.id}' field \`minWithdrawalAmount\` is not a valid decimal.`
+    )
   }
 }
 
@@ -886,24 +906,12 @@ export class PerpsClient {
       if (asset === undefined) {
         return []
       }
-      const minimum = asset.minWithdrawalAmount
-      if (minimum !== undefined) {
-        let floor: string
-        try {
-          floor = unknownToDecimalString(
-            minimum,
-            'minWithdrawalAmount',
-            'perps-sdk'
-          )
-        } catch {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            `Asset '${asset.id}' field \`minWithdrawalAmount\` is not a valid decimal.`
-          )
-        }
-        if (isDecimalStringGreaterThan(floor, row.available)) {
-          return []
-        }
+      const minimum = minWithdrawalAmountOf(asset)
+      if (
+        minimum !== undefined &&
+        isDecimalStringGreaterThan(minimum, row.available)
+      ) {
+        return []
       }
       if (row.withdrawalFee === undefined) {
         return [
@@ -939,12 +947,16 @@ export class PerpsClient {
   /**
    * The withdrawal types `params.address` can choose per holding at
    * `params.provider`, each with its cap and the `withdrawalOptions` to pass
-   * unchanged in `WithdrawalParams`.
+   * unchanged in `WithdrawalParams`. Every option whose `max` is below the
+   * source asset's core `/assets` `minWithdrawalAmount` is removed, since no
+   * amount can satisfy both limits; a source asset the provider's registry
+   * does not carry keeps its options.
    *
    * @returns `undefined` when the registered plugin declares no withdrawal
    *   types read.
-   * @throws {PerpsError} When the provider plugin is not registered, or when
-   *   the plugin read fails.
+   * @throws {PerpsError} When the provider plugin is not registered, when
+   *   either the plugin read or the asset sync fails, or when a source asset's
+   *   `minWithdrawalAmount` is not a decimal.
    * @public
    */
   async getWithdrawalTypes(
@@ -952,7 +964,30 @@ export class PerpsClient {
     options?: SDKRequestOptions
   ): Promise<WithdrawalSourceTypes[] | undefined> {
     const plugin = this.requireProvider(params.provider)
-    return plugin.getWithdrawalTypes?.({ address: params.address }, options)
+    const sources = await plugin.getWithdrawalTypes?.(
+      { address: params.address },
+      options
+    )
+    if (sources === undefined) {
+      return undefined
+    }
+
+    const registry = getAssetRegistry(this.sdkClient, params.provider)
+    await registry.sync()
+    return sources.map((row) => {
+      const asset = registry.get(row.source.asset.id)
+      const minimum =
+        asset === undefined ? undefined : minWithdrawalAmountOf(asset)
+      if (minimum === undefined) {
+        return row
+      }
+      return {
+        ...row,
+        options: row.options.filter(
+          (option) => !isDecimalStringGreaterThan(minimum, option.max)
+        ),
+      }
+    })
   }
 
   /**

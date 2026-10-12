@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 25.0.2
+
+### Patch Changes
+
+- [#619](https://github.com/lifinance/perps-sdk/pull/619) [`3530448`](https://github.com/lifinance/perps-sdk/commit/35304489534aa84fdd1e15074b845a27f1a030cb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getWithdrawalTypes` removes every withdrawal type option whose `max` is below the source asset's `minWithdrawalAmount`, so Lighter no longer offers a Fast withdrawal that no amount can satisfy.
+
 ## 25.0.1
 
 ### Patch Changes

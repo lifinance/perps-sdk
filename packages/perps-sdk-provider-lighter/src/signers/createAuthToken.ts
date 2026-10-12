@@ -2,13 +2,11 @@ import type { LighterApiKey } from './LighterKeyStore.js'
 import type { LighterReadOnlyToken } from './LighterReadOnlyTokenManager.js'
 import type { LighterSigner } from './LighterSigner.js'
 
-const DEFAULT_LIFETIME_SECONDS = 60 * 60
 const DEFAULT_THRESHOLD_SECONDS = 30 * 86_400
 
 /**
  * Inputs for creating a standard Lighter auth token. The signer and API-key
- * fields identify the registered Lighter account; `lifetimeSeconds` is capped
- * by Lighter's token policy and defaults to one hour.
+ * fields identify the registered Lighter account.
  *
  * @public
  */
@@ -18,19 +16,13 @@ export interface CreateAuthTokenInputs {
     LighterApiKey,
     'apiKeyPrivateKey' | 'apiKeyIndex' | 'accountIndex'
   >
-  /**
-   * Token lifetime in seconds. Lighter caps standard tokens at 8 hours.
-   * Defaults to 1 hour, matching the previous `PerpsClient` behaviour.
-   */
-  lifetimeSeconds?: number
-  /** Optional clock injection for deterministic token-expiry tests. */
-  now?: () => number
 }
 
 /**
- * Create a fresh Lighter standard auth token via the WASM signer. Returns the
- * opaque bearer string Lighter will accept on its authenticated read
- * endpoints (`getOrders`, `getOrder`, `getActivity`, etc.).
+ * Create a fresh Lighter standard auth token via the WASM signer, valid for one
+ * hour from the signer's clock. Returns the opaque bearer string Lighter will
+ * accept on its authenticated read endpoints (`getOrders`, `getOrder`,
+ * `getActivity`, etc.).
  *
  * This utility carries no SDK-wide coupling — pass an explicit `signer` +
  * `apiKey` and consume the returned bearer however the caller likes.
@@ -40,10 +32,7 @@ export async function createAuthToken(
   inputs: CreateAuthTokenInputs
 ): Promise<string> {
   const { signer, apiKey } = inputs
-  const lifetime = inputs.lifetimeSeconds ?? DEFAULT_LIFETIME_SECONDS
-  const now = inputs.now ?? (() => Date.now())
-  const deadline = Math.floor(now() / 1000) + lifetime
-  return signer.createAuthToken(deadline, {
+  return signer.createAuthToken({
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
