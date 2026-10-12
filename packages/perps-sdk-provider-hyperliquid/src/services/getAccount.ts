@@ -1,5 +1,7 @@
 import {
+  type AssetRegistry,
   calculateTransferable,
+  getAssetRegistry,
   getMarketRegistry,
   getMarketsContext,
   isDecimalStringGreaterThan,
@@ -68,7 +70,8 @@ const buildBalances = (
   stateByDex: Map<string, HlClearinghouseState>,
   quoteAssetIds: ReadonlySet<string>,
   priceById: ReadonlyMap<string, DecimalString>,
-  quoteAssetByCategory: Map<string, Asset>
+  quoteAssetByCategory: Map<string, Asset>,
+  assetRegistry: AssetRegistry
 ): BalancePartition => {
   const { balances, collateralBalances } = partitionSpotBalances(
     spotState.balances
@@ -85,7 +88,11 @@ const buildBalances = (
           PROVIDER_KEY
         )
         return {
-          ...spotBalance(spotAssetFromToken(b), total, priceById),
+          ...spotBalance(
+            spotAssetFromToken(b, assetRegistry.get(String(b.token))),
+            total,
+            priceById
+          ),
           transferable: calculateTransferable(
             subtractDecimalString(total, hold),
             total
@@ -168,6 +175,7 @@ export const getAccount = async (
   const quoteAssetByCategory = new Map(
     markets.map((m) => [m.categoryId, m.quoteAsset])
   )
+  const assetRegistry = getAssetRegistry(client, PROVIDER_KEY)
 
   const [
     feesResult,
@@ -214,6 +222,7 @@ export const getAccount = async (
       )
     ),
     getMarketsContext(client, { provider: PROVIDER_KEY }, options),
+    assetRegistry.sync(),
   ])
 
   const priceById = spotPriceById(
@@ -271,7 +280,8 @@ export const getAccount = async (
     stateByDex,
     quoteAssetIds,
     priceById,
-    quoteAssetByCategory
+    quoteAssetByCategory,
+    assetRegistry
   )
 
   const marginUsed = safeAddDecimalStrings(

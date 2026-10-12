@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 25.0.1
+
+### Patch Changes
+
+- [#612](https://github.com/lifinance/perps-sdk/pull/612) [`a125469`](https://github.com/lifinance/perps-sdk/commit/a1254692437375ec805c80b19708e68e7bfbf07b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `estimateLiquidationPrice`, `estimateLiquidationPriceAtMarketRate` and the Hyperliquid `calculateLiquidationPrice` return `undefined` when `1 / leverage` is at or below the maintenance margin rate, instead of a liquidation price on the wrong side of entry.
+
 ## 25.0.0
 
 ### Major Changes

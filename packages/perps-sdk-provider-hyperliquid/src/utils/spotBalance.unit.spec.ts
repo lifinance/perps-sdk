@@ -36,6 +36,43 @@ describe('spotAssetFromToken', () => {
       'https://app.hyperliquid.xyz/coins/UBTC_spot.svg'
     )
   })
+  it('copies only decimals from the registry asset', () => {
+    const registered: Asset = {
+      providerId: 'hyperliquid',
+      id: '0',
+      displaySymbol: 'USDC (registry)',
+      logoURI: 'https://assets.example/usdc.svg',
+      displayName: 'USD Coin',
+      decimals: 8,
+    }
+    expect(spotAssetFromToken(balance('USDC', 0), registered)).toEqual({
+      providerId: 'hyperliquid',
+      id: '0',
+      displaySymbol: 'USDC',
+      logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+      decimals: 8,
+    })
+  })
+
+  it.each([
+    ['no registry asset', undefined],
+    [
+      'a registry asset without decimals',
+      {
+        providerId: 'hyperliquid',
+        id: '0',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+    ],
+  ])('omits decimals for %s', (_, registered) => {
+    expect(spotAssetFromToken(balance('USDC', 0), registered)).toStrictEqual({
+      providerId: 'hyperliquid',
+      id: '0',
+      displaySymbol: 'USDC',
+      logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+    })
+  })
 })
 
 describe('spotBalance', () => {
