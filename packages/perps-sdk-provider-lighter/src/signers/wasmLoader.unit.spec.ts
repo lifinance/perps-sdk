@@ -1,25 +1,55 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { LighterWasmExports } from './wasmLoader.js'
+import { callLighterWasm, type LighterWasmExports } from './wasmLoader.js'
 
 const WASM_FUNCTION_NAMES = [
-  'GenerateAPIKey',
-  'CreateClient',
-  'CreateAuthToken',
-  'SignChangePubKey',
-  'SignCreateOrder',
-  'SignCancelOrder',
-  'SignCancelAllOrders',
-  'SignTransfer',
-  'SignWithdraw',
-  'SignUpdateLeverage',
-  'SignModifyOrder',
-  'SignUpdateMargin',
-  'SignApproveIntegrator',
-  'SignUpdateAccountConfig',
-  'SignUpdateAccountAssetConfig',
+  '_createClientByPrv',
+  '_createClient',
+  '_createAuthToken',
+  '_getChangePubKeyTransaction',
+  '_signChangePubKey',
+  '_signCreateOrder',
+  '_signCancelOrder',
+  '_signCancelAllOrders',
+  '_signModifyOrder',
+  '_getTransferTransaction',
+  '_signTransfer',
+  '_signWithdraw',
+  '_signUpdateLeverage',
+  '_signUpdateMargin',
+  '_getApproveIntegratorTransaction',
+  '_signApproveIntegrator',
+  '_signUpdateAccountConfig',
+  '_signUpdateAccountAssetConfig',
 ] as const
+
+const UNUSED_WASM_FUNCTION_NAMES = [
+  '_signRevokePubKey',
+  '_getRevokePubKeyTransaction',
+  '_signCreateSubAccount',
+  '_signCreatePublicPool',
+  '_signUpdatePublicPool',
+  '_signMintShares',
+  '_signBurnShares',
+  '_signCreateGroupedOrders',
+  '_getAirdropAllocationMessage',
+  '_signStakeAssets',
+  '_signUnstakeAssets',
+] as const
+
+const SEED = `0x${'11'.repeat(32)}`
+
+// Creates a client from a fixed seed and signs an auth token with it, so the
+// call reaches Go's signer and its crypto.getRandomValues use.
+const signAuthTokenThroughExports = async (exports: LighterWasmExports) => {
+  await callLighterWasm(
+    'createClient',
+    exports._createClient(SEED, 304, 7, 0, 3, false)
+  )
+  return callLighterWasm('createAuthToken', exports._createAuthToken(7, 3))
+}
 
 const STUB_BINARY_URL = 'http://stub.invalid/lighter-signer.wasm'
 
@@ -95,7 +125,10 @@ describe('loadLighterWasm', () => {
     vi.resetModules()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    for (const name of WASM_FUNCTION_NAMES) {
+    for (const name of [
+      ...WASM_FUNCTION_NAMES,
+      ...UNUSED_WASM_FUNCTION_NAMES,
+    ]) {
       delete (globalThis as Record<string, unknown>)[name]
     }
   })
@@ -135,6 +168,19 @@ describe('loadLighterWasm', () => {
     }
   })
 
+  it('revokes the unused signer globals that the binary installs', async () => {
+    const { loadLighterWasm } = await importLoaderWithFakes([
+      ...WASM_FUNCTION_NAMES,
+      ...UNUSED_WASM_FUNCTION_NAMES,
+    ])
+    const exports = await loadLighterWasm()
+
+    for (const name of UNUSED_WASM_FUNCTION_NAMES) {
+      expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
+      expect(name in exports).toBe(false)
+    }
+  })
+
   it('memoizes — repeated calls resolve to the identical exports object', async () => {
     const { loadLighterWasm } = await importLoaderWithFakes()
     const first = await loadLighterWasm()
@@ -170,12 +216,12 @@ describe('loadLighterWasm', () => {
 
   it('throws a descriptive error when an expected export is missing', async () => {
     const missingCreateClient = WASM_FUNCTION_NAMES.filter(
-      (n) => n !== 'CreateClient'
+      (n) => n !== '_createClient'
     )
     const { loadLighterWasm } = await importLoaderWithFakes(missingCreateClient)
 
     await expect(loadLighterWasm()).rejects.toThrow(
-      /Lighter WASM did not export expected function: CreateClient/
+      /Lighter WASM did not export expected function: _createClient/
     )
   })
 
@@ -198,7 +244,7 @@ describe('loadLighterWasm', () => {
 
     const exports = await loadLighterWasm()
 
-    expect(typeof exports.GenerateAPIKey).toBe('function')
+    expect(typeof exports._createClient).toBe('function')
     expect(requested).toEqual([STUB_BINARY_URL, RECOVERED_BINARY_URL])
   })
 
@@ -291,7 +337,7 @@ describe('loadLighterWasm', () => {
     )
     const exports = await loadLighterWasm()
 
-    expect(typeof exports.GenerateAPIKey).toBe('function')
+    expect(typeof exports._createClient).toBe('function')
     expect(attempts).toBe(2)
   })
 
@@ -332,7 +378,7 @@ describe('loadLighterWasm', () => {
 
     const exports = await loadLighterWasm()
 
-    expect(typeof exports.GenerateAPIKey).toBe('function')
+    expect(typeof exports._createClient).toBe('function')
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
@@ -388,10 +434,9 @@ describe('loadLighterWasm — packaged Go runtime', () => {
     const { loadLighterWasm } = await import('../index.js')
     vi.stubGlobal('crypto', crypto)
     const exports = await loadLighterWasm()
-    const key = exports.GenerateAPIKey()
+    const authToken = await signAuthTokenThroughExports(exports)
 
-    expect(key.error).toBeUndefined()
-    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
+    expect(authToken.token).toMatch(/^\d+:7:3:[0-9a-f]+$/)
   })
 
   it('revokes every signer global and still calls Go through the exports', async () => {
@@ -399,13 +444,14 @@ describe('loadLighterWasm — packaged Go runtime', () => {
 
     const exports = await loadLighterWasm()
 
-    for (const name of WASM_FUNCTION_NAMES) {
+    for (const name of [
+      ...WASM_FUNCTION_NAMES,
+      ...UNUSED_WASM_FUNCTION_NAMES,
+    ]) {
       expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
     }
-    const key = exports.GenerateAPIKey()
-    expect(key.error).toBeUndefined()
-    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
-    expect(key.publicKey).toMatch(/^0x[0-9a-f]+$/i)
+    const authToken = await signAuthTokenThroughExports(exports)
+    expect(authToken.token).toMatch(/^\d+:7:3:[0-9a-f]+$/)
   })
 
   it('revokes the signers a fresh instance reinstalls after a cache reset', async () => {
@@ -420,9 +466,23 @@ describe('loadLighterWasm — packaged Go runtime', () => {
     for (const name of WASM_FUNCTION_NAMES) {
       expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
     }
-    const key = exports.GenerateAPIKey()
-    expect(key.error).toBeUndefined()
-    expect(key.privateKey).toMatch(/^0x[0-9a-f]+$/i)
+    const authToken = await signAuthTokenThroughExports(exports)
+    expect(authToken.token).toMatch(/^\d+:7:3:[0-9a-f]+$/)
+  })
+
+  it('turns an error result into a PerpsError', async () => {
+    const { loadLighterWasm } = await import('./wasmLoader.js')
+    const exports = await loadLighterWasm()
+
+    await expect(
+      callLighterWasm(
+        'createClientByPrv',
+        exports._createClientByPrv('0x00', 304, 7, 0, 3, false)
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+      message: expect.stringMatching(/^Lighter createClientByPrv failed: /),
+    })
   })
 
   it('loads under a CSP that forbids unsafe-eval', async () => {
@@ -441,7 +501,8 @@ describe('loadLighterWasm — packaged Go runtime', () => {
           'function'
         )
       }
-      expect(exports.GenerateAPIKey().privateKey).toMatch(/^0x[0-9a-f]+$/i)
+      const authToken = await signAuthTokenThroughExports(exports)
+      expect(authToken.token).toMatch(/^\d+:7:3:[0-9a-f]+$/)
     } finally {
       vi.unstubAllGlobals()
     }
