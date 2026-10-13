@@ -1,13 +1,23 @@
-import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
+import {
+  PerpsError,
+  rethrowWithKnownResults,
+  type SignActionsContext,
+  type SignActionsResult,
+} from '@lifi/perps-sdk'
 import type {
+  ActionResult,
   ActionStep,
   HmacActionStep,
   HmacSignedActionStep,
   SessionActionStep,
-  SignedActionStep,
   SiweActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  SigningMethod,
+  UserActionStatus,
+} from '@lifi/perps-types'
 import { type Address, getAddress } from 'viem'
 import {
   ONDO_API_KEY_NAME,
@@ -249,12 +259,17 @@ async function executeSessionRequest(
  * `SIWE` signs the backend-built ERC-4361 challenge with the user's wallet and
  * completes the login directly against Ondo. The session JWT is persisted in
  * the token store and no signed step is returned, so neither the JWT nor the
- * wallet signature transits the LI.FI backend.
+ * wallet signature transits the LI.FI backend. Each completed login is an
+ * `Accepted` executed result.
  *
  * `SESSION` executes client-only setup steps directly against the venue with
  * the stored session token. A backend-authored request-bearing step is
- * dispatched as-is; a bare marker step is keyed on its action. Returns no
- * signed steps, so `executeAction` is skipped.
+ * dispatched as-is; a bare marker step is keyed on its action. Each step the
+ * venue answered is an `Accepted` executed result, and no signed step is
+ * returned, so `executeAction` is skipped.
+ *
+ * A step that throws after an earlier step executed throws a
+ * `PerpsExecutionError` that holds the earlier results.
  *
  * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
  * from the client-held API key (creating one on first use), attaching the
@@ -269,29 +284,35 @@ export async function ondoSignActions(
   steps: ActionStep[],
   address: Address,
   ctx?: SignActionsContext
-): Promise<SignedActionStep[]> {
+): Promise<SignActionsResult> {
   switch (method) {
     case SigningMethod.SIWE: {
       const userWallet = requireUserWallet(ctx)
-      for (const step of steps) {
-        if (!isSiweStep(step)) {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            `Ondo received a non-SIWE step ('${step.action}') under the SIWE signing method.`
-          )
+      const executed: ActionResult[] = []
+      try {
+        for (const step of steps) {
+          if (!isSiweStep(step)) {
+            throw new PerpsError(
+              PerpsErrorCode.SDKError,
+              `Ondo received a non-SIWE step ('${step.action}') under the SIWE signing method.`
+            )
+          }
+          const token = await completeSiweLogin(deps.client, userWallet, {
+            id: step.siwe.challengeId,
+            message: step.siwe.message,
+          })
+          executed.push(acceptedResult(step))
+          await deps.tokenStore.set(address, token)
         }
-        const token = await completeSiweLogin(deps.client, userWallet, {
-          id: step.siwe.challengeId,
-          message: step.siwe.message,
-        })
-        await deps.tokenStore.set(address, token)
+      } catch (error) {
+        rethrowWithKnownResults(executed, error)
       }
-      return []
+      return { signed: [], executed }
     }
 
     case SigningMethod.HMAC: {
       const apiKey = await ensureApiKey(deps, address)
-      return Promise.all(
+      const signed = await Promise.all(
         steps.map(async (step): Promise<HmacSignedActionStep> => {
           if (!hasRequest(step)) {
             throw new PerpsError(
@@ -318,78 +339,92 @@ export async function ondoSignActions(
           }
         })
       )
+      return { signed, executed: [] }
     }
 
     case SigningMethod.SESSION: {
-      for (const step of steps) {
-        if (hasRequest(step)) {
-          await executeSessionRequest(deps, address, step.request)
-          continue
+      const executed: ActionResult[] = []
+      try {
+        for (const step of steps) {
+          await executeSessionStep(deps, address, step, ctx)
+          executed.push(acceptedResult(step))
         }
-        if (!isSessionStep(step)) {
-          throw new PerpsError(
-            PerpsErrorCode.SDKError,
-            `Ondo received a non-session step ('${step.action}') under the session signing method.`
-          )
-        }
-        switch (step.action) {
-          case ActionType.CREATE_DEPOSIT_ADDRESS: {
-            const token = await requireOndoSessionToken(
-              deps.tokenStore,
-              address
-            )
-            const account = await deps.client.get<{ accountID?: unknown }>(
-              '/v1/account',
-              { authToken: token.token }
-            )
-            const payload = buildOndoProvisionPayload(
-              step.session,
-              typeof account.accountID === 'string' ? account.accountID : ''
-            )
-            await deps.client.post('/v1/provision_address', payload, {
-              authToken: token.token,
-            })
-            // Re-query to validate that Ondo can read the provisioned address;
-            // getAccount performs the authoritative state refresh afterward.
-            await listOndoDepositAddress(deps.client, token.token)
-            break
-          }
-
-          case ActionType.ACCEPT_PROVIDER_TERMS: {
-            const token = await requireOndoSessionToken(
-              deps.tokenStore,
-              address
-            )
-            await deps.client.post(
-              '/v1/agreement',
-              {
-                termsVersion: ONDO_TERMS_VERSION,
-                privacyVersion: ONDO_PRIVACY_VERSION,
-              },
-              { authToken: token.token }
-            )
-            break
-          }
-          case ActionType.REGISTER_API_KEY:
-            await ensureApiKey(deps, address)
-            break
-          case ActionType.ADD_WITHDRAWAL_ADDRESS:
-            await addWithdrawalAddress(deps, address, ctx)
-            break
-          default:
-            throw new PerpsError(
-              PerpsErrorCode.SDKError,
-              `Ondo has no session-step executor for action '${step.action}'.`
-            )
-        }
+      } catch (error) {
+        rethrowWithKnownResults(executed, error)
       }
-      return []
+      return { signed: [], executed }
     }
 
     default:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Ondo does not sign via '${method}'. Supported methods: siwe, hmac, session.`
+      )
+  }
+}
+
+function acceptedResult(step: ActionStep): ActionResult {
+  return { action: step.action, status: UserActionStatus.Accepted }
+}
+
+async function executeSessionStep(
+  deps: OndoSignActionsDeps,
+  address: Address,
+  step: ActionStep,
+  ctx: SignActionsContext | undefined
+): Promise<void> {
+  if (hasRequest(step)) {
+    await executeSessionRequest(deps, address, step.request)
+    return
+  }
+  if (!isSessionStep(step)) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Ondo received a non-session step ('${step.action}') under the session signing method.`
+    )
+  }
+  switch (step.action) {
+    case ActionType.CREATE_DEPOSIT_ADDRESS: {
+      const token = await requireOndoSessionToken(deps.tokenStore, address)
+      const account = await deps.client.get<{ accountID?: unknown }>(
+        '/v1/account',
+        { authToken: token.token }
+      )
+      const payload = buildOndoProvisionPayload(
+        step.session,
+        typeof account.accountID === 'string' ? account.accountID : ''
+      )
+      await deps.client.post('/v1/provision_address', payload, {
+        authToken: token.token,
+      })
+      // Re-query to validate that Ondo can read the provisioned address;
+      // getAccount performs the authoritative state refresh afterward.
+      await listOndoDepositAddress(deps.client, token.token)
+      break
+    }
+
+    case ActionType.ACCEPT_PROVIDER_TERMS: {
+      const token = await requireOndoSessionToken(deps.tokenStore, address)
+      await deps.client.post(
+        '/v1/agreement',
+        {
+          termsVersion: ONDO_TERMS_VERSION,
+          privacyVersion: ONDO_PRIVACY_VERSION,
+        },
+        { authToken: token.token }
+      )
+      break
+    }
+    case ActionType.REGISTER_API_KEY:
+      await ensureApiKey(deps, address)
+      break
+    case ActionType.ADD_WITHDRAWAL_ADDRESS:
+      await addWithdrawalAddress(deps, address, ctx)
+      break
+    default:
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Ondo has no session-step executor for action '${step.action}'.`
       )
   }
 }

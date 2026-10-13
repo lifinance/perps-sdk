@@ -11,6 +11,7 @@ import {
   OrderSide,
   PerpsSigner,
   SigningMethod,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -86,7 +87,7 @@ describe('PerpsClient TWAP wrappers', () => {
           results: [
             {
               action: executeRequest.action,
-              success: true,
+              status: UserActionStatus.Submitted,
               ...(executeRequest.action === ActionType.PLACE_TWAP_ORDER
                 ? { twapId: '3156' }
                 : {}),
@@ -124,15 +125,11 @@ describe('PerpsClient TWAP wrappers', () => {
     expect(result.results).toEqual([
       {
         action: ActionType.PLACE_TWAP_ORDER,
-        success: true,
+        status: UserActionStatus.Submitted,
         twapId: '3156',
       },
     ])
-    const [placeResult] = result.results
-    if (!placeResult.success) {
-      throw new Error(`TWAP placement failed: ${placeResult.error}`)
-    }
-    expect(placeResult.twapId).toBe('3156')
+    expect(result.results[0].twapId).toBe('3156')
   })
 
   it('routes cancelTwapOrder through the generic action pipeline', async () => {

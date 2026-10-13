@@ -148,6 +148,48 @@ const { orders } = await client.getOrders({
 const runningTwaps = orders.filter(isTwapOrder)
 ```
 
+### Execution reports
+
+Every write wrapper, setup step, setup option, and revoke resolves to an
+`ExecuteActionResponse`. The response holds one `ActionResult` per action
+step, in step order. Each result carries a `UserActionStatus`:
+
+- `Submitted`: the venue acknowledged the step. The acknowledgement is not
+  proof that the venue applied the step.
+- `Accepted`: the venue provably took and applied the step.
+- `Indeterminate`: the SDK cannot tell if the venue applied the step. Read the
+  account state before you send the step again.
+- `Failed`: the step did not apply. `refused: true` means that the venue
+  refused the step. `refused: false` means that the venue acknowledged the
+  step but no proof of the effect arrived.
+
+A refused or indeterminate step is a result, not an exception. The SDK signs
+and sends no further client step after a step that is not `Submitted` or
+`Accepted`, so those steps have no result. A result keeps the identifiers the venue returned
+(`orderId`, `twapId`, `txHash`, `explorerLink`) for every status.
+
+When a later stage throws after some results are known, the client throws a
+`PerpsExecutionError`. Its `response` holds the known results and its `cause`
+holds the original error. A failure before any result is known throws the
+original error.
+
+```ts
+import { PerpsExecutionError, UserActionStatus } from '@lifi/perps-sdk'
+
+try {
+  const { results } = await client.cancelOrders(params)
+  for (const result of results) {
+    if (result.status === UserActionStatus.Indeterminate) {
+      // Read the open orders before you cancel again.
+    }
+  }
+} catch (error) {
+  if (error instanceof PerpsExecutionError) {
+    console.log(error.response.results, error.cause)
+  }
+}
+```
+
 ### Available balance reads
 
 `getAccountSummary()` rolls an account snapshot up into an `AccountSummary`.

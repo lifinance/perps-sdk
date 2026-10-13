@@ -4,7 +4,6 @@ import type {
   Eip712ActionStep,
   Eip712SignedActionStep,
   PerpsSigner as PerpsSignerType,
-  SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
 import { PerpsErrorCode, PerpsSigner } from '@lifi/perps-types'
@@ -15,6 +14,7 @@ import type {
   ActionSignerContribution,
   PerpsProviderPlugin,
   SignActionsContext,
+  SignActionsResult,
 } from '../src/types/provider.js'
 import { signTypedData } from '../src/utils/signTypedData.js'
 
@@ -83,12 +83,12 @@ export function createTestAgentProvider(
       }
       return {}
     },
-    signActions: (
+    signActions: async (
       _method: SigningMethod,
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
-    ): Promise<SignedActionStep[]> => {
+    ): Promise<SignActionsResult> => {
       const signEip712 =
         ctx?.signer === PerpsSigner.USER
           ? (step: Eip712ActionStep): Promise<Hex> => {
@@ -109,7 +109,7 @@ export function createTestAgentProvider(
             }
           : (step: Eip712ActionStep): Promise<Hex> =>
               signTypedData(requireAgent(address), step.typedData)
-      return Promise.all(
+      const signed = await Promise.all(
         (steps as Eip712ActionStep[]).map(
           async (step): Promise<Eip712SignedActionStep> => ({
             action: step.action,
@@ -118,6 +118,7 @@ export function createTestAgentProvider(
           })
         )
       )
+      return { signed, executed: [] }
     },
   } as TestAgentProvider
 }

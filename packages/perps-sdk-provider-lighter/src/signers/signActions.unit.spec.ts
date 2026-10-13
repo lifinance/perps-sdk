@@ -1,6 +1,7 @@
 import {
   createMemoryStorage,
   PerpsError,
+  PerpsExecutionError,
   type SignActionProgress,
 } from '@lifi/perps-sdk'
 import type {
@@ -9,7 +10,12 @@ import type {
   WasmBlobActionStep,
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  SigningMethod,
+  UserActionStatus,
+} from '@lifi/perps-types'
 import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
@@ -223,12 +229,9 @@ describe('lighterSignActions', () => {
         action: ActionType.PLACE_ORDER,
         wasmSignParams: { market_index: 0, nonce: 1 },
       }
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [step],
-        ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(1)
       expect(result[0].action).toBe(ActionType.PLACE_ORDER)
@@ -268,12 +271,9 @@ describe('lighterSignActions', () => {
           wasmSignParams: { market_index: 0, order_index: 900, nonce: 4 },
         },
       ]
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        steps,
-        ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(deps, SigningMethod.WASM_BLOB, steps, ADDRESS)
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result[0].clientOrderIndex).toBe('7')
       expect(result[1].clientOrderIndex).toBe('8')
@@ -345,7 +345,7 @@ describe('lighterSignActions', () => {
         ADDRESS
       )
 
-      expect(result).toHaveLength(1)
+      expect(result.signed).toHaveLength(1)
       expect(signer.sign).toHaveBeenCalledOnce()
       expect(get.mock.calls).toEqual([
         ['/api/v1/apikeys', { account_index: 99 }],
@@ -391,7 +391,7 @@ describe('lighterSignActions', () => {
           ADDRESS
         )
 
-        expect(result).toHaveLength(1)
+        expect(result.signed).toHaveLength(1)
         expect(signer.sign).toHaveBeenCalledOnce()
         // The response body names the account's other key slots, so only the
         // failure category reaches the log.
@@ -425,7 +425,7 @@ describe('lighterSignActions', () => {
         { userWallet: walletStub as never }
       )
 
-      expect(result).toHaveLength(2)
+      expect(result.signed).toHaveLength(2)
       expect(get).not.toHaveBeenCalled()
       expect(signer.sign).toHaveBeenCalledOnce()
     })
@@ -499,7 +499,7 @@ describe('lighterSignActions', () => {
         ADDRESS
       )
 
-      expect(result).toHaveLength(3)
+      expect(result.signed).toHaveLength(3)
       expect(signer.sign).toHaveBeenCalledTimes(3)
       expect(get).toHaveBeenCalledOnce()
     })
@@ -627,13 +627,15 @@ describe('lighterSignActions', () => {
         action: ActionType.REGISTER_API_KEY,
         wasmSignParams: { api_key_index: 7, nonce: 42 },
       }
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [step],
-        ADDRESS,
-        { userWallet: walletStub as never }
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [step],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(1)
       expect(result[0].action).toBe(ActionType.REGISTER_API_KEY)
@@ -825,13 +827,15 @@ describe('lighterSignActions', () => {
         account: { address: ADDRESS },
         signMessage: vi.fn(async () => '0xapprovesig'),
       }
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [approveStep],
-        ADDRESS,
-        { userWallet: walletStub as never }
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [approveStep],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(1)
       expect(result[0].action).toBe(ActionType.APPROVE_INTEGRATOR)
@@ -961,13 +965,15 @@ describe('lighterSignActions', () => {
         signMessage: vi.fn(async () => '0xapprovesig'),
       }
 
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [revokeStep],
-        ADDRESS,
-        { userWallet: walletStub as never }
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [revokeStep],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result.map((step) => step.action)).toEqual([
         ActionType.REVOKE_INTEGRATOR,
@@ -1012,13 +1018,15 @@ describe('lighterSignActions', () => {
         account: { address: ADDRESS },
         signMessage: vi.fn(async () => '0xtransfersig'),
       }
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [transferStep],
-        ADDRESS,
-        { userWallet: walletStub as never }
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [transferStep],
+          ADDRESS,
+          { userWallet: walletStub as never }
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(1)
       expect(result[0].action).toBe(ActionType.TRANSFER)
@@ -1117,12 +1125,14 @@ describe('lighterSignActions', () => {
         SEND_ASSET_SIGNED
       )
 
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [sendAssetStep],
-        ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [sendAssetStep],
+          ADDRESS
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result[0].signedTx).toEqual(SEND_ASSET_SIGNED)
       expect(signer.getL1Message).not.toHaveBeenCalled()
@@ -1150,19 +1160,22 @@ describe('lighterSignActions', () => {
       })
     }
 
-    it('executes client-side via a direct venue POST and returns no backend step', async () => {
+    it('executes client-side via a direct venue POST and reports an Accepted result', async () => {
       const { deps, signer, keyStore, postForm } = makeDeps()
       await setStoredKey(keyStore)
 
-      const result = (await lighterSignActions(
+      const { signed, executed } = await lighterSignActions(
         deps,
         SigningMethod.WASM_BLOB,
         [accountTypeStep],
         ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      )
 
       // No backend-bound step: the action already ran against the venue.
-      expect(result).toHaveLength(0)
+      expect(signed).toHaveLength(0)
+      expect(executed).toEqual([
+        { action: ActionType.ACCOUNT_TYPE, status: UserActionStatus.Accepted },
+      ])
 
       expect(postForm).toHaveBeenCalledTimes(1)
       expect(postForm).toHaveBeenCalledWith(
@@ -1239,7 +1252,7 @@ describe('lighterSignActions', () => {
       expect(JSON.stringify(result)).not.toContain('auth-token-xyz')
     })
 
-    it('surfaces a venue rule violation verbatim as an ExchangeRejected error', async () => {
+    it('reports a venue rule violation verbatim as a refused ExchangeRejected result', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
         data: { code: 21000, message: 'account has open positions' },
@@ -1253,13 +1266,21 @@ describe('lighterSignActions', () => {
           [accountTypeStep],
           ADDRESS
         )
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: expect.stringContaining('account has open positions'),
+      ).resolves.toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Failed,
+            refused: true,
+            errorCode: PerpsErrorCode.ExchangeRejected,
+            error: expect.stringContaining('account has open positions'),
+          },
+        ],
       })
     })
 
-    it('surfaces venue code 21520 as a SetupRequired error', async () => {
+    it('reports venue code 21520 as a refused SetupRequired result', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
         data: {
@@ -1269,36 +1290,44 @@ describe('lighterSignActions', () => {
       }))
       await setStoredKey(keyStore)
 
-      await expect(
-        lighterSignActions(
-          deps,
-          SigningMethod.WASM_BLOB,
-          [accountTypeStep],
-          ADDRESS
-        )
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.SetupRequired,
-        message: expect.stringContaining(
-          'account is not eligible for this operation'
-        ),
-      })
+      const { executed } = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep],
+        ADDRESS
+      )
+      expect(executed).toEqual([
+        expect.objectContaining({
+          status: UserActionStatus.Failed,
+          refused: true,
+          errorCode: PerpsErrorCode.SetupRequired,
+          error: expect.stringContaining(
+            'account is not eligible for this operation'
+          ),
+        }),
+      ])
     })
 
-    it('rejects code 41003 — the referral settle rule is not shared', async () => {
+    it('refuses code 41003 — the referral settle rule is not shared', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
         data: { code: 41003, message: 'Referral code already used' },
       }))
       await setStoredKey(keyStore)
 
-      await expect(
-        lighterSignActions(
-          deps,
-          SigningMethod.WASM_BLOB,
-          [accountTypeStep],
-          ADDRESS
-        )
-      ).rejects.toThrow(/code 41003/)
+      const { executed } = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep],
+        ADDRESS
+      )
+      expect(executed).toEqual([
+        expect.objectContaining({
+          status: UserActionStatus.Failed,
+          refused: true,
+          error: expect.stringContaining('code 41003'),
+        }),
+      ])
     })
 
     it('throws when no API key is registered for the address', async () => {
@@ -1343,7 +1372,7 @@ describe('lighterSignActions', () => {
       },
     }
 
-    it('executes client-side via a direct venue POST and returns no backend step', async () => {
+    it('executes client-side via a direct venue POST and reports an Accepted result', async () => {
       const { deps, keyStore, postForm } = makeDeps()
       await keyStore.set(ADDRESS, {
         accountIndex: 99,
@@ -1352,14 +1381,17 @@ describe('lighterSignActions', () => {
         apiKeyPublicKey: '0xdef',
       })
 
-      const result = (await lighterSignActions(
+      const { signed, executed } = await lighterSignActions(
         deps,
         SigningMethod.WASM_BLOB,
         [referralStep],
         ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      )
 
-      expect(result).toHaveLength(0)
+      expect(signed).toHaveLength(0)
+      expect(executed).toEqual([
+        { action: ActionType.SET_REFERRAL, status: UserActionStatus.Accepted },
+      ])
       expect(postForm).toHaveBeenCalledTimes(1)
       expect(postForm).toHaveBeenCalledWith(
         '/api/v1/referral/use',
@@ -1402,7 +1434,7 @@ describe('lighterSignActions', () => {
       expect(String(post.init?.body)).not.toContain('auth-token-xyz')
     })
 
-    it('surfaces a venue rejection verbatim as an ExchangeRejected error', async () => {
+    it('reports a venue rejection verbatim as a refused result', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
         data: { code: 21001, message: 'referral code already applied' },
@@ -1414,14 +1446,20 @@ describe('lighterSignActions', () => {
         apiKeyPublicKey: '0xdef',
       })
 
-      await expect(
-        lighterSignActions(
-          deps,
-          SigningMethod.WASM_BLOB,
-          [referralStep],
-          ADDRESS
-        )
-      ).rejects.toThrow(/referral code already applied/)
+      const { executed } = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+      expect(executed).toEqual([
+        expect.objectContaining({
+          action: ActionType.SET_REFERRAL,
+          status: UserActionStatus.Failed,
+          refused: true,
+          error: expect.stringContaining('referral code already applied'),
+        }),
+      ])
     })
 
     it('reads the applied code first and skips the POST when the account carries one', async () => {
@@ -1438,12 +1476,14 @@ describe('lighterSignActions', () => {
         apiKeyPublicKey: '0xdef',
       })
 
-      const result = (await lighterSignActions(
-        deps,
-        SigningMethod.WASM_BLOB,
-        [referralStep],
-        ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [referralStep],
+          ADDRESS
+        )
+      ).signed as WasmBlobSignedActionStep[]
 
       expect(result).toHaveLength(0)
       expect(getAuthed).toHaveBeenCalledWith(
@@ -1496,24 +1536,90 @@ describe('lighterSignActions', () => {
         apiKeyPublicKey: '0xdef',
       })
 
-      const result = (await lighterSignActions(
+      const result = await lighterSignActions(
         deps,
         SigningMethod.WASM_BLOB,
         [referralStep],
         ADDRESS
-      )) as WasmBlobSignedActionStep[]
+      )
 
-      expect(result).toHaveLength(0)
+      expect(result).toEqual({ signed: [], executed: [] })
       expect(await keyStore.get(ADDRESS)).toMatchObject({
         appliedReferralCode: 'LIFI',
       })
     })
 
-    it('still throws for a rejection code other than 41003', async () => {
+    it('reports a refused result for a rejection code other than 41003', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
         data: { code: 41004, message: 'Referral code does not exist' },
       }))
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const { executed } = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+      expect(executed).toEqual([
+        expect.objectContaining({
+          status: UserActionStatus.Failed,
+          refused: true,
+          errorCode: PerpsErrorCode.ExchangeRejected,
+          error: expect.stringMatching(
+            /rejected \(code 41004\): Referral code does not exist/
+          ),
+        }),
+      ])
+      expect(await keyStore.get(ADDRESS)).not.toHaveProperty(
+        'appliedReferralCode'
+      )
+    })
+
+    it('reports an Indeterminate result when the POST gets no answer', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => {
+        throw new Error('socket hang up')
+      })
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      )
+
+      expect(result).toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.SET_REFERRAL,
+            status: UserActionStatus.Indeterminate,
+            errorCode: PerpsErrorCode.ServerError,
+            error: expect.stringContaining('socket hang up'),
+          },
+        ],
+      })
+      expect(await keyStore.get(ADDRESS)).not.toHaveProperty(
+        'appliedReferralCode'
+      )
+    })
+
+    it('rethrows a RateLimitExceeded POST failure instead of reporting a result', async () => {
+      const { deps, keyStore } = makeDeps({}, async () => {
+        throw new PerpsError(PerpsErrorCode.RateLimitExceeded, 'HTTP 429')
+      })
       await keyStore.set(ADDRESS, {
         accountIndex: 99,
         apiKeyIndex: 42,
@@ -1528,10 +1634,64 @@ describe('lighterSignActions', () => {
           [referralStep],
           ADDRESS
         )
-      ).rejects.toThrow(/rejected \(code 41004\): Referral code does not exist/)
-      expect(await keyStore.get(ADDRESS)).not.toHaveProperty(
-        'appliedReferralCode'
+      ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+    })
+
+    it('throws PerpsExecutionError with the Accepted result when the marker write fails', async () => {
+      const { deps, keyStore } = makeDeps()
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+      const writeError = new Error('storage quota exceeded')
+      vi.spyOn(keyStore, 'markReferralApplied').mockRejectedValueOnce(
+        writeError
       )
+
+      const error = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep],
+        ADDRESS
+      ).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(PerpsExecutionError)
+      const executionError = error as PerpsExecutionError
+      expect(executionError.response.results).toEqual([
+        { action: ActionType.SET_REFERRAL, status: UserActionStatus.Accepted },
+      ])
+      expect(executionError.cause).toBe(writeError)
+    })
+
+    it('stops the batch at a refused step and signs nothing after it', async () => {
+      const { deps, keyStore, signer } = makeDeps({}, async () => ({
+        status: 400,
+        data: { code: 41004, message: 'Referral code does not exist' },
+      }))
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+      const orderStep: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: { market_index: 0, nonce: 1 },
+      }
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [referralStep, orderStep],
+        ADDRESS
+      )
+
+      expect(result.signed).toEqual([])
+      expect(result.executed).toHaveLength(1)
+      expect(result.executed[0]?.status).toBe(UserActionStatus.Failed)
+      expect(signer.sign).not.toHaveBeenCalled()
     })
 
     it('logs the read failure at debug level and still POSTs', async () => {
@@ -1590,66 +1750,64 @@ describe('lighterSignActions', () => {
       const broadcastHashes: string[] = []
       let broadcastIndex = 0
 
-      const transport = custom({
-        async request({ method }) {
-          switch (method) {
-            case 'eth_chainId':
-              return `0x${chain.id.toString(16)}`
-            case 'eth_getTransactionCount':
-              return `0x${broadcastIndex.toString(16)}`
-            case 'eth_estimateGas':
-              return '0x5208'
-            case 'eth_maxPriorityFeePerGas':
-              return '0x1'
-            case 'eth_getBlockByNumber':
-              return {
-                baseFeePerGas: '0x1',
-                number: '0x1',
-                timestamp: '0x1',
-                gasLimit: '0x1',
-                hash: `0x${'00'.repeat(32)}`,
-              }
-            case 'eth_sendRawTransaction': {
-              const hash = `0x${(broadcastIndex + 1)
-                .toString(16)
-                .padStart(64, '0')}`
-              order.push(`broadcast:${broadcastIndex}`)
-              broadcastHashes.push(hash)
-              broadcastIndex += 1
-              return hash
+      async function request({ method }: { method: string }): Promise<unknown> {
+        switch (method) {
+          case 'eth_chainId':
+            return `0x${chain.id.toString(16)}`
+          case 'eth_getTransactionCount':
+            return `0x${broadcastIndex.toString(16)}`
+          case 'eth_estimateGas':
+            return '0x5208'
+          case 'eth_maxPriorityFeePerGas':
+            return '0x1'
+          case 'eth_getBlockByNumber':
+            return {
+              baseFeePerGas: '0x1',
+              number: '0x1',
+              timestamp: '0x1',
+              gasLimit: '0x1',
+              hash: `0x${'00'.repeat(32)}`,
             }
-            case 'eth_getTransactionReceipt': {
-              const leg = broadcastHashes.length - 1
-              order.push(`receipt:${leg}`)
-              return {
-                transactionHash: broadcastHashes[leg],
-                blockNumber: '0x10',
-                blockHash: `0x${'bb'.repeat(32)}`,
-                status: legStatuses[leg],
-                from: ACCOUNT.address,
-                to: `0x${'22'.repeat(20)}`,
-                cumulativeGasUsed: '0x1',
-                gasUsed: '0x1',
-                effectiveGasPrice: '0x1',
-                logs: [],
-                logsBloom: `0x${'00'.repeat(256)}`,
-                contractAddress: null,
-                transactionIndex: '0x0',
-                type: '0x2',
-              }
-            }
-            default:
-              return null
+          case 'eth_sendRawTransaction': {
+            const hash = `0x${(broadcastIndex + 1)
+              .toString(16)
+              .padStart(64, '0')}`
+            order.push(`broadcast:${broadcastIndex}`)
+            broadcastHashes.push(hash)
+            broadcastIndex += 1
+            return hash
           }
-        },
-      })
+          case 'eth_getTransactionReceipt': {
+            const leg = broadcastHashes.length - 1
+            order.push(`receipt:${leg}`)
+            return {
+              transactionHash: broadcastHashes[leg],
+              blockNumber: '0x10',
+              blockHash: `0x${'bb'.repeat(32)}`,
+              status: legStatuses[leg],
+              from: ACCOUNT.address,
+              to: `0x${'22'.repeat(20)}`,
+              cumulativeGasUsed: '0x1',
+              gasUsed: '0x1',
+              effectiveGasPrice: '0x1',
+              logs: [],
+              logsBloom: `0x${'00'.repeat(256)}`,
+              contractAddress: null,
+              transactionIndex: '0x0',
+              type: '0x2',
+            }
+          }
+          default:
+            return null
+        }
+      }
 
       const wallet = createWalletClient({
         account: ACCOUNT,
         chain,
-        transport,
+        transport: custom({ request }),
       })
-      return { wallet, order, broadcastHashes }
+      return { wallet, order, broadcastHashes, request }
     }
 
     function makeStep(functionName: string): EvmTxActionStep {
@@ -1675,13 +1833,15 @@ describe('lighterSignActions', () => {
       ])
       const steps = [makeStep('approve'), makeStep('deposit')]
 
-      const result = (await lighterSignActions(
-        deps_(),
-        SigningMethod.EVM_TX,
-        steps,
-        ADDRESS,
-        { userWallet: wallet }
-      )) as EvmTxSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          steps,
+          ADDRESS,
+          { userWallet: wallet }
+        )
+      ).signed as EvmTxSignedActionStep[]
 
       expect(order).toEqual([
         'broadcast:0',
@@ -1719,12 +1879,10 @@ describe('lighterSignActions', () => {
       const steps = [makeStep('approve'), makeStep('deposit')]
       const progress: SignActionProgress[] = []
 
-      await expect(
-        lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
-          userWallet: wallet,
-          onProgress: (event) => progress.push(event),
-        })
-      ).rejects.toThrow(/revert/i)
+      await lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
+        userWallet: wallet,
+        onProgress: (event) => progress.push(event),
+      })
 
       // Leg 0 broadcast, then reverted: submitted only, no confirmed, no leg 1.
       expect(progress.map((p) => [p.index, p.status])).toEqual([
@@ -1733,16 +1891,194 @@ describe('lighterSignActions', () => {
     })
 
     it('aborts the sequence when leg 1 reverts and never broadcasts leg 2', async () => {
-      const { wallet, order } = makeRecordingWallet(['0x0', '0x1'])
+      const { wallet, order, broadcastHashes } = makeRecordingWallet([
+        '0x0',
+        '0x1',
+      ])
       const steps = [makeStep('approve'), makeStep('deposit')]
 
-      await expect(
-        lighterSignActions(deps_(), SigningMethod.EVM_TX, steps, ADDRESS, {
-          userWallet: wallet,
-        })
-      ).rejects.toThrow(/revert/i)
+      const result = await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet }
+      )
 
       expect(order).toEqual(['broadcast:0', 'receipt:0'])
+      expect(result).toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.DEPOSIT,
+            status: UserActionStatus.Failed,
+            refused: true,
+            txHash: broadcastHashes[0],
+            errorCode: PerpsErrorCode.SDKError,
+            error: expect.stringMatching(/revert/i),
+          },
+        ],
+      })
+    })
+
+    it('reports the confirmed legs and the reverted leg, and sends nothing to the backend', async () => {
+      const { wallet, order, broadcastHashes } = makeRecordingWallet([
+        '0x1',
+        '0x0',
+        '0x1',
+      ])
+      const steps = [
+        makeStep('approve'),
+        makeStep('deposit'),
+        makeStep('deposit'),
+      ]
+
+      const result = await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet }
+      )
+
+      expect(order).toEqual([
+        'broadcast:0',
+        'receipt:0',
+        'broadcast:1',
+        'receipt:1',
+      ])
+      expect(result.signed).toEqual([])
+      expect(result.executed).toEqual([
+        {
+          action: ActionType.DEPOSIT,
+          status: UserActionStatus.Accepted,
+          txHash: broadcastHashes[0],
+        },
+        expect.objectContaining({
+          status: UserActionStatus.Failed,
+          refused: true,
+          txHash: broadcastHashes[1],
+          errorCode: PerpsErrorCode.SDKError,
+        }),
+      ])
+    })
+
+    it('reports an Indeterminate leg when every receipt read fails until the timeout', async () => {
+      const { request, broadcastHashes } = makeRecordingWallet(['0x1'])
+      const failingWallet = createWalletClient({
+        account: ACCOUNT,
+        chain: arbitrum,
+        transport: custom({
+          async request(args) {
+            if (args.method === 'eth_getTransactionReceipt') {
+              throw new Error('receipt node unreachable')
+            }
+            return request(args)
+          },
+        }),
+      })
+
+      vi.useFakeTimers()
+      let result: Awaited<ReturnType<typeof lighterSignActions>>
+      try {
+        const pending = lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStep('approve')],
+          ADDRESS,
+          { userWallet: failingWallet }
+        )
+        await vi.advanceTimersByTimeAsync(200_000)
+        result = await pending
+      } finally {
+        vi.useRealTimers()
+      }
+
+      expect(result).toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.DEPOSIT,
+            status: UserActionStatus.Indeterminate,
+            txHash: broadcastHashes[0],
+            errorCode: PerpsErrorCode.TimeoutError,
+            error: expect.stringContaining('has no receipt'),
+          },
+        ],
+      })
+    })
+
+    it('reports an Indeterminate leg with TimeoutError when the receipt never arrives', async () => {
+      vi.useFakeTimers()
+      try {
+        const { request, broadcastHashes } = makeRecordingWallet(['0x1'])
+        const pendingWallet = createWalletClient({
+          account: ACCOUNT,
+          chain: arbitrum,
+          transport: custom({
+            async request(args) {
+              if (args.method === 'eth_getTransactionReceipt') {
+                return null
+              }
+              if (args.method === 'eth_blockNumber') {
+                return '0x10'
+              }
+              return request(args)
+            },
+          }),
+        })
+
+        const pending = lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          [makeStep('approve')],
+          ADDRESS,
+          { userWallet: pendingWallet }
+        )
+        await vi.advanceTimersByTimeAsync(181_000)
+        const result = await pending
+
+        expect(result.signed).toEqual([])
+        expect(result.executed).toEqual([
+          expect.objectContaining({
+            status: UserActionStatus.Indeterminate,
+            txHash: broadcastHashes[0],
+            errorCode: PerpsErrorCode.TimeoutError,
+          }),
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('throws PerpsExecutionError with the confirmed legs when a later leg fails before broadcast', async () => {
+      const { wallet, broadcastHashes } = makeRecordingWallet(['0x1'])
+      const steps = [
+        makeStepOn(arbitrum.id, 'approve'),
+        makeStepOn(base.id, 'deposit'),
+      ]
+
+      const error = await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        steps,
+        ADDRESS,
+        { userWallet: wallet }
+      ).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(PerpsExecutionError)
+      const executionError = error as PerpsExecutionError
+      expect(executionError.response.results).toEqual([
+        {
+          action: ActionType.DEPOSIT,
+          status: UserActionStatus.Accepted,
+          txHash: broadcastHashes[0],
+        },
+      ])
+      expect(executionError.cause).toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringMatching(/chain/i),
+      })
     })
 
     it('throws a clear error when no end-user wallet is supplied', async () => {
@@ -1802,13 +2138,15 @@ describe('lighterSignActions', () => {
         makeStepOn(base.id, 'deposit'),
       ]
 
-      const result = (await lighterSignActions(
-        deps_(),
-        SigningMethod.EVM_TX,
-        steps,
-        ADDRESS,
-        { userWallet: wallet, switchToChain }
-      )) as EvmTxSignedActionStep[]
+      const result = (
+        await lighterSignActions(
+          deps_(),
+          SigningMethod.EVM_TX,
+          steps,
+          ADDRESS,
+          { userWallet: wallet, switchToChain }
+        )
+      ).signed as EvmTxSignedActionStep[]
 
       expect(switchToChain).toHaveBeenCalledTimes(2)
       expect(switched).toEqual([arbitrum.id, base.id])

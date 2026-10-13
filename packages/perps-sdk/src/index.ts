@@ -71,6 +71,10 @@ export {
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {
+  PerpsExecutionError,
+  rethrowWithKnownResults,
+} from './errors/PerpsExecutionError.js'
+export {
   classifyFill,
   classifyFillFromPosition,
   FillClassification,
@@ -283,6 +287,7 @@ export type {
   QuoteListener,
   SignActionProgress,
   SignActionsContext,
+  SignActionsResult,
 } from './types/provider.js'
 export type {
   ProviderWithdrawableBalance,

@@ -205,6 +205,24 @@ export enum ActionType {
   SYNC_FEE_ATTRIBUTION = 'syncFeeAttribution',
 }
 
+/**
+ * Lifecycle status of one user action. Values are the backend wire strings.
+ *
+ * @public
+ */
+export enum UserActionStatus {
+  /** An unsigned intent. Nothing went to the venue. */
+  Created = 'created',
+  /** The send started, and the venue gave no clear answer. */
+  Indeterminate = 'indeterminate',
+  /** The venue acknowledged the send. The acknowledgement is not proof. */
+  Submitted = 'submitted',
+  /** The venue provably took and applied the action. */
+  Accepted = 'accepted',
+  /** The venue refused the action, or the grace window closed without proof. */
+  Failed = 'failed',
+}
+
 /** Price relation that activates a trigger order. @public */
 export enum TriggerCondition {
   ABOVE = 'ABOVE',

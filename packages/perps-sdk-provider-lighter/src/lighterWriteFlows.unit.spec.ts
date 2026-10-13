@@ -200,7 +200,9 @@ describe.each([
     const provider = factory({ storage })
     const client = clientFor(provider)
 
-    const [registered] = await provider.signActions!(
+    const {
+      signed: [registered],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [registerApiKeyStep],
       ADDRESS as Address,
@@ -238,7 +240,9 @@ describe.each([
       apiKeyIndex: 42,
     })
 
-    const [order] = await provider.signActions!(
+    const {
+      signed: [order],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [createOrderStep],
       ADDRESS as Address
@@ -268,12 +272,14 @@ describe.each([
   const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
     const provider = factory({ storage: createMemoryStorage() })
     clientFor(provider)
-    const [registered] = (await provider.signActions!(
-      SigningMethod.WASM_BLOB,
-      [registerApiKeyStep],
-      ADDRESS as Address,
-      { userWallet }
-    )) as WasmBlobSignedActionStep[]
+    const [registered] = (
+      await provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [registerApiKeyStep],
+        ADDRESS as Address,
+        { userWallet }
+      )
+    ).signed as WasmBlobSignedActionStep[]
     const newPublicKey = registered.wasmSignParams.new_public_key
     registeredPublicKey = typeof newPublicKey === 'string' ? newPublicKey : null
     return provider
@@ -282,7 +288,9 @@ describe.each([
   it('carries the user wallet L1 signature into a TRANSFER blob', async () => {
     const provider = await registeredProvider()
 
-    const [transferred] = await provider.signActions!(
+    const {
+      signed: [transferred],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [transferStep],
       ADDRESS as Address,
@@ -316,7 +324,9 @@ describe.each([
   it('signs SEND_ASSET without a wallet and leaves L1Sig empty', async () => {
     const provider = await registeredProvider()
 
-    const [sent] = await provider.signActions!(
+    const {
+      signed: [sent],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [sendAssetStep],
       ADDRESS as Address
@@ -486,12 +496,14 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
   const registeredProvider = async (): Promise<PerpsProviderPlugin> => {
     const provider = lighterProvider({ storage: createMemoryStorage() })
     clientFor(provider)
-    const [registered] = (await provider.signActions!(
-      SigningMethod.WASM_BLOB,
-      [registerApiKeyStep],
-      ADDRESS as Address,
-      { userWallet }
-    )) as WasmBlobSignedActionStep[]
+    const [registered] = (
+      await provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [registerApiKeyStep],
+        ADDRESS as Address,
+        { userWallet }
+      )
+    ).signed as WasmBlobSignedActionStep[]
     const newPublicKey = registered.wasmSignParams.new_public_key
     registeredPublicKey = typeof newPublicKey === 'string' ? newPublicKey : null
     requests = []
@@ -517,7 +529,9 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
 
-    const [order] = await provider.signActions!(
+    const {
+      signed: [order],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [createOrderStep],
       ADDRESS as Address
@@ -532,7 +546,9 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     accountLimits = () => accountLimitsWith('standard')
     const provider = await registeredProvider()
 
-    const [cancel] = await provider.signActions!(
+    const {
+      signed: [cancel],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [cancelOrderStep],
       ADDRESS as Address
@@ -564,7 +580,9 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
 
-    const [order] = await provider.signActions!(
+    const {
+      signed: [order],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [createOrderStep],
       ADDRESS as Address
@@ -581,7 +599,9 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
 
-    const [order] = await provider.signActions!(
+    const {
+      signed: [order],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [createOrderStep],
       ADDRESS as Address
@@ -598,7 +618,9 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     const provider = await registeredProvider()
     const sign = vi.spyOn(LighterSigner.prototype, 'sign')
 
-    const [order] = await provider.signActions!(
+    const {
+      signed: [order],
+    } = await provider.signActions!(
       SigningMethod.WASM_BLOB,
       [createOrderStep],
       ADDRESS as Address

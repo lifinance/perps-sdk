@@ -27,6 +27,7 @@ import {
   OrderSide,
   OrderType,
   PerpsErrorCode,
+  UserActionStatus,
 } from './enums.js'
 
 // Locks in that `marginMode` is optional on `PlaceOrderParams` /
@@ -218,142 +219,150 @@ describe('WithdrawalParams', () => {
 })
 
 describe('ActionResult', () => {
-  it('accepts a success fixture with orderId; success branch has no error', () => {
+  it('accepts an acknowledged result with identifiers and no error', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
-      success: true,
+      status: UserActionStatus.Submitted,
       orderId: 'lighter-12345',
     }
 
-    if (result.success) {
+    if (result.status === UserActionStatus.Submitted) {
       expect(result.orderId).toBe('lighter-12345')
-      // @ts-expect-error — `error` is not present on the success variant
+      // @ts-expect-error — `error` is not present on an acknowledged result
       result.error
     } else {
-      throw new Error('expected success branch')
+      throw new Error('expected the Submitted branch')
     }
+
+    const withError: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Accepted,
+      // @ts-expect-error — an acknowledged result carries no error
+      error: 'rejected',
+    }
+    expect(withError.status).toBe(UserActionStatus.Accepted)
   })
 
-  it('accepts a failure fixture with required error', () => {
+  it('requires `refused` and `error` on a failed result', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
-      success: false,
+      status: UserActionStatus.Failed,
+      refused: true,
+      error: 'order rejected',
+      errorCode: PerpsErrorCode.ExchangeRejected,
+    }
+
+    if (result.status === UserActionStatus.Failed) {
+      expect(result.refused).toBe(true)
+      expect(result.error).toBe('order rejected')
+      expect(result.errorCode).toBe(PerpsErrorCode.ExchangeRejected)
+    } else {
+      throw new Error('expected the Failed branch')
+    }
+
+    // @ts-expect-error — `refused` is required on a failed result
+    const missingRefused: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Failed,
       error: 'order rejected',
     }
+    expect(missingRefused.status).toBe(UserActionStatus.Failed)
+  })
 
-    if (!result.success) {
-      expect(result.error).toBe('order rejected')
-      // @ts-expect-error — `orderId` is not present on the failure variant
-      result.orderId
+  it('keeps an indeterminate result apart from a refusal', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Indeterminate,
+      error: 'request timed out',
+      errorCode: PerpsErrorCode.TimeoutError,
+    }
+
+    if (result.status === UserActionStatus.Indeterminate) {
+      expect(result.errorCode).toBe(PerpsErrorCode.TimeoutError)
+      // @ts-expect-error — `refused` is present only on a failed result
+      result.refused
     } else {
-      throw new Error('expected failure branch')
+      throw new Error('expected the Indeterminate branch')
     }
   })
 
-  it('accepts an optional structured errorCode on the failure variant only', () => {
+  it('classifies a recoverable setup prerequisite through the errorCode field', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
-      success: false,
-      error: 'API key not found',
-      errorCode: PerpsErrorCode.Unauthorized,
-    }
-
-    if (!result.success) {
-      expect(result.errorCode).toBe(PerpsErrorCode.Unauthorized)
-    }
-
-    const success: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      success: true,
-      // @ts-expect-error — `errorCode` is not present on the success variant
-      errorCode: PerpsErrorCode.Unauthorized,
-    }
-    expect(success.action).toBe(ActionType.PLACE_ORDER)
-  })
-
-  it('classifies a recoverable setup prerequisite through the existing errorCode field', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      success: false,
+      status: UserActionStatus.Failed,
+      refused: true,
       error: 'Provider setup is incomplete.',
       errorCode: PerpsErrorCode.SetupRequired,
     }
 
-    if (!result.success) {
+    if (result.status === UserActionStatus.Failed) {
       expect(result.errorCode).toBe(PerpsErrorCode.SetupRequired)
     } else {
-      throw new Error('expected failure branch')
+      throw new Error('expected the Failed branch')
     }
 
     const secondField: ActionResult = {
       action: ActionType.PLACE_ORDER,
-      success: false,
+      status: UserActionStatus.Failed,
+      refused: true,
       error: 'Provider setup is incomplete.',
       // @ts-expect-error — `errorCode` is the only classification field
       setupRequired: true,
     }
-    expect(secondField.success).toBe(false)
+    expect(secondField.status).toBe(UserActionStatus.Failed)
   })
 
-  it('narrows the discriminated union on `success` so `error` is required only on the failure branch', () => {
+  it('has no `success` field', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Submitted,
+      // @ts-expect-error — `status` replaces `success`
+      success: true,
+    }
+    expect(result.status).toBe(UserActionStatus.Submitted)
+  })
+
+  it('keeps venue identifiers on every status', () => {
+    const txHash = `0x${'8f2b1c4d'.repeat(8)}`
+    const explorerLink = `https://app.lighter.xyz/explorer/logs/${txHash}`
     const results: ActionResult[] = [
       {
         action: ActionType.PLACE_ORDER,
-        success: true,
-        orderId: 'hl-1',
+        status: UserActionStatus.Accepted,
+        orderId: '9',
+        txHash,
+        explorerLink,
       },
       {
         action: ActionType.PLACE_ORDER,
-        success: false,
-        error: 'rejected',
+        status: UserActionStatus.Indeterminate,
+        error: 'no answer',
+        orderId: '10',
+        txHash,
+      },
+      {
+        action: ActionType.PLACE_ORDER,
+        status: UserActionStatus.Failed,
+        refused: false,
+        error: 'grace window closed without proof',
+        orderId: '11',
+        txHash,
       },
     ]
 
-    const errors = results.flatMap((r) => (r.success ? [] : [r.error]))
-
-    expect(errors).toEqual(['rejected'])
+    expect(results.map((r) => r.orderId)).toEqual(['9', '10', '11'])
+    expect(results.every((r) => r.txHash === txHash)).toBe(true)
   })
 
-  it('accepts a venue txHash and a resolved explorerLink on the success variant only', () => {
-    const txHash = `0x${'8f2b1c4d'.repeat(8)}`
+  it('treats the identifiers as optional — a hashless venue result carries neither', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
-      success: true,
-      orderId: '9',
-      txHash,
-      explorerLink: `https://app.lighter.xyz/explorer/logs/${txHash}`,
-    }
-
-    if (result.success) {
-      expect(result.txHash).toBe(txHash)
-      expect(result.explorerLink).toBe(
-        `https://app.lighter.xyz/explorer/logs/${txHash}`
-      )
-    } else {
-      throw new Error('expected success branch')
-    }
-
-    const failure: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      success: false,
-      error: 'rejected',
-      // @ts-expect-error — `txHash` is not present on the failure variant
-      txHash,
-    }
-    expect(failure.action).toBe(ActionType.PLACE_ORDER)
-  })
-
-  it('treats both fields as optional — a hashless venue result carries neither', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      success: true,
+      status: UserActionStatus.Submitted,
       orderId: 'hl-1',
     }
 
-    if (result.success) {
-      expect(result.txHash).toBeUndefined()
-      expect(result.explorerLink).toBeUndefined()
-    }
+    expect(result.txHash).toBeUndefined()
+    expect(result.explorerLink).toBeUndefined()
   })
 })
 

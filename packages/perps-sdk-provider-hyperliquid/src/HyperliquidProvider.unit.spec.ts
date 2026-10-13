@@ -16,6 +16,7 @@ import {
   PerpsSigner,
   PositionMarginAdjustment,
   SigningMethod,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import type { Account, Address, Hex, WalletClient } from 'viem'
 import { createWalletClient, http, recoverTypedDataAddress } from 'viem'
@@ -423,13 +424,57 @@ describe('hyperliquidProvider', () => {
       )
 
       await provider.onExecuteResults!(ADDRESS, [
-        { action: ActionType.REVOKE_SESSION_AGENT, success: false, error: 'x' },
-        { action: ActionType.REVOKE_AGENT, success: true },
+        {
+          action: ActionType.REVOKE_SESSION_AGENT,
+          status: UserActionStatus.Failed,
+          refused: true,
+          error: 'x',
+        },
+        { action: ActionType.REVOKE_AGENT, status: UserActionStatus.Accepted },
       ])
       expect(await provider.hasAgent(ADDRESS)).toBe(true)
 
       await provider.onExecuteResults!(ADDRESS, [
-        { action: ActionType.REVOKE_SESSION_AGENT, success: true },
+        {
+          action: ActionType.REVOKE_SESSION_AGENT,
+          status: UserActionStatus.Submitted,
+        },
+      ])
+      expect(await provider.hasAgent(ADDRESS)).toBe(false)
+    })
+
+    it('keeps the stored agent when a REVOKE_SESSION_AGENT result is indeterminate or unproven', async () => {
+      const provider = hyperliquidProvider({ storage: createMemoryStorage() })
+      await provider.resolveActionRequest!(
+        ActionType.APPROVE_AGENT,
+        ADDRESS,
+        PerpsSigner.USER
+      )
+
+      await provider.onExecuteResults!(ADDRESS, [
+        {
+          action: ActionType.REVOKE_SESSION_AGENT,
+          status: UserActionStatus.Indeterminate,
+          error: 'timeout',
+        },
+      ])
+      expect(await provider.hasAgent(ADDRESS)).toBe(true)
+
+      await provider.onExecuteResults!(ADDRESS, [
+        {
+          action: ActionType.REVOKE_SESSION_AGENT,
+          status: UserActionStatus.Failed,
+          refused: false,
+          error: 'no proof',
+        },
+      ])
+      expect(await provider.hasAgent(ADDRESS)).toBe(true)
+
+      await provider.onExecuteResults!(ADDRESS, [
+        {
+          action: ActionType.REVOKE_SESSION_AGENT,
+          status: UserActionStatus.Accepted,
+        },
       ])
       expect(await provider.hasAgent(ADDRESS)).toBe(false)
     })
@@ -472,12 +517,14 @@ describe('hyperliquidProvider', () => {
         ActionType.REVOKE_SESSION_AGENT,
       ]) {
         const step = revokeStep(action)
-        const [signed] = await provider.signActions!(
-          SigningMethod.EIP712,
-          [step],
-          ADDRESS,
-          { signer: PerpsSigner.USER, userWallet }
-        )
+        const {
+          signed: [signed],
+          executed,
+        } = await provider.signActions!(SigningMethod.EIP712, [step], ADDRESS, {
+          signer: PerpsSigner.USER,
+          userWallet,
+        })
+        expect(executed).toEqual([])
         if (!('signature' in signed)) {
           throw new Error('expected an EIP-712 signed step')
         }
@@ -544,7 +591,9 @@ describe('hyperliquidProvider', () => {
         PerpsSigner.USER
       )
 
-      const [signed] = await provider.signActions!(
+      const {
+        signed: [signed],
+      } = await provider.signActions!(
         SigningMethod.EIP712,
         [eip712Step()],
         ADDRESS,

@@ -1,15 +1,25 @@
-import { PerpsError, type SignActionsContext } from '@lifi/perps-sdk'
+import {
+  PerpsError,
+  rethrowWithKnownResults,
+  type SignActionsContext,
+  type SignActionsResult,
+} from '@lifi/perps-sdk'
 import type {
+  ActionResult,
   ActionStep,
   EvmTxActionStep,
   EvmTxSignedActionStep,
-  SignedActionStep,
   WasmBlobActionStep,
   WasmBlobSignedActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
-import type { Address } from 'viem'
-import { parseAbi } from 'viem'
+import {
+  ActionType,
+  PerpsErrorCode,
+  SigningMethod,
+  UserActionStatus,
+} from '@lifi/perps-types'
+import type { Address, Hex } from 'viem'
+import { parseAbi, WaitForTransactionReceiptTimeoutError } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
 import {
   LIGHTER_MUTATION_SUCCESS_CODE,
@@ -168,7 +178,8 @@ export const createLighterApiKeyFreshness = (): LighterApiKeyFreshness => {
  * `SET_REFERRAL` → `/referral/use`) are NOT wasm-signed: they execute
  * client-side here via a direct Lighter POST authenticated with a short-lived
  * auth token, so the token never transits the LI.FI backend. They produce no
- * backend-bound step and are omitted from the returned array.
+ * backend-bound step: each one that sends reports its result in `executed`,
+ * and signing stops at the first one without an `Accepted` result.
  * @internal
  */
 export async function signWasmBlobActions(
@@ -176,7 +187,7 @@ export async function signWasmBlobActions(
   address: Address,
   steps: WasmBlobActionStep[],
   ctx: SignActionsContext | undefined
-): Promise<WasmBlobSignedActionStep[]> {
+): Promise<SignActionsResult> {
   // REGISTER_API_KEY replaces the slot's key, so for such a batch the stored
   // key is expected to differ from the registered one.
   const replacesApiKey = steps.some(
@@ -194,22 +205,33 @@ export async function signWasmBlobActions(
   }
 
   const signed: WasmBlobSignedActionStep[] = []
-  for (const step of steps) {
-    if (step.action === ActionType.REGISTER_API_KEY) {
-      signed.push(await signRegisterApiKey(deps, address, step, ctx))
-    } else if (step.action === ActionType.APPROVE_INTEGRATOR) {
-      signed.push(await signApproveIntegrator(deps, address, step, ctx))
-    } else if (step.action === ActionType.TRANSFER) {
-      signed.push(await signTransfer(deps, address, step, ctx))
-    } else if (
-      TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
-    ) {
-      await executeTokenAuthMutation(deps, address, step)
-    } else {
-      signed.push(await signStandardWasmAction(deps, address, step))
+  const executed: ActionResult[] = []
+  try {
+    for (const step of steps) {
+      if (step.action === ActionType.REGISTER_API_KEY) {
+        signed.push(await signRegisterApiKey(deps, address, step, ctx))
+      } else if (step.action === ActionType.APPROVE_INTEGRATOR) {
+        signed.push(await signApproveIntegrator(deps, address, step, ctx))
+      } else if (step.action === ActionType.TRANSFER) {
+        signed.push(await signTransfer(deps, address, step, ctx))
+      } else if (
+        TOKEN_AUTH_MUTATION_KINDS.has(step.wasmSignParams.kind as string)
+      ) {
+        const result = await executeTokenAuthMutation(deps, address, step)
+        if (result !== undefined) {
+          executed.push(result)
+          if (result.status !== UserActionStatus.Accepted) {
+            break
+          }
+        }
+      } else {
+        signed.push(await signStandardWasmAction(deps, address, step))
+      }
     }
+  } catch (error) {
+    rethrowWithKnownResults(executed, error)
   }
-  return signed
+  return { signed, executed }
 }
 
 async function signStandardWasmAction(
@@ -458,15 +480,23 @@ async function signTransfer(
  * account settles `SET_REFERRAL`: the executor reads the applied code first and
  * skips the POST when the account carries one, and a
  * {@link LIGHTER_REFERRAL_ALREADY_USED_CODE} verdict from the POST settles the
- * step the same way. Every other non-success verdict surfaces Lighter's
- * `code`/`message` verbatim, under the `PerpsErrorCode` the body code names
- * ({@link lighterErrorCodeFromBody}) or {@link PerpsErrorCode.ExchangeRejected}.
+ * step the same way; a settled step resolves to `undefined`. A success code
+ * resolves to an `Accepted` result. Every other answer is a refused `Failed`
+ * result with Lighter's `code`/`message` verbatim, under the `PerpsErrorCode`
+ * the body code names ({@link lighterErrorCodeFromBody}) or
+ * {@link PerpsErrorCode.ExchangeRejected}. A POST that gets no answer resolves
+ * to an `Indeterminate` result, since Lighter may have applied it.
+ *
+ * @throws {PerpsError} When the step cannot be sent, including a rate-limit
+ *   hold or a 429 answer.
+ * @throws {PerpsExecutionError} When the referral marker write fails after an
+ *   `Accepted` result.
  */
 async function executeTokenAuthMutation(
   deps: LighterSignActionsDeps,
   address: Address,
   step: WasmBlobActionStep
-): Promise<void> {
+): Promise<ActionResult | undefined> {
   const apiKey = await requireApiKey(deps, address)
   const authToken = await deps.signer.createAuthToken({
     apiKeyPrivateKey: apiKey.apiKeyPrivateKey,
@@ -482,35 +512,69 @@ async function executeTokenAuthMutation(
       const venueCode = await readAppliedReferralCode(deps, address, authToken)
       if (venueCode.length > 0) {
         await deps.keyStore.markReferralApplied(address, venueCode)
-        return
+        return undefined
       }
     }
   }
 
   const { path, params } = buildTokenAuthMutationRequest(step)
-  const { status, data } = await deps.apiClient.postForm<{
-    code?: number
-    message?: string
-  }>(path, authToken, params)
+  let answer: {
+    status: number
+    data: { code?: number; message?: string } | undefined
+  }
+  try {
+    answer = await deps.apiClient.postForm(path, authToken, params)
+  } catch (error) {
+    if (
+      error instanceof PerpsError &&
+      error.code === PerpsErrorCode.RateLimitExceeded
+    ) {
+      throw error
+    }
+    return {
+      action: step.action,
+      status: UserActionStatus.Indeterminate,
+      error: `Lighter ${step.action} got no answer: ${error instanceof Error ? error.message : String(error)}`,
+      errorCode:
+        error instanceof PerpsError ? error.code : PerpsErrorCode.ServerError,
+    }
+  }
 
+  const { status, data } = answer
   const code = data?.code
   const referralAlreadyApplied =
     step.wasmSignParams.kind === 'referralUse' &&
     code === LIGHTER_REFERRAL_ALREADY_USED_CODE
-  if (
-    !referralAlreadyApplied &&
-    (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE)
-  ) {
+  if (referralAlreadyApplied) {
+    if (appliedReferralCode !== undefined) {
+      await deps.keyStore.markReferralApplied(address, appliedReferralCode)
+    }
+    return undefined
+  }
+  if (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE) {
     const suffix = data?.message ? `: ${data.message}` : ''
-    throw new PerpsError(
-      lighterErrorCodeFromBody(code) ?? PerpsErrorCode.ExchangeRejected,
-      `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`
-    )
+    return {
+      action: step.action,
+      status: UserActionStatus.Failed,
+      refused: true,
+      error: `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`,
+      errorCode:
+        lighterErrorCodeFromBody(code) ?? PerpsErrorCode.ExchangeRejected,
+    }
   }
 
-  if (appliedReferralCode !== undefined) {
-    await deps.keyStore.markReferralApplied(address, appliedReferralCode)
+  const accepted: ActionResult = {
+    action: step.action,
+    status: UserActionStatus.Accepted,
   }
+  if (appliedReferralCode !== undefined) {
+    try {
+      await deps.keyStore.markReferralApplied(address, appliedReferralCode)
+    } catch (error) {
+      rethrowWithKnownResults([accepted], error)
+    }
+  }
+  return accepted
 }
 
 /**
@@ -603,9 +667,15 @@ async function requireApiKey(
  * Sign and broadcast a sequence of `EVM_TX` actions via the user's wallet
  * client. Each leg is broadcast then confirmed to a successful receipt before
  * the next is broadcast, so a later step (e.g. deposit) can rely on an earlier
- * step (e.g. approve) having mined. A reverted leg throws and aborts the
- * remaining legs. Each step's `txParams` carries chainId, target, function
- * name, args, and a human-readable abi from the backend.
+ * step (e.g. approve) having mined. Each step's `txParams` carries chainId,
+ * target, function name, args, and a human-readable abi from the backend.
+ *
+ * When every leg confirms, the legs are `signed` for `/executeAction`. A leg
+ * that reverts, or whose receipt does not arrive, aborts the remaining legs:
+ * the batch then returns no `signed` step and reports each confirmed leg as
+ * `Accepted`, then the reverted leg as a refused `Failed` result or the
+ * unconfirmed leg as `Indeterminate`. A leg that throws before its broadcast
+ * throws a `PerpsExecutionError` when an earlier leg confirmed.
  *
  * Before broadcasting a leg the SDK switches the wallet to the leg's
  * `txParams.chainId` via `ctx.switchToChain`, re-reading the returned client so
@@ -619,7 +689,7 @@ async function requireApiKey(
 export async function signEvmTxActions(
   steps: EvmTxActionStep[],
   ctx: SignActionsContext | undefined
-): Promise<EvmTxSignedActionStep[]> {
+): Promise<SignActionsResult> {
   const walletSigner = ctx?.userWallet
   if (!walletSigner) {
     throw new PerpsError(
@@ -632,32 +702,43 @@ export async function signEvmTxActions(
   const switchToChain = ctx?.switchToChain
   const onProgress = ctx?.onProgress
   const signed: EvmTxSignedActionStep[] = []
+  const confirmed = (): ActionResult[] =>
+    signed.map((leg) => ({
+      action: leg.action,
+      status: UserActionStatus.Accepted,
+      txHash: leg.txHash,
+    }))
   let legSigner = walletSigner
   for (const [index, step] of steps.entries()) {
     const params = step.txParams
 
-    if (legSigner.chain?.id !== params.chainId && switchToChain) {
-      legSigner = await switchToChain(params.chainId)
-    }
-    if (legSigner.chain?.id !== params.chainId) {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
-          `connected wallet is on chain ${legSigner.chain?.id ?? 'unknown'} and ` +
-          'no chain switch was performed. Configure a switchChain hook via ' +
-          `setSwitchChain, or connect the wallet to chain ${params.chainId} ` +
-          'before signing.'
-      )
-    }
+    let txHash: Hex
+    try {
+      if (legSigner.chain?.id !== params.chainId && switchToChain) {
+        legSigner = await switchToChain(params.chainId)
+      }
+      if (legSigner.chain?.id !== params.chainId) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          `EVM_TX leg '${step.action}' targets chain ${params.chainId}, but the ` +
+            `connected wallet is on chain ${legSigner.chain?.id ?? 'unknown'} and ` +
+            'no chain switch was performed. Configure a switchChain hook via ' +
+            `setSwitchChain, or connect the wallet to chain ${params.chainId} ` +
+            'before signing.'
+        )
+      }
 
-    const txHash = await legSigner.writeContract({
-      address: params.to,
-      abi: parseAbi(params.abi),
-      functionName: params.functionName,
-      args: params.args,
-      chain: legSigner.chain,
-      account: legSigner.account,
-    })
+      txHash = await legSigner.writeContract({
+        address: params.to,
+        abi: parseAbi(params.abi),
+        functionName: params.functionName,
+        args: params.args,
+        chain: legSigner.chain,
+        account: legSigner.account,
+      })
+    } catch (error) {
+      rethrowWithKnownResults(confirmed(), error)
+    }
     onProgress?.({
       index,
       total: steps.length,
@@ -668,15 +749,44 @@ export async function signEvmTxActions(
       txHash,
     })
 
-    const receipt = await waitForTransactionReceipt(legSigner, {
-      hash: txHash,
-    })
+    let receipt: Awaited<ReturnType<typeof waitForTransactionReceipt>>
+    try {
+      receipt = await waitForTransactionReceipt(legSigner, {
+        hash: txHash,
+      })
+    } catch (error) {
+      return {
+        signed: [],
+        executed: [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Indeterminate,
+            txHash,
+            error: `EVM_TX leg '${step.action}' (tx ${txHash}) has no receipt: ${error instanceof Error ? error.message : String(error)}`,
+            errorCode:
+              error instanceof WaitForTransactionReceiptTimeoutError
+                ? PerpsErrorCode.TimeoutError
+                : PerpsErrorCode.ServerError,
+          },
+        ],
+      }
+    }
     if (receipt.status === 'reverted') {
-      throw new PerpsError(
-        PerpsErrorCode.SDKError,
-        `EVM_TX leg '${step.action}' reverted (tx ${txHash}); aborting the ` +
-          'remaining legs.'
-      )
+      return {
+        signed: [],
+        executed: [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Failed,
+            refused: true,
+            txHash,
+            error: `EVM_TX leg '${step.action}' reverted (tx ${txHash}); aborted the remaining legs.`,
+            errorCode: PerpsErrorCode.SDKError,
+          },
+        ],
+      }
     }
     onProgress?.({
       index,
@@ -695,7 +805,7 @@ export async function signEvmTxActions(
     })
   }
 
-  return signed
+  return { signed, executed: [] }
 }
 
 /**
@@ -711,7 +821,7 @@ export async function lighterSignActions(
   steps: ActionStep[],
   address: Address,
   ctx?: SignActionsContext
-): Promise<SignedActionStep[]> {
+): Promise<SignActionsResult> {
   switch (method) {
     case SigningMethod.WASM_BLOB:
       return signWasmBlobActions(

@@ -23,6 +23,7 @@ import {
   resolveQuote,
   type SDKRequestOptions,
   type SignActionsContext,
+  type SignActionsResult,
   type StorageAdapter,
 } from '@lifi/perps-sdk'
 import {
@@ -49,8 +50,8 @@ import {
   type PositionsResponse,
   type Quote,
   type SetupAction,
-  type SignedActionStep,
   type SigningMethod,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import { type Address, type Hex, isAddress } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
@@ -294,15 +295,24 @@ export function hyperliquidProvider(
       return {}
     },
 
-    signActions: (
+    signActions: async (
       method: SigningMethod,
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
-    ): Promise<SignedActionStep[]> =>
-      hyperliquidSignActions(agentStore, method, steps, address, ctx),
+    ): Promise<SignActionsResult> => ({
+      signed: await hyperliquidSignActions(
+        agentStore,
+        method,
+        steps,
+        address,
+        ctx
+      ),
+      executed: [],
+    }),
 
-    // A confirmed session-agent revoke leaves the stored key unusable.
+    // A session-agent revoke the venue acknowledged leaves the stored key
+    // unusable. An indeterminate or failed revoke keeps it.
     onExecuteResults: async (
       address: Address,
       results: ActionResult[]
@@ -310,7 +320,9 @@ export function hyperliquidProvider(
       if (
         results.some(
           (result) =>
-            result.success && result.action === ActionType.REVOKE_SESSION_AGENT
+            result.action === ActionType.REVOKE_SESSION_AGENT &&
+            (result.status === UserActionStatus.Submitted ||
+              result.status === UserActionStatus.Accepted)
         )
       ) {
         await agentStore.remove(address)

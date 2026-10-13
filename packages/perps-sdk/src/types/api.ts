@@ -7,7 +7,6 @@ import type {
   PlaceTwapOrderParams as ActionPlaceTwapOrderParams,
   ActionStep,
   DecimalString,
-  ExecuteActionResponse,
   MarginMode,
   MarketRef,
   MetaActionType,
@@ -18,7 +17,6 @@ import type {
   PortfolioHistoryRange,
   SetupAction,
   SetupOption,
-  SignedActionStep,
   TimeInForce,
   TriggerOrderInput,
   WithdrawalParams,
@@ -378,25 +376,6 @@ export interface ProviderSetup {
    * with the staged `setup` steps.
    */
   checklist: SetupChecklistItem[]
-}
-
-/**
- * Parameters for the internal `PerpsClient.executeProviderSetup` batch submit.
- */
-export interface ExecuteProviderSetupParams {
-  provider: string
-  address: Address
-  /** The unsatisfied setup steps from checkSetup() */
-  setup: ActionStep[]
-  /** Signed counterparts of `setup`, in the same order */
-  signedActions: SignedActionStep[]
-}
-
-/**
- * Result from the internal `PerpsClient.executeProviderSetup` batch submit.
- */
-export interface ExecuteProviderSetupResult {
-  results: ExecuteActionResponse
 }
 
 /**

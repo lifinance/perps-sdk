@@ -33,6 +33,7 @@ import {
   PositionSide,
   SigningMethod,
   TimeInForce,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { setupServer } from 'msw/node'
@@ -598,7 +599,9 @@ export const mockCreateAuthResponse: CreateActionResponse = {
 }
 
 export const mockAuthResponse: ExecuteActionResponse = {
-  results: [{ action: ActionType.APPROVE_AGENT, success: true }],
+  results: [
+    { action: ActionType.APPROVE_AGENT, status: UserActionStatus.Submitted },
+  ],
 }
 
 export const mockCreateOrderResponse: CreateActionResponse = {
@@ -661,7 +664,7 @@ export const mockSubmitOrderResponse: ExecuteActionResponse = {
   results: [
     {
       action: ActionType.PLACE_ORDER,
-      success: true,
+      status: UserActionStatus.Submitted,
       orderId: 'neworder123',
     },
   ],
@@ -702,7 +705,7 @@ export const mockSubmitWithdrawalResponse: ExecuteActionResponse = {
   results: [
     {
       action: ActionType.WITHDRAWAL,
-      success: true,
+      status: UserActionStatus.Submitted,
     },
   ],
 }
