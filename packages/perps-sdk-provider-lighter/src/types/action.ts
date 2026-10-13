@@ -158,6 +158,12 @@ export const LT_ORDER_TYPE_TAKE_PROFIT_LIMIT = 5
  * @public
  */
 export const LT_ORDER_TYPE_TWAP = 6
+/**
+ * Lighter wire value for a TWAP slice. The venue creates it internally; it
+ * cannot be placed, and its trades carry client order index `0`.
+ * @public
+ */
+export const LT_ORDER_TYPE_TWAP_SUB = 7
 
 /**
  * Lighter wire value for immediate-or-cancel time in force.
