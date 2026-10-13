@@ -330,6 +330,30 @@ describe('PerpsClient', () => {
       )
     })
 
+    it.each([
+      { status: UserActionStatus.Indeterminate },
+      { status: UserActionStatus.Failed, refused: true },
+    ] as const)('does not sign a later descriptor after $status', async (outcome) => {
+      const { perps, signActions } = await mixedClient()
+      const result: ActionResult = {
+        action: ActionType.APPROVE_BUILDER_FEE,
+        ...outcome,
+        error: 'first step not acknowledged',
+      }
+      signActions.mockResolvedValueOnce({ signed: [], executed: [result] })
+      const executeCalls = stageBatch([builderFeeStep, placeOrderStep])
+
+      const response = await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(response).toEqual({ results: [result] })
+      expect(signActions).toHaveBeenCalledTimes(1)
+      expect(executeCalls).toEqual([])
+    })
+
     it('calls signActions once per descriptor group with that group signers', async () => {
       const { perps, signActions } = await mixedClient()
       stageBatch([builderFeeStep, placeOrderStep])
@@ -3630,6 +3654,128 @@ describe('PerpsClient', () => {
         signActions,
         ...overrides,
       }) as unknown as PerpsProviderPlugin
+
+    it.each([
+      { status: UserActionStatus.Indeterminate },
+      { status: UserActionStatus.Failed, refused: true },
+    ] as const)('stops draining staged setup steps after $status', async (outcome) => {
+      const result: ActionResult = {
+        action: ActionType.SET_REFERRAL,
+        ...outcome,
+        error: 'setup not acknowledged',
+      }
+      const signedSteps: ActionType[] = []
+      const signActions = vi.fn(
+        async (_method: SigningMethod, steps: ActionStep[]) => {
+          signedSteps.push(...steps.map((step) => step.action))
+          return { signed: [], executed: [result] }
+        }
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        providers: [sdkReferralPlugin(signActions)],
+      })
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep(PerpsSigner.SDK)]),
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      await expect(
+        venueClient.checkSetup({ provider: key, address: userAddress })
+      ).resolves.toMatchObject({ setup: [], isReady: true })
+      expect(signedSteps).toEqual([ActionType.SET_REFERRAL])
+      expect(executeCount).toBe(0)
+    })
+
+    it('re-reads venue config after an uncertain setup write and does not resend a reconciled step', async () => {
+      let satisfied = false
+      const events: string[] = []
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({
+          signed: [],
+          executed: [
+            {
+              action: ActionType.SET_REFERRAL,
+              status: UserActionStatus.Indeterminate,
+              error: 'response lost after submission',
+            },
+          ],
+        })
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        providers: [
+          sdkReferralPlugin(signActions, {
+            getAccount: async (): Promise<AccountResponse> => {
+              const response = await fetch('https://venue.test/account')
+              return response.json()
+            },
+            projectConfig: (config: AccountResponse['config']) => [
+              {
+                type: ActionType.SET_REFERRAL,
+                values: [],
+                satisfied:
+                  config.provider === 'hyperliquid' &&
+                  config.abstractionMode === 'unifiedAccount',
+              },
+            ],
+          }),
+        ],
+      })
+      server.use(
+        providersHandler([internalStep(PerpsSigner.SDK)]),
+        http.get('https://venue.test/account', () => {
+          events.push('read')
+          return HttpResponse.json({
+            ...mockAccount,
+            config: {
+              provider: 'hyperliquid',
+              abstractionMode: satisfied ? 'unifiedAccount' : null,
+              agents: [],
+              dexStates: [],
+            },
+          } satisfies AccountResponse)
+        }),
+        http.post(`${BASE_URL}/createAction`, () => {
+          events.push('stage')
+          return HttpResponse.json({
+            actions: [
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+            ],
+          })
+        })
+      )
+
+      await venueClient.checkSetup({ provider: key, address: userAddress })
+      satisfied = true
+      await expect(
+        venueClient.checkSetup({ provider: key, address: userAddress })
+      ).resolves.toMatchObject({ setup: [], isReady: true })
+
+      expect(events).toEqual(['read', 'stage', 'read'])
+      expect(signActions).toHaveBeenCalledTimes(1)
+    })
 
     it('defers an SDK non-choice step while a staged visible step has a lower sequence', async () => {
       const signActions = vi.fn(

@@ -172,10 +172,9 @@ const WIRE_BASE_URL = 'https://lighter.test'
 /**
  * Deps whose `apiClient` is a real {@link LighterApiClient} over a recording
  * `fetch`, so a spec asserts the wire request instead of a stubbed method call.
- * Every response answers `used_code: ''`, so a referral step reads no applied
- * code and still POSTs.
+ * GET responses answer `used_code: ''`, so referral steps still POST.
  */
-function makeWireDeps(): {
+function makeWireDeps(mutationResponse?: () => Response): {
   deps: LighterSignActionsDeps
   keyStore: LighterKeyStore
   requests: { url: string; init?: RequestInit }[]
@@ -183,6 +182,9 @@ function makeWireDeps(): {
   const requests: { url: string; init?: RequestInit }[] = []
   const fetchImpl = (async (url: string, init?: RequestInit) => {
     requests.push({ url, init })
+    if (init?.method === 'POST' && mutationResponse) {
+      return mutationResponse()
+    }
     return new Response(
       JSON.stringify({ ...REGISTERED_API_KEYS, used_code: '' }),
       { status: 200, headers: { 'content-type': 'application/json' } }
@@ -676,6 +678,80 @@ describe('lighterSignActions', () => {
         apiKeyPrivateKey: '0xpriv',
         apiKeyPublicKey: '0xpub',
       })
+    })
+
+    it('retains a pending registration key and blocks token-auth writes until the venue registers it', async () => {
+      let registered = false
+      const { deps, keyStore, postForm } = makeDeps(
+        {},
+        undefined,
+        async () => ({
+          code: 200,
+          api_keys: registered
+            ? [{ api_key_index: 7, public_key: '0xpub' }]
+            : [],
+        })
+      )
+      const wallet = createWalletClient({
+        account: privateKeyToAccount(`0x${'11'.repeat(32)}`),
+        chain: arbitrum,
+        transport: custom({
+          request: async () => {
+            throw new Error('Registration signing must not broadcast')
+          },
+        }),
+      })
+      const registration = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [
+          {
+            action: ActionType.REGISTER_API_KEY,
+            wasmSignParams: { api_key_index: 7, nonce: 42 },
+          },
+        ],
+        ADDRESS,
+        { userWallet: wallet }
+      )
+      expect(registration.executed).toEqual([])
+      expect(registration.signed).toHaveLength(1)
+      const pendingKey = await keyStore.get(ADDRESS)
+      expect(pendingKey).toMatchObject({
+        apiKeyIndex: 7,
+        apiKeyPrivateKey: '0xpriv',
+        apiKeyPublicKey: '0xpub',
+      })
+      const tierStep: WasmBlobActionStep = {
+        action: ActionType.ACCOUNT_TYPE,
+        wasmSignParams: {
+          kind: 'changeAccountTier',
+          account_index: 99,
+          new_tier: 'premium',
+        },
+      }
+
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [tierStep], ADDRESS)
+      ).rejects.toMatchObject({
+        code: PerpsErrorCode.SDKError,
+        message: expect.stringContaining('not registered'),
+      })
+      expect(postForm).not.toHaveBeenCalled()
+      expect(await keyStore.get(ADDRESS)).toEqual(pendingKey)
+
+      registered = true
+      await expect(
+        lighterSignActions(deps, SigningMethod.WASM_BLOB, [tierStep], ADDRESS)
+      ).resolves.toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Accepted,
+          },
+        ],
+      })
+      expect(await keyStore.get(ADDRESS)).toEqual(pendingKey)
     })
 
     it('keeps the applied referral marker when it replaces the key', async () => {
@@ -1217,6 +1293,90 @@ describe('lighterSignActions', () => {
       expect(String(post.init?.body)).not.toContain('auth-token-xyz')
     })
 
+    it.each([
+      {
+        label: '503 HTML response',
+        status: 503,
+        body: '<html>Unavailable</html>',
+      },
+      { label: '503 rejection body', status: 503, body: '{"code":21520}' },
+      { label: 'empty 200 response', status: 200, body: '' },
+      { label: '200 without a code', status: 200, body: '{"message":"ok"}' },
+      { label: '200 with a null body', status: 200, body: 'null' },
+      { label: '200 with a string code', status: 200, body: '{"code":"200"}' },
+      { label: '200 with an object code', status: 200, body: '{"code":{}}' },
+      {
+        label: '200 with a fractional code',
+        status: 200,
+        body: '{"code":200.5}',
+      },
+      { label: '400 without a venue verdict', status: 400, body: '' },
+    ])('reports $label as Indeterminate without retrying', async ({
+      status,
+      body,
+    }) => {
+      const { deps, keyStore, requests } = makeWireDeps(
+        () => new Response(body, { status })
+      )
+      await setStoredKey(keyStore)
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep, accountTypeStep],
+        ADDRESS
+      )
+
+      expect(result).toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Indeterminate,
+            errorCode: PerpsErrorCode.ServerError,
+            error: expect.any(String),
+          },
+        ],
+      })
+      wirePost(requests)
+    })
+
+    it.each([
+      200, 400,
+    ])('reports a parsed rejection on HTTP %i as a definitive refusal', async (status) => {
+      const { deps, keyStore, requests } = makeWireDeps(
+        () =>
+          new Response(
+            '{"code":21520,"message":"account is not eligible for this operation"}',
+            { status }
+          )
+      )
+      await setStoredKey(keyStore)
+
+      const result = await lighterSignActions(
+        deps,
+        SigningMethod.WASM_BLOB,
+        [accountTypeStep],
+        ADDRESS
+      )
+
+      expect(result).toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Failed,
+            refused: true,
+            errorCode: PerpsErrorCode.SetupRequired,
+            error: expect.stringContaining(
+              'account is not eligible for this operation'
+            ),
+          },
+        ],
+      })
+      wirePost(requests)
+    })
+
     it('never POSTs when the auth token cannot be created', async () => {
       const { deps, keyStore, postForm } = makeDeps({
         createAuthToken: vi.fn(async () => {
@@ -1549,6 +1709,50 @@ describe('lighterSignActions', () => {
       })
     })
 
+    it.each([
+      {
+        label: 'a 503 already-applied body',
+        status: 503,
+        body: '{"code":41003}',
+      },
+      { label: 'a 503 success body', status: 503, body: '{"code":200}' },
+      { label: 'an empty 200 body', status: 200, body: '' },
+    ])('does not mark the referral applied after $label', async ({
+      status,
+      body,
+    }) => {
+      const { deps, keyStore, requests } = makeWireDeps(
+        () => new Response(body, { status })
+      )
+      await keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      await expect(
+        lighterSignActions(
+          deps,
+          SigningMethod.WASM_BLOB,
+          [referralStep],
+          ADDRESS
+        )
+      ).resolves.toEqual({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.SET_REFERRAL,
+            status: UserActionStatus.Indeterminate,
+            errorCode: PerpsErrorCode.ServerError,
+            error: expect.any(String),
+          },
+        ],
+      })
+      expect((await keyStore.get(ADDRESS))?.appliedReferralCode).toBeUndefined()
+      wirePost(requests)
+    })
+
     it('reports a refused result for a rejection code other than 41003', async () => {
       const { deps, keyStore } = makeDeps({}, async () => ({
         status: 400,
@@ -1872,6 +2076,66 @@ describe('lighterSignActions', () => {
       expect(progress.every((p) => p.total === 2)).toBe(true)
       expect(progress[0]?.txHash).toBe(broadcastHashes[0])
       expect(progress[3]?.txHash).toBe(broadcastHashes[1])
+    })
+
+    it.each([
+      { phase: 'submitted', status: UserActionStatus.Submitted, index: 0 },
+      { phase: 'confirmed', status: UserActionStatus.Accepted, index: 0 },
+      { phase: 'submitted', status: UserActionStatus.Submitted, index: 1 },
+      { phase: 'confirmed', status: UserActionStatus.Accepted, index: 1 },
+    ])('retains leg $index as $status when its $phase callback throws', async ({
+      phase,
+      status,
+      index,
+    }) => {
+      const { wallet, order, broadcastHashes } = makeRecordingWallet([
+        '0x1',
+        '0x1',
+        '0x1',
+      ])
+      const callbackError = new Error('progress callback failed')
+      const error = await lighterSignActions(
+        deps_(),
+        SigningMethod.EVM_TX,
+        [makeStep('approve'), makeStep('deposit'), makeStep('deposit')],
+        ADDRESS,
+        {
+          userWallet: wallet,
+          onProgress: (event) => {
+            if (event.index === index && event.status === phase) {
+              throw callbackError
+            }
+          },
+        }
+      ).catch((cause: unknown) => cause)
+
+      expect(error).toBeInstanceOf(PerpsExecutionError)
+      if (!(error instanceof PerpsExecutionError)) {
+        throw new Error('Expected the callback failure to retain execution')
+      }
+      expect(error.cause).toBe(callbackError)
+      expect(error.response.results).toEqual([
+        ...(index === 1
+          ? [
+              {
+                action: ActionType.DEPOSIT,
+                status: UserActionStatus.Accepted,
+                txHash: broadcastHashes[0],
+              },
+            ]
+          : []),
+        {
+          action: ActionType.DEPOSIT,
+          status,
+          txHash: broadcastHashes[index],
+        },
+      ])
+      expect(broadcastHashes).toHaveLength(index + 1)
+      expect(order).toEqual([
+        ...(index === 1 ? ['broadcast:0', 'receipt:0'] : []),
+        `broadcast:${index}`,
+        ...(phase === 'confirmed' ? [`receipt:${index}`] : []),
+      ])
     })
 
     it('does not emit a confirmed progress for a reverted leg', async () => {

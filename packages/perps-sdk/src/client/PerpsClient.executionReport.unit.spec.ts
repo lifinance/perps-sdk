@@ -7,7 +7,7 @@ import type {
   SignedActionStep,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { mockCreateOrderResponse, server } from '../../test/handlers.js'
 import {
   ActionType,
@@ -58,6 +58,10 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     typeof vi.fn<(address: string, results: ActionResult[]) => Promise<void>>
   >
   let executeRequests: ExecuteActionRequest[]
+  let resolveExplorerLink: Mock<(txHash: string) => string>
+  let resolveActionRequest: Mock<
+    NonNullable<PerpsProviderPlugin['resolveActionRequest']>
+  >
   let client: PerpsClient
 
   function respond(
@@ -85,13 +89,16 @@ describe('PerpsClient execution report (public entrypoint)', () => {
       executed: [],
     }))
     onExecuteResults = vi.fn(async () => {})
+    resolveExplorerLink = vi.fn(
+      (txHash: string) => `https://app.hyperliquid.xyz/explorer/tx/${txHash}`
+    )
+    resolveActionRequest = vi.fn(async () => ({}))
     const plugin = {
       type: PROVIDER,
       bind: vi.fn(),
       accountExists: vi.fn(async () => true),
-      resolveActionRequest: vi.fn(async () => ({})),
-      resolveExplorerLink: (txHash: string) =>
-        `https://app.hyperliquid.xyz/explorer/tx/${txHash}`,
+      resolveActionRequest,
+      resolveExplorerLink,
       signActions,
       onExecuteResults,
     } satisfies Partial<PerpsProviderPlugin> as unknown as PerpsProviderPlugin
@@ -253,6 +260,7 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     expect(executionError.response).toEqual({ results: [executed] })
     expect(executionError.cause).toBeInstanceOf(PerpsError)
     expect(executionError.code).toBe((executionError.cause as PerpsError).code)
+    expect(onExecuteResults).not.toHaveBeenCalled()
   })
 
   it('rethrows the original error when no result is known', async () => {
@@ -268,6 +276,7 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     expect(executeRequests).toHaveLength(1)
     expect(error).toBeInstanceOf(PerpsError)
     expect(error).not.toBeInstanceOf(PerpsExecutionError)
+    expect(onExecuteResults).not.toHaveBeenCalled()
   })
 
   it('rethrows a signing failure with nothing executed as the original error', async () => {
@@ -279,6 +288,66 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     respond(stagedSteps(1), [])
 
     await expect(client.placeOrder(ORDER)).rejects.toBe(signingError)
+    expect(executeRequests).toEqual([])
+  })
+
+  it('preserves the complete report when the explorer plugin throws', async () => {
+    const cause = new Error('explorer unavailable')
+    const executed: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Accepted,
+    }
+    const submitted: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Submitted,
+      txHash: TX_HASH,
+    }
+    signActions.mockResolvedValue({
+      signed: [signedOrderStep],
+      executed: [executed],
+    })
+    resolveExplorerLink.mockImplementation(() => {
+      throw cause
+    })
+    respond(stagedSteps(2), [submitted])
+
+    await expect(client.placeOrder(ORDER)).rejects.toMatchObject({
+      response: { results: [executed, submitted] },
+      cause,
+    })
+    expect(executeRequests).toHaveLength(1)
+    expect(onExecuteResults).not.toHaveBeenCalled()
+  })
+
+  it('preserves setup execution when resolving its submitting signer throws', async () => {
+    const step: ActionStep = {
+      ...orderStep,
+      action: ActionType.APPROVE_BUILDER_FEE,
+    }
+    const executed: ActionResult = {
+      action: step.action,
+      status: UserActionStatus.Accepted,
+    }
+    const cause = new PerpsError(
+      PerpsErrorCode.SDKError,
+      'signer store unavailable'
+    )
+    signActions.mockResolvedValue({ signed: [], executed: [executed] })
+    resolveActionRequest.mockRejectedValue(cause)
+    respond({ actions: [step] }, [])
+
+    const error = await client
+      .executeProviderSetupAction({
+        provider: PROVIDER,
+        address: ADDRESS,
+        step,
+        checklist: [],
+      })
+      .catch((error: unknown) => error)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    expect(error).toMatchObject({ response: { results: [executed] } })
+    expect((error as PerpsExecutionError).cause).toBe(cause)
     expect(executeRequests).toEqual([])
   })
 })

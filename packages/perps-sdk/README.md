@@ -172,6 +172,17 @@ When a later stage throws after some results are known, the client throws a
 `PerpsExecutionError`. Its `response` holds the known results and its `cause`
 holds the original error. A failure before any result is known throws the
 original error.
+For a `PerpsError` cause, the wrapper preserves its `code` and provider `tool`.
+
+An `Accepted` result describes the venue effect, not successful local bookkeeping.
+For example, an Ondo login can be accepted before saving its session token fails.
+The call then throws `PerpsExecutionError` with that accepted result and the storage
+failure as its cause; it does not report that the account is ready to trade.
+Re-read `checkSetup()` before trading after setup, including when the report is empty.
+
+Provider authors can use the exported `rethrowWithKnownResults(known, error)`.
+It prepends `known` to a nested `PerpsExecutionError` report and retains the original
+cause. With no known results, it rethrows the original error unchanged.
 
 ```ts
 import { PerpsExecutionError, UserActionStatus } from '@lifi/perps-sdk'

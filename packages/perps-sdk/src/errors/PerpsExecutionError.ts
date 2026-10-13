@@ -24,6 +24,9 @@ export class PerpsExecutionError extends PerpsError {
     )
     this.response = response
     this.cause = cause
+    if (cause instanceof PerpsError && cause.tool !== undefined) {
+      this.tool = cause.tool
+    }
   }
 }
 

@@ -466,31 +466,9 @@ async function signTransfer(
 }
 
 /**
- * Execute a token-authenticated Lighter mutation (`ACCOUNT_TYPE` →
- * `/changeAccountTier`, `SET_REFERRAL` → `/referral/use`) client-side.
- *
- * Neither endpoint consumes a wasm-signed transaction — both authenticate with
- * a Lighter auth token and enforce their business rules (open positions,
- * pending orders, 24h tier cooldown) server-side. We create a fresh short-lived
- * token per call (never the stored read-only token, never persisted) and POST
- * the mirror of the backend's form body directly to Lighter, so no auth token
- * ever transits the LI.FI backend.
- *
- * Lighter applies a referral code permanently at sign-up, so any code on the
- * account settles `SET_REFERRAL`: the executor reads the applied code first and
- * skips the POST when the account carries one, and a
- * {@link LIGHTER_REFERRAL_ALREADY_USED_CODE} verdict from the POST settles the
- * step the same way; a settled step resolves to `undefined`. A success code
- * resolves to an `Accepted` result. Every other answer is a refused `Failed`
- * result with Lighter's `code`/`message` verbatim, under the `PerpsErrorCode`
- * the body code names ({@link lighterErrorCodeFromBody}) or
- * {@link PerpsErrorCode.ExchangeRejected}. A POST that gets no answer resolves
- * to an `Indeterminate` result, since Lighter may have applied it.
- *
- * @throws {PerpsError} When the step cannot be sent, including a rate-limit
- *   hold or a 429 answer.
- * @throws {PerpsExecutionError} When the referral marker write fails after an
- *   `Accepted` result.
+ * Execute a token-auth mutation without sending its auth token to the backend.
+ * An existing referral settles without a result. Server errors and malformed
+ * verdicts are indeterminate: the mutation may already have been applied.
  */
 async function executeTokenAuthMutation(
   deps: LighterSignActionsDeps,
@@ -520,7 +498,7 @@ async function executeTokenAuthMutation(
   const { path, params } = buildTokenAuthMutationRequest(step)
   let answer: {
     status: number
-    data: { code?: number; message?: string } | undefined
+    data: { code?: unknown; message?: string } | undefined
   }
   try {
     answer = await deps.apiClient.postForm(path, authToken, params)
@@ -542,6 +520,14 @@ async function executeTokenAuthMutation(
 
   const { status, data } = answer
   const code = data?.code
+  if (status >= 500 || typeof code !== 'number' || !Number.isInteger(code)) {
+    return {
+      action: step.action,
+      status: UserActionStatus.Indeterminate,
+      error: `Lighter ${step.action} returned no reliable verdict (HTTP ${status})`,
+      errorCode: PerpsErrorCode.ServerError,
+    }
+  }
   const referralAlreadyApplied =
     step.wasmSignParams.kind === 'referralUse' &&
     code === LIGHTER_REFERRAL_ALREADY_USED_CODE
@@ -739,15 +725,29 @@ export async function signEvmTxActions(
     } catch (error) {
       rethrowWithKnownResults(confirmed(), error)
     }
-    onProgress?.({
-      index,
-      total: steps.length,
-      action: step.action,
-      functionName: params.functionName,
-      chainId: params.chainId,
-      status: 'submitted',
-      txHash,
-    })
+    try {
+      onProgress?.({
+        index,
+        total: steps.length,
+        action: step.action,
+        functionName: params.functionName,
+        chainId: params.chainId,
+        status: 'submitted',
+        txHash,
+      })
+    } catch (error) {
+      rethrowWithKnownResults(
+        [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Submitted,
+            txHash,
+          },
+        ],
+        error
+      )
+    }
 
     let receipt: Awaited<ReturnType<typeof waitForTransactionReceipt>>
     try {
@@ -788,21 +788,24 @@ export async function signEvmTxActions(
         ],
       }
     }
-    onProgress?.({
-      index,
-      total: steps.length,
-      action: step.action,
-      functionName: params.functionName,
-      chainId: params.chainId,
-      status: 'confirmed',
-      txHash,
-    })
-
     signed.push({
       action: step.action,
       txParams: step.txParams,
       txHash,
     })
+    try {
+      onProgress?.({
+        index,
+        total: steps.length,
+        action: step.action,
+        functionName: params.functionName,
+        chainId: params.chainId,
+        status: 'confirmed',
+        txHash,
+      })
+    } catch (error) {
+      rethrowWithKnownResults(confirmed(), error)
+    }
   }
 
   return { signed, executed: [] }

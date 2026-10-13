@@ -46,6 +46,16 @@ async function run() {
     }
   }
 
+  const confirmedSetup = await perps.checkSetup({
+    provider: 'hyperliquid',
+    address: userAddress,
+  })
+  if (!confirmedSetup.isReady) {
+    throw new Error(
+      'Provider setup is not ready; inspect the account before trading.'
+    )
+  }
+
   // 4. Resolve the market by its opaque Market.id — placeOrder references a
   //    market via { marketId, categoryId }, not a display symbol.
   const { markets } = await getMarkets(perps.client, {

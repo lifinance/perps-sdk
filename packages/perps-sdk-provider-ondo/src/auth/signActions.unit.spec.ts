@@ -223,6 +223,45 @@ describe('ondoSignActions — SIWE', () => {
     expect(cause).toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 
+  it('keeps the venue-accepted login when local token persistence fails', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: tokenFixture() })
+      )
+    const storageError = new Error('session storage unavailable')
+    const deps = {
+      ...makeDeps(fetchImpl),
+      tokenStore: new OndoTokenStore(
+        {
+          ...createMemoryStorage(),
+          set: async () => {
+            throw storageError
+          },
+        },
+        BASE_URL
+      ),
+    }
+
+    await expect(
+      ondoSignActions(deps, SigningMethod.SIWE, [SIWE_STEP], account.address, {
+        userWallet,
+      })
+    ).rejects.toMatchObject({
+      name: 'PerpsExecutionError',
+      response: {
+        results: [
+          {
+            action: SIWE_STEP.action,
+            status: UserActionStatus.Accepted,
+          },
+        ],
+      },
+      cause: storageError,
+    })
+    await expect(deps.tokenStore.get(account.address)).resolves.toBeNull()
+  })
+
   it('posts the wallet signature to the Ondo login endpoint', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

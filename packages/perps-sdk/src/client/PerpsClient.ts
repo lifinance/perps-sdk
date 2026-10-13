@@ -534,8 +534,8 @@ export class PerpsClient {
       return results
     }
 
-    results = this.resolveExplorerLinks(provider, results)
     try {
+      results = this.resolveExplorerLinks(provider, results)
       await this.notifyExecuteResults(provider, address, results)
     } catch (error) {
       rethrowWithKnownResults(results, error)
@@ -688,11 +688,17 @@ export class PerpsClient {
       metadata,
       [step]
     )
-    const { signerAddress } = await this.resolveActionRequest(
-      provider,
-      descriptor,
-      address
-    )
+    let signerAddress: Address | undefined
+    try {
+      const request = await this.resolveActionRequest(
+        provider,
+        descriptor,
+        address
+      )
+      signerAddress = request.signerAddress
+    } catch (error) {
+      rethrowWithKnownResults(signResult.executed, error)
+    }
     return this.submitSignedActions(
       provider,
       address,
