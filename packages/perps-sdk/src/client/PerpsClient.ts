@@ -30,11 +30,13 @@ import {
   PerpsErrorCode,
   PerpsSigner,
   SigningMethod,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import { unknownToDecimalString } from '../decimal/parse.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { rethrowWithKnownResults } from '../errors/PerpsExecutionError.js'
 import { getAssetRegistry, toAssetDisplay } from '../registry/assetRegistry.js'
 import { getMarketRegistry } from '../registry/marketRegistry.js'
 import { createAction } from '../services/createAction.js'
@@ -55,8 +57,6 @@ import type {
   CancelTwapOrderParams,
   CreateReferralCodeActionParams,
   ExecuteMetaActionParams,
-  ExecuteProviderSetupParams,
-  ExecuteProviderSetupResult,
   GetAccountResult,
   GetDepositFlowParams,
   GetPortfolioHistoryParams,
@@ -87,6 +87,7 @@ import type {
   PerpsSDKClient,
   SignActionProgress,
   SignActionsContext,
+  SignActionsResult,
 } from '../types/provider.js'
 import type {
   WithdrawableBalance,
@@ -213,15 +214,11 @@ function currentChoiceValue(
   return value === null ? null : String(value)
 }
 
-/** Throw the first per-action failure a 200 OK `/executeAction` carried. */
-function assertAllSucceeded(results: ActionResult[]): void {
-  const failure = results.find((r) => !r.success)
-  if (failure) {
-    throw new PerpsError(
-      failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
-      failure.error
-    )
-  }
+function isAcknowledged(result: ActionResult): boolean {
+  return (
+    result.status === UserActionStatus.Submitted ||
+    result.status === UserActionStatus.Accepted
+  )
 }
 
 function isNonNegativeDecimal(value: string): boolean {
@@ -451,10 +448,13 @@ export class PerpsClient {
    * step with the signer its own descriptor declares; the signed steps come
    * back in the batch's original order. The plugin owns every signing arm and
    * branches on `signer` internally, reading the end-user's wallet from the
-   * {@link SignActionsContext} when an arm signs as the user.
+   * {@link SignActionsContext} when an arm signs as the user. Signing stops
+   * after the first group that executed a step without an acknowledgement.
    *
    * @throws {PerpsError} When a step's action is not declared by the provider,
    *   or the plugin implements no `signActions`.
+   * @throws {PerpsExecutionError} When a group throws after an earlier group
+   *   executed steps.
    */
   private async delegateSignActions(
     provider: string,
@@ -462,36 +462,90 @@ export class PerpsClient {
     metadata: Provider,
     actions: ActionStep[],
     onProgress?: (progress: SignActionProgress) => void
-  ): Promise<SignedActionStep[]> {
+  ): Promise<SignActionsResult> {
     const plugin = this.requireProvider(provider)
-    if (typeof plugin.signActions !== 'function') {
+    const signActions = plugin.signActions?.bind(plugin)
+    if (signActions === undefined) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Provider '${provider}' does not implement signActions.`
       )
     }
     const signed: SignedActionStep[] = []
+    const executed: ActionResult[] = []
     for (const group of groupStepsByDescriptor(metadata, actions)) {
-      const userWallet = await this.resolveSigningWallet(
-        group.descriptor,
-        group.steps
-      )
-      signed.push(
-        ...(await plugin.signActions(
+      try {
+        const userWallet = await this.resolveSigningWallet(
+          group.descriptor,
+          group.steps
+        )
+        const result = await signActions(
           group.descriptor.signingMethod,
           group.steps,
           address,
           this.buildSignActionsContext(group.descriptor, userWallet, onProgress)
-        ))
-      )
+        )
+        signed.push(...result.signed)
+        executed.push(...result.executed)
+      } catch (error) {
+        rethrowWithKnownResults(executed, error)
+      }
+      if (!executed.every(isAcknowledged)) {
+        break
+      }
     }
-    return signed
+    return { signed, executed }
   }
 
   /**
-   * Let the plugin observe `/executeAction` per-step results before the core
-   * surfaces failures — e.g. to evict a locally stored credential the venue
-   * rejected.
+   * Submit `signed` to `/executeAction` when every step the plugin executed
+   * while signing was acknowledged, then resolve explorer links and notify the
+   * plugin. Resolves to the full report: `executed`, then the `/executeAction`
+   * results. An empty report means nothing executed.
+   *
+   * @throws {PerpsExecutionError} When the submission or the plugin callback
+   *   throws after a result is known.
+   */
+  private async submitSignedActions(
+    provider: string,
+    address: Address,
+    action: ActionType,
+    signerAddress: Address | undefined,
+    { signed, executed }: SignActionsResult
+  ): Promise<ActionResult[]> {
+    let results = executed
+    if (signed.length > 0 && executed.every(isAcknowledged)) {
+      try {
+        const response = await executeAction(this.sdkClient, {
+          provider,
+          address,
+          // The submitting account: the plugin-resolved signer (Hyperliquid's
+          // agent) when present, else the end-user's address.
+          signerAddress: signerAddress ?? address,
+          action,
+          actions: signed,
+        })
+        results = [...executed, ...response.results]
+      } catch (error) {
+        rethrowWithKnownResults(executed, error)
+      }
+    }
+    if (results.length === 0) {
+      return results
+    }
+
+    try {
+      results = this.resolveExplorerLinks(provider, results)
+      await this.notifyExecuteResults(provider, address, results)
+    } catch (error) {
+      rethrowWithKnownResults(results, error)
+    }
+    return results
+  }
+
+  /**
+   * Let the plugin observe an execution report before the core returns it —
+   * e.g. to evict a locally stored credential the venue refused.
    */
   private async notifyExecuteResults(
     provider: string,
@@ -505,9 +559,10 @@ export class PerpsClient {
   }
 
   /**
-   * Attach a provider-built explorer URL to every result the backend returned a
-   * venue `txHash` on. The provider owns its explorer target, so core only asks
-   * — a plugin without the hook leaves results untouched.
+   * Attach a provider-built explorer URL to every result that carries a venue
+   * `txHash`, whatever its status: an unacknowledged hash is what the user
+   * inspects. The provider owns its explorer target, so core only asks — a
+   * plugin without the hook leaves results untouched.
    */
   private resolveExplorerLinks(
     provider: string,
@@ -519,7 +574,7 @@ export class PerpsClient {
       return results
     }
     return results.map((result) => {
-      if (!result.success || result.txHash === undefined) {
+      if (result.txHash === undefined) {
         return result
       }
       const explorerLink = resolveLink(result.txHash)
@@ -610,30 +665,47 @@ export class PerpsClient {
   }
 
   /**
-   * Sign a single provider setup action step by delegating to the provider
-   * plugin, which branches on the step's signing scheme internally. Lets
-   * consumers collect signed setup actions without embedding per-method
-   * signing logic.
+   * Sign one provider setup step through the provider plugin and submit it.
+   * A step the plugin executed client-side (e.g. Lighter's token-authenticated
+   * venue mutations) reports the plugin's own result instead of an
+   * `/executeAction` result.
    *
-   * Returns `undefined` when the plugin executed the action entirely
-   * client-side (e.g. Lighter's token-authenticated venue mutations), leaving
-   * no backend-bound step to submit.
-   *
-   * @throws {PerpsError} When the step's action is not declared by the provider.
+   * @throws {PerpsError} When the step's action is not declared by the provider,
+   *   or signing or submission fails before any result is known.
+   * @throws {PerpsExecutionError} When a later stage fails after a result is
+   *   known.
    */
-  private async signProviderSetupAction(
+  private async runProviderSetupStep(
     provider: string,
     address: Address,
     step: ActionStep
-  ): Promise<SignedActionStep | undefined> {
+  ): Promise<ActionResult[]> {
     const metadata = await this.getProviderMetadata(provider)
-    const [signed] = await this.delegateSignActions(
+    const descriptor = findActionDescriptor(metadata, step.action)
+    const signResult = await this.delegateSignActions(
       provider,
       address,
       metadata,
       [step]
     )
-    return signed
+    let signerAddress: Address | undefined
+    try {
+      const request = await this.resolveActionRequest(
+        provider,
+        descriptor,
+        address
+      )
+      signerAddress = request.signerAddress
+    } catch (error) {
+      rethrowWithKnownResults(signResult.executed, error)
+    }
+    return this.submitSignedActions(
+      provider,
+      address,
+      step.action,
+      signerAddress,
+      signResult
+    )
   }
 
   /**
@@ -1142,9 +1214,9 @@ export class PerpsClient {
    * deferred while any staged user-facing step with a lower `sequence` is
    * outstanding — it cannot succeed before its prerequisite (e.g. SET_REFERRAL
    * authenticates with the credential REGISTER_API_KEY installs) and each
-   * doomed attempt is venue traffic. A drain failure is swallowed so it never
-   * blocks setup — the step stays unsatisfied and is retried on a later
-   * `checkSetup`.
+   * doomed attempt is venue traffic. A drain failure, thrown or reported, is
+   * swallowed so it never blocks setup — the step stays unsatisfied and is
+   * retried on a later `checkSetup`.
    */
   private async drainSetup(
     provider: string,
@@ -1166,18 +1238,18 @@ export class PerpsClient {
           descriptor,
         ])
         for (const step of steps) {
-          const signed = await this.signProviderSetupAction(
+          const results = await this.runProviderSetupStep(
             provider,
             address,
             step
           )
-          if (signed !== undefined) {
-            await this.executeProviderSetup({
-              provider,
-              address,
-              setup: [step],
-              signedActions: [signed],
-            })
+          const failure = results.find((result) => !isAcknowledged(result))
+          if (failure !== undefined) {
+            console.debug(
+              `[perps-sdk] setup step '${descriptor.type}' for '${provider}' reported '${failure.status}'; will retry on the next checkSetup.`,
+              failure
+            )
+            break
           }
         }
       } catch (error) {
@@ -1257,49 +1329,6 @@ export class PerpsClient {
   }
 
   /**
-   * Submit the signed setup steps returned by `checkSetup` (and signed by the
-   * caller / `signProviderSetupAction`). Routes the batch on the first step's
-   * action and lets the plugin contribute that action's `signerAddress`.
-   * Throws on any per-step venue rejection.
-   */
-  private async executeProviderSetup(
-    params: ExecuteProviderSetupParams
-  ): Promise<ExecuteProviderSetupResult> {
-    const { provider, address, setup, signedActions } = params
-
-    if (signedActions.length === 0) {
-      return { results: { results: [] } }
-    }
-
-    const action = setup[0]?.action ?? signedActions[0].action
-    const metadata = await this.getProviderMetadata(provider)
-    const descriptor = findActionDescriptor(metadata, action)
-    const { signerAddress } = await this.resolveActionRequest(
-      provider,
-      descriptor,
-      address
-    )
-
-    const response = await executeAction(this.sdkClient, {
-      provider,
-      address,
-      // The submitting account: the plugin-resolved signer (Hyperliquid's
-      // agent) when present, else the end-user's address.
-      signerAddress: signerAddress ?? address,
-      action,
-      actions: signedActions,
-    })
-
-    const results = this.resolveExplorerLinks(provider, response.results)
-
-    await this.notifyExecuteResults(provider, address, results)
-
-    assertAllSucceeded(results)
-
-    return { results: { results } }
-  }
-
-  /**
    * Sign and submit one pre-staged setup `ActionStep` end-to-end.
    *
    * `step` and `checklist` must come from the same {@link checkSetup} result.
@@ -1307,9 +1336,15 @@ export class PerpsClient {
    * prerequisites against that same snapshot, without another `createAction`
    * round-trip.
    *
+   * Resolves to the step's execution report. A refused or indeterminate step
+   * is a result in the report, not an exception.
+   *
    * @throws {PerpsError} When the step's action is not in the provider's
-   *   `setup` descriptors, or when a lower-`sequence` step on the same
-   *   checklist, a choice included, is still unsatisfied.
+   *   `setup` descriptors, when a lower-`sequence` step on the same
+   *   checklist, a choice included, is still unsatisfied, or when signing or
+   *   submission fails before any result is known.
+   * @throws {PerpsExecutionError} When a later stage fails after a result is
+   *   known; its `response` holds the known results.
    * @public
    */
   async executeProviderSetupAction(params: {
@@ -1317,7 +1352,7 @@ export class PerpsClient {
     address: Address
     step: ActionStep
     checklist: SetupChecklistItem[]
-  }): Promise<void> {
+  }): Promise<ExecuteActionResponse> {
     const { provider, address, step, checklist } = params
 
     const metadata = await this.getProviderMetadata(provider)
@@ -1340,52 +1375,34 @@ export class PerpsClient {
       )
     }
 
-    const signed = await this.signProviderSetupAction(provider, address, step)
-
-    // A client-executed setup action (Lighter SET_REFERRAL) produces no
-    // backend-bound step — it already ran during signing, so there is nothing
-    // to submit.
-    if (signed === undefined) {
-      return
+    return {
+      results: await this.runProviderSetupStep(provider, address, step),
     }
-
-    await this.executeProviderSetup({
-      provider,
-      address,
-      setup: [step],
-      signedActions: [signed],
-    })
   }
 
   /**
    * Execute one option of a choice setup step (Lighter `ACCOUNT_TYPE`,
    * Hyperliquid `ACCOUNT_MODE`) end-to-end with its bound `{ type, params }`,
-   * throwing on a venue rejection.
+   * through the same {@link execute} pipeline as a trade.
    *
-   * The option runs through the same {@link execute} pipeline as a trade, but
-   * a per-action `success: false` (returned as a 200 OK) means the user's
-   * selection was rejected and must surface, not be silently dropped.
+   * Resolves to the execution report. Read each result's `status`: a refused
+   * selection is a `Failed` result, not an exception.
    *
-   * @throws {PerpsError} Carrying the venue error when any returned result has
-   *   `success: false`, under that result's `errorCode` when the backend
-   *   classified the failure and `PerpsErrorCode.ExchangeRejected` otherwise;
-   *   also the errors `execute` itself can throw (unregistered provider, no
-   *   signer, signing failure).
+   * @throws {PerpsError} The errors {@link execute} throws.
    * @public
    */
   async executeProviderOption(params: {
     provider: string
     address: Address
     option: SetupOption
-  }): Promise<void> {
+  }): Promise<ExecuteActionResponse> {
     const { provider, address, option } = params
-    const { results } = await this.execute({
+    return this.execute({
       provider,
       address,
       action: option.type,
       params: option.params,
     })
-    assertAllSucceeded(results)
   }
 
   /**
@@ -1393,16 +1410,18 @@ export class PerpsClient {
    * create, sign and execute, signed with that action's `Provider.actions`
    * descriptor. The step stages again on the next {@link checkSetup}.
    *
+   * Resolves to the execution report.
+   *
    * @throws {PerpsError} `SDKError` when `step.revoke` is `null` or when
    *   `createAction` stages nothing to revoke; otherwise the errors
-   *   {@link executeProviderOption} throws.
+   *   {@link execute} throws.
    * @public
    */
   async executeProviderRevoke(params: {
     provider: string
     address: Address
     step: SetupAction
-  }): Promise<void> {
+  }): Promise<ExecuteActionResponse> {
     const { provider, address, step } = params
     if (step.revoke === null) {
       throw new PerpsError(
@@ -1422,7 +1441,7 @@ export class PerpsClient {
         `Nothing to revoke for setup step '${step.type}' on '${provider}'.`
       )
     }
-    assertAllSucceeded(results)
+    return { results }
   }
 
   /**
@@ -1590,8 +1609,15 @@ export class PerpsClient {
    * descriptor's scheme and signer internally), and submit. Core stays
    * signer-agnostic — the plugin owns WHO signs and HOW.
    *
+   * Resolves to the execution report: one result per executed step, in
+   * execution order, each with its own `status`. An empty report means
+   * nothing executed.
+   *
    * @throws {PerpsError} When the action is not declared by the provider,
-   *   the plugin cannot sign it, or submission fails.
+   *   the plugin cannot sign it, or submission fails before any result is
+   *   known.
+   * @throws {PerpsExecutionError} When a later stage fails after a result is
+   *   known; its `response` holds the known results.
    * @public
    */
   async execute<T extends ActionType>(params: {
@@ -1633,7 +1659,7 @@ export class PerpsClient {
       } as ActionParamsMap[T],
     })
 
-    const signedActions = await this.delegateSignActions(
+    const signResult = await this.delegateSignActions(
       provider,
       address,
       metadata,
@@ -1641,27 +1667,13 @@ export class PerpsClient {
       onProgress
     )
 
-    // A plugin may execute an action entirely client-side (e.g. Lighter's
-    // token-authenticated venue mutations), leaving no backend-bound step. With
-    // nothing to submit, skip the `/executeAction` hop.
-    if (signedActions.length === 0) {
-      return { staged: actions, results: [] }
-    }
-
-    const response = await executeAction(this.sdkClient, {
+    const results = await this.submitSignedActions(
       provider,
       address,
-      // The submitting account: the plugin-resolved signer (Hyperliquid's
-      // agent) when present, else the end-user's address.
-      signerAddress: signerAddress ?? address,
       action,
-      actions: signedActions,
-    })
-
-    const results = this.resolveExplorerLinks(provider, response.results)
-
-    await this.notifyExecuteResults(provider, address, results)
-
+      signerAddress,
+      signResult
+    )
     return { staged: actions, results }
   }
 
@@ -1717,12 +1729,13 @@ export class PerpsClient {
    * typed data with the configured user wallet.
    *
    * The backend returns at most one step. Resolves to `{ results: [] }` when it
-   * returns none, meaning no consent is outstanding for this address.
+   * returns none, meaning no consent is outstanding for this address. Else it
+   * resolves to the backend's execution report; read each result's `status`.
    *
    * @throws {PerpsError} When no user wallet is configured, the backend returns
-   *   more than one step or a non-EIP-712 step, or the submitted step reports a
-   *   failed result. A signature refusal from the wallet client propagates as
-   *   the wallet's own error.
+   *   more than one step or a non-EIP-712 step, or the submission fails. A
+   *   signature refusal from the wallet client propagates as the wallet's own
+   *   error.
    * @public
    */
   async executeMetaAction<T extends MetaActionType>(
@@ -1757,21 +1770,11 @@ export class PerpsClient {
     const wallet = await this.resolveMetaSigningWallet(actions)
     const signature = await signTypedDataWithSigner(wallet, step.typedData)
 
-    const response = await executeAction(this.sdkClient, {
+    return executeAction(this.sdkClient, {
       provider: META_PROVIDER,
       address,
       action,
       actions: [{ ...step, signature }],
     })
-
-    const failure = response.results.find((r) => !r.success)
-    if (failure) {
-      throw new PerpsError(
-        failure.errorCode ?? PerpsErrorCode.ExchangeRejected,
-        failure.error
-      )
-    }
-
-    return response
   }
 }

@@ -1,4 +1,10 @@
-import { getMarkets, OrderSide, OrderType, PerpsClient } from '@lifi/perps-sdk'
+import {
+  getMarkets,
+  OrderSide,
+  OrderType,
+  PerpsClient,
+  UserActionStatus,
+} from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 import type { Account, Chain, Transport, WalletClient } from 'viem'
 
@@ -21,22 +27,33 @@ async function run() {
     address: userAddress,
   })
 
-  if (!setup.isReady) {
-    // 2. Sign each outstanding setup step with the configured wallet signer.
-    //    Agent-gated steps are auto-signed inside executeProviderSetup.
-    const signedActions = await Promise.all(
-      setup.setup.map((step) =>
-        perps.signProviderSetupAction('hyperliquid', userAddress, step)
-      )
-    )
-
-    // 3. Submit the signed setup steps and auto-sign any agent setup steps.
-    await perps.executeProviderSetup({
+  // 2. Sign and submit each outstanding setup step in sequence order. Each
+  //    step resolves to its execution report; read each result's status.
+  for (const step of setup.setup) {
+    const { results } = await perps.executeProviderSetupAction({
       provider: 'hyperliquid',
       address: userAddress,
-      setup: setup.setup,
-      signedActions,
+      step,
+      checklist: setup.checklist,
     })
+    const unconfirmed = results.find(
+      (r) =>
+        r.status !== UserActionStatus.Submitted &&
+        r.status !== UserActionStatus.Accepted
+    )
+    if (unconfirmed) {
+      throw new Error(`Setup step ${step.action}: ${unconfirmed.status}`)
+    }
+  }
+
+  const confirmedSetup = await perps.checkSetup({
+    provider: 'hyperliquid',
+    address: userAddress,
+  })
+  if (!confirmedSetup.isReady) {
+    throw new Error(
+      'Provider setup is not ready; inspect the account before trading.'
+    )
   }
 
   // 4. Resolve the market by its opaque Market.id — placeOrder references a

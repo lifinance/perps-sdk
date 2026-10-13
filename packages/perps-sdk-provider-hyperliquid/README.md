@@ -50,6 +50,8 @@ Setup registers an agent keypair whose private key signs orders locally, so trad
 
 The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass your own `StorageAdapter` to the `HyperliquidAgentStore` constructor to use a different backend — a custom adapter bypasses this encryption and is responsible for protecting the key at rest.
 
+After a `REVOKE_SESSION_AGENT` result is `Submitted` or `Accepted`, the provider removes the local agent key so it is no longer used for signing. `Submitted` is an acknowledgement, not proof of venue revocation. An `Indeterminate` or `Failed` revoke keeps the key; a refused revoke does not mean the credential itself was refused.
+
 ## Live portfolio valuation
 
 `spotBalances` and spot-funded `accountSummary` subscriptions own their shared

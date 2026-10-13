@@ -12,6 +12,7 @@ import {
   isDecimalStringGreaterThan,
   localStorageAdapter,
   PerpsError,
+  PerpsExecutionError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
   type ProviderAccountExistsParams,
@@ -34,6 +35,7 @@ import {
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
+  type SignActionsResult,
   type StorageAdapter,
   toAssetDisplay,
   toMarketDisplay,
@@ -67,7 +69,6 @@ import type {
   PositionsResponse,
   Quote,
   SetupAction,
-  SignedActionStep,
   SigningMethod,
   WithdrawalActivity,
 } from '@lifi/perps-types'
@@ -76,6 +77,7 @@ import {
   ActivityType,
   MarginMode,
   PerpsErrorCode,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
@@ -1193,7 +1195,7 @@ export const ondoProvider = (
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
-    ): Promise<SignedActionStep[]> {
+    ): Promise<SignActionsResult> {
       try {
         return await ondoSignActions(
           { client: apiClient(), tokenStore, apiKeyStore },
@@ -1203,23 +1205,27 @@ export const ondoProvider = (
           ctx
         )
       } catch (err) {
-        if (err instanceof OndoSessionExpiredError) {
+        const cause = err instanceof PerpsExecutionError ? err.cause : err
+        if (cause instanceof OndoSessionExpiredError) {
           await tokenStore.remove(address)
         }
         throw err
       }
     },
 
-    // The venue rejecting an HMAC-signed request with Unauthorized means the
+    // The venue refusing an HMAC-signed request with Unauthorized means the
     // locally stored API key is dead (deleted or descoped venue-side); evict
-    // it so REGISTER_API_KEY re-stages instead of every action failing.
+    // it so REGISTER_API_KEY re-stages instead of every action failing. An
+    // indeterminate or unverified result proves nothing about the key.
     async onExecuteResults(
       address: Address,
       results: ActionResult[]
     ): Promise<void> {
       const unauthorized = results.some(
         (result) =>
-          !result.success && result.errorCode === PerpsErrorCode.Unauthorized
+          result.status === UserActionStatus.Failed &&
+          result.refused &&
+          result.errorCode === PerpsErrorCode.Unauthorized
       )
       if (unauthorized) {
         await apiKeyStore.remove(address)

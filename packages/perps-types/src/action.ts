@@ -9,6 +9,7 @@ import type {
   OrderType,
   PerpsErrorCode,
   TimeInForce,
+  UserActionStatus,
 } from './enums.js'
 import type { MarketRef } from './market.js'
 import type { Address, Hex } from './primitives.js'
@@ -236,36 +237,78 @@ export type SignedActionStep =
   | SiweSignedActionStep
 
 /**
- * Per-action execution result. Success arms may include a provider order id and
- * the venue transaction it was submitted in; failure arms carry a message and
- * optional structured error code.
+ * Identifiers a venue returned for one action. A result keeps every identifier
+ * it knows, whatever its status.
+ *
+ * @public
+ */
+export interface ActionResultIdentifiers {
+  orderId?: string
+  /** Provider-native identifier for a placed TWAP parent order. */
+  twapId?: string
+  /**
+   * Venue transaction hash, present only where the venue's canonical hash is
+   * known at submit time (Lighter, on-chain legs). Hyperliquid assigns its hash
+   * at block inclusion and Ondo settles offchain, so neither returns one here.
+   */
+  txHash?: string
+  /** Fully-resolved block-explorer URL for `txHash`; absent when the hash is
+   * absent or the provider has no explorer configured. */
+  explorerLink?: string
+}
+
+/**
+ * Result of an action the venue acknowledged (`Submitted`) or provably applied
+ * (`Accepted`).
+ *
+ * @public
+ */
+export interface AcknowledgedActionResult extends ActionResultIdentifiers {
+  action: ActionType
+  status: UserActionStatus.Submitted | UserActionStatus.Accepted
+}
+
+/**
+ * Result of an action whose send started without a clear venue answer. The
+ * action may have taken effect: inspect the account before any new send.
+ *
+ * @public
+ */
+export interface IndeterminateActionResult extends ActionResultIdentifiers {
+  action: ActionType
+  status: UserActionStatus.Indeterminate
+  error: string
+  /** The cause of the uncertainty, for example `TimeoutError` or `ThirdPartyError`. */
+  errorCode?: PerpsErrorCode
+}
+
+/**
+ * Result of an action that failed.
+ *
+ * @public
+ */
+export interface FailedActionResult extends ActionResultIdentifiers {
+  action: ActionType
+  status: UserActionStatus.Failed
+  /**
+   * `true` when the venue definitively refused the action. `false` when the
+   * venue acknowledged it but the grace window closed without proof, so the
+   * action may still have taken effect.
+   */
+  refused: boolean
+  error: string
+  errorCode?: PerpsErrorCode
+}
+
+/**
+ * Per-action execution result, discriminated on `status`.
  *
  * @public
  */
 export type ActionResult =
-  | {
-      action: ActionType
-      success: true
-      orderId?: string
-      /** Provider-native identifier for a placed TWAP parent order. */
-      twapId?: string
-      /**
-       * Venue transaction hash, present only where the venue's canonical hash is
-       * known at submit time (Lighter). Hyperliquid assigns its hash at block
-       * inclusion and Ondo settles offchain, so neither returns one here.
-       */
-      txHash?: string
-      /** Fully-resolved block-explorer URL for `txHash`; absent when the hash is
-       * absent or the provider has no explorer configured. */
-      explorerLink?: string
-    }
-  | {
-      action: ActionType
-      success: false
-      error: string
-      /** Structured classification of the failure, when the backend can provide one. */
-      errorCode?: PerpsErrorCode
-    }
+  | AcknowledgedActionResult
+  | IndeterminateActionResult
+  | FailedActionResult
 
 /**
  * Trigger prices used to configure take-profit or stop-loss behavior.

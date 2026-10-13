@@ -37,6 +37,7 @@ import {
   resolveRetryPolicy,
   type SDKRequestOptions,
   type SignActionsContext,
+  type SignActionsResult,
   type StorageAdapter,
   safeAbsDecimalString,
   safeAddDecimalStrings,
@@ -70,7 +71,6 @@ import type {
   PositionsResponse,
   Quote,
   SetupAction,
-  SignedActionStep,
   SigningMethod,
 } from '@lifi/perps-types'
 import {
@@ -2010,7 +2010,7 @@ export const createLighterProvider = (
       steps: ActionStep[],
       address: Address,
       ctx?: SignActionsContext
-    ): Promise<SignedActionStep[]> {
+    ): Promise<SignActionsResult> {
       if (steps.some((step) => ORDER_PLACEMENT_ACTIONS.has(step.action))) {
         await assertOrderTier(address)
       }

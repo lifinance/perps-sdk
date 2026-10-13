@@ -31,6 +31,7 @@ import {
   PositionMarginAdjustment,
   PositionSide,
   SigningMethod,
+  UserActionStatus,
   WithdrawalType,
 } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
@@ -58,8 +59,12 @@ import {
   server,
 } from '../../test/handlers.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import { PerpsExecutionError } from '../errors/PerpsExecutionError.js'
 import type { ProviderSetup } from '../types/api.js'
-import type { PerpsProviderPlugin } from '../types/provider.js'
+import type {
+  PerpsProviderPlugin,
+  SignActionsResult,
+} from '../types/provider.js'
 import type {
   ProviderWithdrawableBalance,
   WithdrawalSourceTypes,
@@ -202,9 +207,7 @@ describe('PerpsClient', () => {
 
       const [first] = result.results
       expect(result.results).toHaveLength(1)
-      if (!first.success) {
-        throw new Error('expected success')
-      }
+      expect(first.status).toBe(UserActionStatus.Submitted)
       expect(first.orderId).toBe('neworder123')
     })
   })
@@ -263,7 +266,7 @@ describe('PerpsClient', () => {
           return HttpResponse.json({
             results: body.actions.map((step) => ({
               action: step.action,
-              success: true,
+              status: UserActionStatus.Submitted,
             })),
           } satisfies ExecuteActionResponse)
         })
@@ -325,6 +328,30 @@ describe('PerpsClient', () => {
       expect(await recoverSigner(placeOrderStep, submitted.actions[1])).toBe(
         agentAddress
       )
+    })
+
+    it.each([
+      { status: UserActionStatus.Indeterminate },
+      { status: UserActionStatus.Failed, refused: true },
+    ] as const)('does not sign a later descriptor after $status', async (outcome) => {
+      const { perps, signActions } = await mixedClient()
+      const result: ActionResult = {
+        action: ActionType.APPROVE_BUILDER_FEE,
+        ...outcome,
+        error: 'first step not acknowledged',
+      }
+      signActions.mockResolvedValueOnce({ signed: [], executed: [result] })
+      const executeCalls = stageBatch([builderFeeStep, placeOrderStep])
+
+      const response = await perps.placeOrder({
+        address: userAccount.address,
+        provider,
+        ...orderParams,
+      })
+
+      expect(response).toEqual({ results: [result] })
+      expect(signActions).toHaveBeenCalledTimes(1)
+      expect(executeCalls).toEqual([])
     })
 
     it('calls signActions once per descriptor group with that group signers', async () => {
@@ -451,7 +478,7 @@ describe('PerpsClient', () => {
         withdrawal: { destination: account.address, amount: '10' },
       })
 
-      expect(result.results[0].success).toBe(true)
+      expect(result.results[0].status).toBe(UserActionStatus.Submitted)
       expect(capturedRequest).toBeDefined()
       expect(capturedRequest!.action).toBe(ActionType.WITHDRAWAL)
       expect(capturedRequest!.signerAddress).toBe(account.address)
@@ -649,7 +676,7 @@ describe('PerpsClient', () => {
   // ACCOUNT_MODE / ACCOUNT_TYPE dispatch
   // ---------------------------------------------------------------------------
 
-  describe('executeProviderSetup — no silent ACCOUNT_MODE write during setup', () => {
+  describe('executeProviderSetupAction — no silent ACCOUNT_MODE write during setup', () => {
     const BASE_URL = DEFAULT_API_URL
 
     // Account state is read direct from the provider plugin, so register a
@@ -669,33 +696,27 @@ describe('PerpsClient', () => {
         apiKey: 'test-key',
         providers: [agentProvider],
       })
+      client.setUserWallet(
+        createWalletClient({
+          account: privateKeyToAccount(`0x${'77'.repeat(32)}` as Hex),
+          chain: mainnet,
+          transport: viemHttp(),
+        })
+      )
     })
 
-    /**
-     * Build a minimal `APPROVE_AGENT` user-setup action envelope. The widget would
-     * normally re-sign this typed data with the user's wallet; in tests we
-     * just supply a placeholder signature.
-     */
     const APPROVE_AGENT_TYPED_DATA = {
       domain: { name: 'HL', chainId: 1 },
       types: { ApproveAgent: [{ name: 'agent', type: 'address' }] },
       primaryType: 'ApproveAgent' as const,
-      message: { agent: '0xabcd' },
+      message: { agent: '0x000000000000000000000000000000000000abcd' },
     }
     const approveAgentSetupAction = {
-      setup: [
-        {
-          action: ActionType.APPROVE_AGENT,
-          typedData: APPROVE_AGENT_TYPED_DATA,
-        },
-      ],
-      signedActions: [
-        {
-          action: ActionType.APPROVE_AGENT,
-          typedData: APPROVE_AGENT_TYPED_DATA,
-          signature: '0xsig',
-        },
-      ],
+      step: {
+        action: ActionType.APPROVE_AGENT,
+        typedData: APPROVE_AGENT_TYPED_DATA,
+      },
+      checklist: [],
     }
 
     /**
@@ -762,7 +783,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           inc(counts.execute, body.action)
           const result = opts.executeResult?.(body) ?? {
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           }
           return HttpResponse.json(result)
         })
@@ -776,14 +799,17 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await (client as any).executeProviderSetup({
+      const result = await client.executeProviderSetupAction({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
       })
 
-      expect(result.results.results).toEqual([
-        { action: ActionType.APPROVE_AGENT, success: true },
+      expect(result.results).toEqual([
+        {
+          action: ActionType.APPROVE_AGENT,
+          status: UserActionStatus.Submitted,
+        },
       ])
       // No silent account-mode write: neither built nor submitted.
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
@@ -796,13 +822,13 @@ describe('PerpsClient', () => {
 
       const counts = setupActionHandlers()
 
-      const result = await (client as any).executeProviderSetup({
+      const result = await client.executeProviderSetupAction({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
       })
 
-      expect(result.results.results[0].success).toBe(true)
+      expect(result.results[0].status).toBe(UserActionStatus.Submitted)
       expect(counts.create.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
       expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
     })
@@ -811,7 +837,7 @@ describe('PerpsClient', () => {
       await agentProvider.createAgent(userAddress)
       setupActionHandlers()
 
-      await (client as any).executeProviderSetup({
+      await client.executeProviderSetupAction({
         provider,
         address: userAddress,
         ...approveAgentSetupAction,
@@ -820,56 +846,20 @@ describe('PerpsClient', () => {
       // Setup performs no account read, so getAccount must not be called.
       expect(stubGetAccount).not.toHaveBeenCalled()
     })
-
-    it('submits the pre-signed setup steps the caller supplies', async () => {
-      await agentProvider.createAgent(userAddress)
-      mockAbstractionStatus(null)
-
-      const counts = setupActionHandlers()
-
-      const result = await (client as any).executeProviderSetup({
-        provider,
-        address: userAddress,
-        setup: [
-          {
-            action: ActionType.APPROVE_BUILDER_FEE,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { Approve: [{ name: 'x', type: 'uint256' }] },
-              primaryType: 'Approve',
-              message: { x: 0 },
-            },
-          },
-        ],
-        signedActions: [
-          {
-            action: ActionType.APPROVE_BUILDER_FEE,
-            typedData: {
-              domain: { name: 'HL', chainId: 1 },
-              types: { Approve: [{ name: 'x', type: 'uint256' }] },
-              primaryType: 'Approve',
-              message: { x: 0 },
-            },
-            signature: '0xsig',
-          },
-        ],
-      })
-
-      expect(result.results.results).toEqual([
-        { action: ActionType.APPROVE_BUILDER_FEE, success: true },
-      ])
-      expect(counts.execute.get(ActionType.APPROVE_BUILDER_FEE)).toBe(1)
-      expect(counts.execute.get(ActionType.ACCOUNT_MODE)).toBeUndefined()
-    })
   })
 
-  describe('executeProviderSetup — mandatory setup-action failure throws', () => {
+  describe('executeProviderSetupAction — the report carries every setup status', () => {
     const BASE_URL = DEFAULT_API_URL
+    const setupWallet = () =>
+      createWalletClient({
+        account: privateKeyToAccount(`0x${'22'.repeat(32)}` as Hex),
+        chain: mainnet,
+        transport: viemHttp(),
+      })
 
-    // The backend rejects a mandatory setup action with a 200 OK carrying a
-    // per-action `{ success: false, error }`. The SDK must throw so the
-    // failure reaches the caller, rather than silently resolving.
-    function failExecuteAction(error: string, errorCode?: PerpsErrorCode) {
+    function respondExecuteAction(
+      result: (action: ActionType) => ActionResult
+    ) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -892,9 +882,7 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [
-              { action: body.action, success: false, error, errorCode },
-            ],
+            results: [result(body.action)],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -907,105 +895,103 @@ describe('PerpsClient', () => {
       message: { x: 0 },
     }
 
-    function userSetup(action: ActionType) {
-      return {
-        setup: [{ action, typedData: TYPED_DATA }],
-        signedActions: [
-          { action, typedData: TYPED_DATA, signature: '0xsig' as const },
-        ],
-      }
-    }
+    beforeEach(() => {
+      client.setUserWallet(setupWallet())
+    })
 
-    it('rejects with a PerpsError carrying the venue error for a Hyperliquid APPROVE_AGENT failure', async () => {
+    it('resolves a venue refusal of a Hyperliquid APPROVE_AGENT as a Failed result', async () => {
       await agentProvider.createAgent(userAddress)
       const venueError =
         'Too many extra agents for cumulative volume traded. Current limit is 3'
-      failExecuteAction(venueError)
+      respondExecuteAction((action) => ({
+        action,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: venueError,
+        errorCode: PerpsErrorCode.ExchangeRejected,
+      }))
 
       await expect(
-        (client as any).executeProviderSetup({
+        client.executeProviderSetupAction({
           provider: 'hyperliquid',
           address: userAddress,
-          ...userSetup(ActionType.APPROVE_AGENT),
+          step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+          checklist: [],
         })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: venueError,
+      ).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.APPROVE_AGENT,
+            status: UserActionStatus.Failed,
+            refused: true,
+            error: venueError,
+            errorCode: PerpsErrorCode.ExchangeRejected,
+          },
+        ],
       })
     })
 
-    it('rejects with a PerpsError carrying the venue error for a Lighter REGISTER_API_KEY failure', async () => {
+    it('resolves a venue refusal of a Lighter REGISTER_API_KEY as a Failed result', async () => {
       const lighterProvider = createTestAgentProvider({ type: 'lighter' })
       const lighterClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
         providers: [lighterProvider],
       })
+      lighterClient.setUserWallet(setupWallet())
       await lighterProvider.createAgent(userAddress)
       const venueError = 'API key registration rejected'
-      failExecuteAction(venueError)
+      respondExecuteAction((action) => ({
+        action,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: venueError,
+      }))
 
-      await expect(
-        (lighterClient as any).executeProviderSetup({
-          provider: 'lighter',
-          address: userAddress,
-          ...userSetup(ActionType.REGISTER_API_KEY),
-        })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: venueError,
+      const { results } = await lighterClient.executeProviderSetupAction({
+        provider: 'lighter',
+        address: userAddress,
+        step: { action: ActionType.REGISTER_API_KEY, typedData: TYPED_DATA },
+        checklist: [],
       })
+
+      expect(results).toEqual([
+        {
+          action: ActionType.REGISTER_API_KEY,
+          status: UserActionStatus.Failed,
+          refused: true,
+          error: venueError,
+        },
+      ])
     })
 
-    it('throws under the result errorCode when the backend classified the failure', async () => {
+    it('keeps an Indeterminate result and does not turn it into a refusal', async () => {
       await agentProvider.createAgent(userAddress)
-      const venueError = 'Complete the provider setup before trading.'
-      failExecuteAction(venueError, PerpsErrorCode.SetupRequired)
+      respondExecuteAction((action) => ({
+        action,
+        status: UserActionStatus.Indeterminate,
+        error: 'venue timed out',
+        errorCode: PerpsErrorCode.TimeoutError,
+      }))
 
-      await expect(
-        (client as any).executeProviderSetup({
-          provider: 'hyperliquid',
-          address: userAddress,
-          ...userSetup(ActionType.APPROVE_AGENT),
-        })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.SetupRequired,
-        message: venueError,
+      const { results } = await client.executeProviderSetupAction({
+        provider: 'hyperliquid',
+        address: userAddress,
+        step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+        checklist: [],
       })
+
+      expect(results).toEqual([
+        {
+          action: ActionType.APPROVE_AGENT,
+          status: UserActionStatus.Indeterminate,
+          error: 'venue timed out',
+          errorCode: PerpsErrorCode.TimeoutError,
+        },
+      ])
     })
 
-    it('propagates the throw through executeProviderSetupAction (the widget entry point)', async () => {
-      // APPROVE_AGENT is a USER-signed EIP-712 step, so executeProviderSetupAction
-      // signs it with the configured wallet before submitting.
-      const account = privateKeyToAccount(`0x${'22'.repeat(32)}` as Hex)
-      const signerProvider = createTestAgentProvider({ type: 'hyperliquid' })
-      const signerClient = new PerpsClient({
-        integrator: 'test-app',
-        apiKey: 'test-key',
-        providers: [signerProvider],
-      })
-      signerClient.setUserWallet(
-        createWalletClient({ account, chain: mainnet, transport: viemHttp() })
-      )
-      await signerProvider.createAgent(account.address)
-      const venueError =
-        'Too many extra agents for cumulative volume traded. Current limit is 3'
-      failExecuteAction(venueError)
-
-      await expect(
-        signerClient.executeProviderSetupAction({
-          provider: 'hyperliquid',
-          address: account.address,
-          step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
-          checklist: [],
-        })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: venueError,
-      })
-    })
-
-    it('invokes the plugin onExecuteResults hook with the failing results before throwing', async () => {
+    it('invokes the plugin onExecuteResults hook with the failing results', async () => {
       const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
       const onExecuteResults = vi.fn<
         (address: Address, results: ActionResult[]) => Promise<void>
@@ -1016,47 +1002,113 @@ describe('PerpsClient', () => {
         apiKey: 'test-key',
         providers: [hookedProvider],
       })
+      hookedClient.setUserWallet(setupWallet())
       await hookedProvider.createAgent(userAddress)
-      failExecuteAction('venue says no')
+      const failed: ActionResult = {
+        action: ActionType.APPROVE_AGENT,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: 'venue says no',
+      }
+      respondExecuteAction(() => failed)
 
-      await expect(
-        (hookedClient as any).executeProviderSetup({
-          provider: 'hyperliquid',
-          address: userAddress,
-          ...userSetup(ActionType.APPROVE_AGENT),
-        })
-      ).rejects.toMatchObject({ message: 'venue says no' })
+      await hookedClient.executeProviderSetupAction({
+        provider: 'hyperliquid',
+        address: userAddress,
+        step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+        checklist: [],
+      })
 
       expect(onExecuteResults).toHaveBeenCalledTimes(1)
       expect(onExecuteResults.mock.calls[0][0]).toBe(userAddress)
-      expect(onExecuteResults.mock.calls[0][1]).toEqual([
-        {
-          action: ActionType.APPROVE_AGENT,
-          success: false,
-          error: 'venue says no',
-        },
+      expect(onExecuteResults.mock.calls[0][1]).toEqual([failed])
+    })
+
+    it('throws a PerpsExecutionError that holds the report when onExecuteResults throws', async () => {
+      const hookedProvider = createTestAgentProvider({ type: 'hyperliquid' })
+      const hookError = new PerpsError(
+        PerpsErrorCode.ThirdPartyError,
+        'storage write failed'
+      )
+      ;(hookedProvider as any).onExecuteResults = vi.fn(async () => {
+        throw hookError
+      })
+      const hookedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [hookedProvider],
+      })
+      hookedClient.setUserWallet(setupWallet())
+      await hookedProvider.createAgent(userAddress)
+      respondExecuteAction((action) => ({
+        action,
+        status: UserActionStatus.Accepted,
+      }))
+
+      const error = await hookedClient
+        .executeProviderSetupAction({
+          provider: 'hyperliquid',
+          address: userAddress,
+          step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+          checklist: [],
+        })
+        .catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(PerpsExecutionError)
+      const executionError = error as PerpsExecutionError
+      expect(executionError.code).toBe(PerpsErrorCode.ThirdPartyError)
+      expect(executionError.cause).toBe(hookError)
+      expect(executionError.response.results).toEqual([
+        { action: ActionType.APPROVE_AGENT, status: UserActionStatus.Accepted },
       ])
     })
 
-    it('resolves normally when the mandatory setup action succeeds', async () => {
+    it('rethrows a transport failure before any result as the original error', async () => {
       await agentProvider.createAgent(userAddress)
       server.use(
-        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
-          const body = (await request.json()) as ExecuteActionRequest
-          return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
-          } satisfies ExecuteActionResponse)
-        })
+        http.post(`${BASE_URL}/executeAction`, () =>
+          HttpResponse.json(
+            { code: PerpsErrorCode.ServerError, message: 'upstream down' },
+            { status: 500 }
+          )
+        )
       )
 
-      const result = await (client as any).executeProviderSetup({
+      const error = await client
+        .executeProviderSetupAction({
+          provider: 'hyperliquid',
+          address: userAddress,
+          step: { action: ActionType.APPROVE_AGENT, typedData: TYPED_DATA },
+          checklist: [],
+        })
+        .catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(PerpsError)
+      expect(error).not.toBeInstanceOf(PerpsExecutionError)
+    })
+
+    it('resolves the acknowledged report when the setup action succeeds', async () => {
+      await agentProvider.createAgent(userAddress)
+      respondExecuteAction((action) => ({
+        action,
+        status: UserActionStatus.Submitted,
+      }))
+
+      const result = await client.executeProviderSetupAction({
         provider: 'hyperliquid',
         address: userAddress,
-        ...userSetup(ActionType.APPROVE_BUILDER_FEE),
+        step: {
+          action: ActionType.APPROVE_BUILDER_FEE,
+          typedData: TYPED_DATA,
+        },
+        checklist: [],
       })
 
-      expect(result.results.results).toEqual([
-        { action: ActionType.APPROVE_BUILDER_FEE, success: true },
+      expect(result.results).toEqual([
+        {
+          action: ActionType.APPROVE_BUILDER_FEE,
+          status: UserActionStatus.Submitted,
+        },
       ])
     })
   })
@@ -1076,13 +1128,9 @@ describe('PerpsClient', () => {
     })
   })
 
-  describe('executeProviderOption — mandatory option failure throws', () => {
+  describe('executeProviderOption — the report carries the option status', () => {
     const BASE_URL = DEFAULT_API_URL
 
-    // ACCOUNT_MODE is a USER-signed choice setup step dispatched through
-    // `execute`. The backend rejects the selected value with a 200 OK carrying
-    // a per-action `{ success: false, error }`; executeProviderOption must turn
-    // that into a throw rather than silently resolving.
     const unifiedAccountOption = {
       title: 'Unified account',
       type: ActionType.ACCOUNT_MODE,
@@ -1099,11 +1147,7 @@ describe('PerpsClient', () => {
       )
     })
 
-    function respondAccountMode(result: {
-      success: boolean
-      error?: string
-      errorCode?: PerpsErrorCode
-    }) {
+    function respondAccountMode(result: (action: ActionType) => ActionResult) {
       server.use(
         http.post(`${BASE_URL}/createAction`, async ({ request }) => {
           const body = (await request.json()) as CreateActionRequest
@@ -1124,37 +1168,23 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [{ action: body.action, ...result }],
-          } as ExecuteActionResponse)
+            results: [result(body.action)],
+          } satisfies ExecuteActionResponse)
         })
       )
     }
 
-    it('rejects with a PerpsError carrying the venue error on success:false', async () => {
-      await agentProvider.createAgent(userAddress)
-      const venueError = 'Account mode change rejected by venue'
-      respondAccountMode({ success: false, error: venueError })
-
-      await expect(
-        client.executeProviderOption({
-          provider,
-          address: userAddress,
-          option: unifiedAccountOption,
-        })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: venueError,
-      })
-    })
-
-    it('throws under the result errorCode when the backend classified the failure', async () => {
+    it('resolves a venue refusal as a Failed result with the backend errorCode', async () => {
       await agentProvider.createAgent(userAddress)
       const venueError = 'Complete the provider setup before trading.'
-      respondAccountMode({
-        success: false,
+      const failed = (action: ActionType): ActionResult => ({
+        action,
+        status: UserActionStatus.Failed,
+        refused: true,
         error: venueError,
         errorCode: PerpsErrorCode.SetupRequired,
       })
+      respondAccountMode(failed)
 
       await expect(
         client.executeProviderOption({
@@ -1162,15 +1192,18 @@ describe('PerpsClient', () => {
           address: userAddress,
           option: unifiedAccountOption,
         })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.SetupRequired,
-        message: venueError,
-      })
+      ).resolves.toEqual({ results: [failed(ActionType.ACCOUNT_MODE)] })
     })
 
-    it('resolves when the option change succeeds', async () => {
+    it('resolves an Indeterminate result without an ExchangeRejected fallback', async () => {
       await agentProvider.createAgent(userAddress)
-      respondAccountMode({ success: true })
+      const uncertain = (action: ActionType): ActionResult => ({
+        action,
+        status: UserActionStatus.Indeterminate,
+        error: 'venue gave no answer',
+        errorCode: PerpsErrorCode.ThirdPartyError,
+      })
+      respondAccountMode(uncertain)
 
       await expect(
         client.executeProviderOption({
@@ -1178,7 +1211,30 @@ describe('PerpsClient', () => {
           address: userAddress,
           option: unifiedAccountOption,
         })
-      ).resolves.toBeUndefined()
+      ).resolves.toEqual({ results: [uncertain(ActionType.ACCOUNT_MODE)] })
+    })
+
+    it('resolves the acknowledged report when the option change succeeds', async () => {
+      await agentProvider.createAgent(userAddress)
+      respondAccountMode((action) => ({
+        action,
+        status: UserActionStatus.Submitted,
+      }))
+
+      await expect(
+        client.executeProviderOption({
+          provider,
+          address: userAddress,
+          option: unifiedAccountOption,
+        })
+      ).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.ACCOUNT_MODE,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
     })
   })
 
@@ -1222,7 +1278,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executed.push(body)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -1250,7 +1308,14 @@ describe('PerpsClient', () => {
           address: revokerAccount.address,
           step,
         })
-      ).resolves.toBeUndefined()
+      ).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.REVOKE_BUILDER_FEE,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
 
       expect(createCalls.map((call) => call.action)).toEqual([
         ActionType.REVOKE_BUILDER_FEE,
@@ -1268,17 +1333,20 @@ describe('PerpsClient', () => {
       ).resolves.toBe(revokerAccount.address)
     })
 
-    it('throws the venue error when the revoke is rejected', async () => {
+    it('resolves a refused revoke as a Failed result', async () => {
       recordRevoke()
+      const refused: ActionResult = {
+        action: ActionType.REVOKE_BUILDER_FEE,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: 'not approved',
+      }
       server.use(
-        http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
-          const body = (await request.json()) as ExecuteActionRequest
-          return HttpResponse.json({
-            results: [
-              { action: body.action, success: false, error: 'not approved' },
-            ],
+        http.post(`${BASE_URL}/executeAction`, () =>
+          HttpResponse.json({
+            results: [refused],
           } satisfies ExecuteActionResponse)
-        })
+        )
       )
       const step = await setupStep(ActionType.APPROVE_BUILDER_FEE)
 
@@ -1288,10 +1356,7 @@ describe('PerpsClient', () => {
           address: revokerAccount.address,
           step,
         })
-      ).rejects.toMatchObject({
-        code: PerpsErrorCode.ExchangeRejected,
-        message: 'not approved',
-      })
+      ).resolves.toEqual({ results: [refused] })
     })
 
     it('rejects a step that declares no revoke, before any createAction', async () => {
@@ -1362,7 +1427,9 @@ describe('PerpsClient', () => {
             revoked = true
           }
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -1435,7 +1502,7 @@ describe('PerpsClient', () => {
             results: [
               {
                 action: body.action,
-                success: true,
+                status: UserActionStatus.Submitted,
                 orderId: '9',
                 ...result,
               },
@@ -1472,7 +1539,7 @@ describe('PerpsClient', () => {
       expect(results).toEqual([
         {
           action: ActionType.PLACE_ORDER,
-          success: true,
+          status: UserActionStatus.Submitted,
           orderId: '9',
           txHash: TX_HASH,
           explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
@@ -1564,7 +1631,7 @@ describe('PerpsClient', () => {
       expect(onExecuteResults.mock.calls[0][1]).toEqual([
         {
           action: ActionType.REGISTER_API_KEY,
-          success: true,
+          status: UserActionStatus.Submitted,
           orderId: '9',
           txHash: TX_HASH,
           explorerLink: `${EXPLORER_BASE}${TX_HASH}`,
@@ -3302,8 +3369,8 @@ describe('PerpsClient', () => {
         async (
           _method: SigningMethod,
           steps: { action: ActionType }[]
-        ): Promise<SignedActionStep[]> =>
-          steps.map((s) => ({
+        ): Promise<SignActionsResult> => ({
+          signed: steps.map((s) => ({
             action: s.action,
             typedData: {
               domain: {},
@@ -3312,7 +3379,9 @@ describe('PerpsClient', () => {
               message: {},
             },
             signature: '0xsig',
-          })) as unknown as SignedActionStep[]
+          })) as unknown as SignedActionStep[],
+          executed: [],
+        })
       )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -3353,7 +3422,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executeCount++
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -3375,7 +3446,9 @@ describe('PerpsClient', () => {
     })
 
     it('drains a client-executed SDK non-choice step with no executeAction hop', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3421,7 +3494,9 @@ describe('PerpsClient', () => {
     })
 
     it('never drains an SDK non-choice step the provider config already reports satisfied', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3464,7 +3539,7 @@ describe('PerpsClient', () => {
     })
 
     it('never blocks setup when an SDK non-choice step fails; the step stays hidden', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => {
+      const signActions = vi.fn(async (): Promise<SignActionsResult> => {
         throw new Error('venue rejected the silent step')
       })
       const venueClient = new PerpsClient({
@@ -3506,7 +3581,9 @@ describe('PerpsClient', () => {
     })
 
     it('never hides a USER step, even when the provider drains others', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3578,8 +3655,132 @@ describe('PerpsClient', () => {
         ...overrides,
       }) as unknown as PerpsProviderPlugin
 
+    it.each([
+      { status: UserActionStatus.Indeterminate },
+      { status: UserActionStatus.Failed, refused: true },
+    ] as const)('stops draining staged setup steps after $status', async (outcome) => {
+      const result: ActionResult = {
+        action: ActionType.SET_REFERRAL,
+        ...outcome,
+        error: 'setup not acknowledged',
+      }
+      const signedSteps: ActionType[] = []
+      const signActions = vi.fn(
+        async (_method: SigningMethod, steps: ActionStep[]) => {
+          signedSteps.push(...steps.map((step) => step.action))
+          return { signed: [], executed: [result] }
+        }
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        providers: [sdkReferralPlugin(signActions)],
+      })
+      let executeCount = 0
+      server.use(
+        providersHandler([internalStep(PerpsSigner.SDK)]),
+        http.post(`${BASE_URL}/createAction`, () =>
+          HttpResponse.json({
+            actions: [
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          executeCount++
+          return HttpResponse.json({ results: [] })
+        })
+      )
+
+      await expect(
+        venueClient.checkSetup({ provider: key, address: userAddress })
+      ).resolves.toMatchObject({ setup: [], isReady: true })
+      expect(signedSteps).toEqual([ActionType.SET_REFERRAL])
+      expect(executeCount).toBe(0)
+    })
+
+    it('re-reads venue config after an uncertain setup write and does not resend a reconciled step', async () => {
+      let satisfied = false
+      const events: string[] = []
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({
+          signed: [],
+          executed: [
+            {
+              action: ActionType.SET_REFERRAL,
+              status: UserActionStatus.Indeterminate,
+              error: 'response lost after submission',
+            },
+          ],
+        })
+      )
+      const venueClient = new PerpsClient({
+        integrator: 'test-app',
+        providers: [
+          sdkReferralPlugin(signActions, {
+            getAccount: async (): Promise<AccountResponse> => {
+              const response = await fetch('https://venue.test/account')
+              return response.json()
+            },
+            projectConfig: (config: AccountResponse['config']) => [
+              {
+                type: ActionType.SET_REFERRAL,
+                values: [],
+                satisfied:
+                  config.provider === 'hyperliquid' &&
+                  config.abstractionMode === 'unifiedAccount',
+              },
+            ],
+          }),
+        ],
+      })
+      server.use(
+        providersHandler([internalStep(PerpsSigner.SDK)]),
+        http.get('https://venue.test/account', () => {
+          events.push('read')
+          return HttpResponse.json({
+            ...mockAccount,
+            config: {
+              provider: 'hyperliquid',
+              abstractionMode: satisfied ? 'unifiedAccount' : null,
+              agents: [],
+              dexStates: [],
+            },
+          } satisfies AccountResponse)
+        }),
+        http.post(`${BASE_URL}/createAction`, () => {
+          events.push('stage')
+          return HttpResponse.json({
+            actions: [
+              {
+                ...mockCreateOrderResponse.actions[0],
+                action: ActionType.SET_REFERRAL,
+              },
+            ],
+          })
+        })
+      )
+
+      await venueClient.checkSetup({ provider: key, address: userAddress })
+      satisfied = true
+      await expect(
+        venueClient.checkSetup({ provider: key, address: userAddress })
+      ).resolves.toMatchObject({ setup: [], isReady: true })
+
+      expect(events).toEqual(['read', 'stage', 'read'])
+      expect(signActions).toHaveBeenCalledTimes(1)
+    })
+
     it('defers an SDK non-choice step while a staged visible step has a lower sequence', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3618,7 +3819,9 @@ describe('PerpsClient', () => {
     })
 
     it('drains the SDK non-choice step once the lower-sequence step is satisfied', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3666,7 +3869,9 @@ describe('PerpsClient', () => {
     })
 
     it('drains the SDK non-choice step when the lower-sequence visible step stages nothing', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3703,7 +3908,9 @@ describe('PerpsClient', () => {
     })
 
     it('omits a conditional step that stages nothing from the checklist and drains past it', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3742,7 +3949,9 @@ describe('PerpsClient', () => {
     })
 
     it('keeps a staged conditional step on the checklist', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3778,7 +3987,9 @@ describe('PerpsClient', () => {
     })
 
     it('defers the SDK non-choice step while a staged conditional step has a lower sequence', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3819,7 +4030,9 @@ describe('PerpsClient', () => {
     })
 
     it('defers a sequence-less SDK non-choice step while a sequence-less visible step is staged', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3963,7 +4176,9 @@ describe('PerpsClient', () => {
     }
 
     it('shows an unsatisfied SDK choice with a default, and neither stages nor executes it', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = venueClientFor({ satisfied: false }, signActions)
 
       server.use(providersHandler([choiceStep(true)]))
@@ -4013,14 +4228,16 @@ describe('PerpsClient', () => {
         async (
           _method: SigningMethod,
           steps: ActionStep[]
-        ): Promise<SignedActionStep[]> =>
-          steps.map(
+        ): Promise<SignActionsResult> => ({
+          signed: steps.map(
             (step) =>
               ({
                 action: step.action,
                 wasmSignParams: {},
               }) as unknown as SignedActionStep
-          )
+          ),
+          executed: [],
+        })
       )
       const venueClient = venueClientFor(venue, signActions)
       const recommended: SetupOption = { ...unifiedOption, default: true }
@@ -4036,7 +4253,9 @@ describe('PerpsClient', () => {
             venue.satisfied = true
           }
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -4068,7 +4287,9 @@ describe('PerpsClient', () => {
     })
 
     it('shows but never executes a USER choice, even with a default', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = venueClientFor({ satisfied: false }, signActions)
 
       server.use(providersHandler([choiceStep(true, PerpsSigner.USER)]))
@@ -4087,7 +4308,9 @@ describe('PerpsClient', () => {
     })
 
     it('shows an unsatisfied choice that marks no default, and neither stages nor executes it', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = venueClientFor({ satisfied: false }, signActions)
 
       server.use(providersHandler([choiceStep(false)]))
@@ -4124,7 +4347,9 @@ describe('PerpsClient', () => {
     })
 
     it('never touches a satisfied choice', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = venueClientFor(
         { satisfied: true, mode: 'simple' },
         signActions
@@ -4520,7 +4745,9 @@ describe('PerpsClient', () => {
     })
 
     it('rejects from the original checklist without staging the blocker again', async () => {
-      const signActions = vi.fn(async (): Promise<SignedActionStep[]> => [])
+      const signActions = vi.fn(
+        async (): Promise<SignActionsResult> => ({ signed: [], executed: [] })
+      )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -4592,12 +4819,15 @@ describe('PerpsClient', () => {
 
     it('runs the lowest-sequence step with nothing before it', async () => {
       const signActions = vi.fn(
-        async (): Promise<SignedActionStep[]> => [
-          {
-            action: ActionType.REGISTER_API_KEY,
-            wasmSignParams: {},
-          } as unknown as SignedActionStep,
-        ]
+        async (): Promise<SignActionsResult> => ({
+          signed: [
+            {
+              action: ActionType.REGISTER_API_KEY,
+              wasmSignParams: {},
+            } as unknown as SignedActionStep,
+          ],
+          executed: [],
+        })
       )
       const venueClient = new PerpsClient({
         integrator: 'test-app',
@@ -4641,7 +4871,9 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -4653,7 +4885,14 @@ describe('PerpsClient', () => {
           step: { action: ActionType.REGISTER_API_KEY } as ActionStep,
           checklist: [],
         })
-      ).resolves.toBeUndefined()
+      ).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.REGISTER_API_KEY,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
       expect(createCount).toBe(0)
       expect(signActions).toHaveBeenCalledOnce()
     })
@@ -4718,7 +4957,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executed.push(body.action)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -4726,18 +4967,29 @@ describe('PerpsClient', () => {
         async (
           _method: SigningMethod,
           steps: ActionStep[]
-        ): Promise<SignedActionStep[]> => {
+        ): Promise<SignActionsResult> => {
           if (steps[0]?.action === ActionType.ACCOUNT_TYPE) {
             satisfied.add(ActionType.ACCOUNT_TYPE)
-            return []
+            return {
+              signed: [],
+              executed: [
+                {
+                  action: ActionType.ACCOUNT_TYPE,
+                  status: UserActionStatus.Accepted,
+                },
+              ],
+            }
           }
-          return steps.map(
-            (step) =>
-              ({
-                action: step.action,
-                wasmSignParams: {},
-              }) as unknown as SignedActionStep
-          )
+          return {
+            signed: steps.map(
+              (step) =>
+                ({
+                  action: step.action,
+                  wasmSignParams: {},
+                }) as unknown as SignedActionStep
+            ),
+            executed: [],
+          }
         }
       )
       const client = new PerpsClient({
@@ -4833,7 +5085,14 @@ describe('PerpsClient', () => {
         staged: new Set([ActionType.SET_REFERRAL]),
       })
 
-      await expect(run(ActionType.SET_REFERRAL)).resolves.toBeUndefined()
+      await expect(run(ActionType.SET_REFERRAL)).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.SET_REFERRAL,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
       expect(executed).toEqual([ActionType.SET_REFERRAL])
     })
 
@@ -4853,7 +5112,14 @@ describe('PerpsClient', () => {
         ]),
       })
 
-      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.APPROVE_INTEGRATOR,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
       expect(createCalls).toEqual([])
       expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
     })
@@ -4868,7 +5134,14 @@ describe('PerpsClient', () => {
         staged: new Set([ActionType.REGISTER_API_KEY]),
       })
 
-      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toBeUndefined()
+      await expect(run(ActionType.APPROVE_INTEGRATOR)).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.APPROVE_INTEGRATOR,
+            status: UserActionStatus.Submitted,
+          },
+        ],
+      })
       expect(createCalls).toEqual([])
       expect(executed).toEqual([ActionType.APPROVE_INTEGRATOR])
     })
@@ -4895,12 +5168,14 @@ describe('PerpsClient', () => {
         async (
           _method,
           steps: { action: ActionType }[]
-        ): Promise<SignedActionStep[]> =>
-          steps.map((s) => ({
+        ): Promise<SignActionsResult> => ({
+          signed: steps.map((s) => ({
             action: s.action,
             wasmSignParams: {},
             signedTx: { txType: 0, txInfo: 'blob', txHash: '0xhash' },
-          }))
+          })),
+          executed: [],
+        })
       )
       return {
         type: 'lighter',
@@ -4913,7 +5188,7 @@ describe('PerpsClient', () => {
       }
     }
 
-    it('runs a Lighter checkSetup → sign → executeProviderSetup flow with no agent path', async () => {
+    it('runs a Lighter checkSetup → executeProviderSetupAction flow with no agent path', async () => {
       const lighter = createWasmOnlyProvider()
       const lighterClient = new PerpsClient({
         integrator: 'test-app',
@@ -4935,7 +5210,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executeCalls.push(body)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -4953,21 +5230,18 @@ describe('PerpsClient', () => {
       // No signerAddress is constructed by core for an API_KEY signer.
       expect(createCalls[0].signerAddress).toBeUndefined()
 
-      const signed = await (lighterClient as any).signProviderSetupAction(
-        'lighter',
-        lighterAddress,
-        setup[0]
-      )
-      expect(signed).toBeDefined()
-      const result = await (lighterClient as any).executeProviderSetup({
+      const result = await lighterClient.executeProviderSetupAction({
         provider: 'lighter',
         address: lighterAddress,
-        setup: [setup[0]],
-        signedActions: signed ? [signed] : [],
+        step: setup[0],
+        checklist: [],
       })
 
-      expect(result.results.results).toEqual([
-        { action: ActionType.REGISTER_API_KEY, success: true },
+      expect(result.results).toEqual([
+        {
+          action: ActionType.REGISTER_API_KEY,
+          status: UserActionStatus.Submitted,
+        },
       ])
       // Execute submits under the user's own address — no agent address.
       expect(executeCalls[0].signerAddress).toBe(lighterAddress)
@@ -4980,7 +5254,15 @@ describe('PerpsClient', () => {
       const lighter = createWasmOnlyProvider()
       // Token-authenticated venue mutations (ACCOUNT_TYPE / SET_REFERRAL) run
       // entirely during signing and yield no backend-bound step.
-      lighter.signActions.mockResolvedValue([])
+      lighter.signActions.mockResolvedValue({
+        signed: [],
+        executed: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Accepted,
+          },
+        ],
+      })
       const lighterClient = new PerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -5018,7 +5300,14 @@ describe('PerpsClient', () => {
             params: { tier: 'premium' },
           },
         })
-      ).resolves.toBeUndefined()
+      ).resolves.toEqual({
+        results: [
+          {
+            action: ActionType.ACCOUNT_TYPE,
+            status: UserActionStatus.Accepted,
+          },
+        ],
+      })
 
       // Nothing was forwarded to the backend, so no Lighter auth token could
       // transit LI.FI for this flow.
@@ -5068,7 +5357,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executeCalls.push(body)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -5092,8 +5383,8 @@ describe('PerpsClient', () => {
         price: '95000.00',
       })
 
-      expect(hlResult.results[0].success).toBe(true)
-      expect(lighterResult.results[0].success).toBe(true)
+      expect(hlResult.results[0].status).toBe(UserActionStatus.Submitted)
+      expect(lighterResult.results[0].status).toBe(UserActionStatus.Submitted)
 
       const hlExec = executeCalls.find((c) => c.provider === 'hyperliquid')!
       const lighterExec = executeCalls.find((c) => c.provider === 'lighter')!
@@ -5157,12 +5448,14 @@ describe('PerpsClient', () => {
         async (
           _method,
           steps: (typeof hmacStep)[]
-        ): Promise<SignedActionStep[]> =>
-          steps.map((s) => ({
+        ): Promise<SignActionsResult> => ({
+          signed: steps.map((s) => ({
             action: s.action,
             request: s.request,
             hmac: { ...HMAC_MATERIAL },
-          }))
+          })),
+          executed: [],
+        })
       )
       return {
         type: 'ondo',
@@ -5197,7 +5490,7 @@ describe('PerpsClient', () => {
             results: [
               {
                 action: ActionType.PLACE_ORDER,
-                success: true,
+                status: UserActionStatus.Submitted,
                 orderId: 'backend-echo',
               },
             ],
@@ -5234,7 +5527,7 @@ describe('PerpsClient', () => {
       expect(result.results).toEqual([
         {
           action: ActionType.PLACE_ORDER,
-          success: true,
+          status: UserActionStatus.Submitted,
           orderId: 'backend-echo',
         },
       ])
@@ -5276,7 +5569,7 @@ describe('PerpsClient', () => {
       expect(onExecuteResults.mock.calls[0][1]).toEqual([
         {
           action: ActionType.PLACE_ORDER,
-          success: true,
+          status: UserActionStatus.Submitted,
           orderId: 'backend-echo',
         },
       ])
@@ -5334,7 +5627,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executeCalls.push(body)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -5519,7 +5814,7 @@ describe('PerpsClient', () => {
           return HttpResponse.json({
             results: body.actions.map((step) => ({
               action: step.action,
-              success: true,
+              status: UserActionStatus.Submitted,
             })),
           } satisfies ExecuteActionResponse)
         })
@@ -5618,7 +5913,9 @@ describe('PerpsClient', () => {
         http.post(`${BASE_URL}/executeAction`, async ({ request }) => {
           const body = (await request.json()) as ExecuteActionRequest
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -5677,7 +5974,9 @@ describe('PerpsClient', () => {
           const body = (await request.json()) as ExecuteActionRequest
           executeCalls.push(body)
           return HttpResponse.json({
-            results: [{ action: body.action, success: true }],
+            results: [
+              { action: body.action, status: UserActionStatus.Submitted },
+            ],
           } satisfies ExecuteActionResponse)
         })
       )
@@ -5749,7 +6048,7 @@ describe('PerpsClient', () => {
       })
       expect(signed.signature).toMatch(/^0x[0-9a-f]{130}$/)
       expect(response.results).toEqual([
-        { action: ActionType.META_ONBOARD, success: true },
+        { action: ActionType.META_ONBOARD, status: UserActionStatus.Submitted },
       ])
     })
 
@@ -5844,7 +6143,10 @@ describe('PerpsClient', () => {
       expect(signed.typedData.primaryType).toBe('CreateReferralCode')
       expect(signed.typedData.message).toMatchObject({ code: 'ABC123' })
       expect(response.results).toEqual([
-        { action: ActionType.META_CREATE_REFERRAL_CODE, success: true },
+        {
+          action: ActionType.META_CREATE_REFERRAL_CODE,
+          status: UserActionStatus.Submitted,
+        },
       ])
     })
 
@@ -5906,7 +6208,14 @@ describe('PerpsClient', () => {
       expect(error.code).toBe(PerpsErrorCode.NonceAlreadyUsed)
     })
 
-    it('throws a typed PerpsError when the submitted step reports a failed result', async () => {
+    it('resolves a refused onboarding step as a Failed result', async () => {
+      const refused: ActionResult = {
+        action: ActionType.META_ONBOARD,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: 'nonce already used',
+        errorCode: PerpsErrorCode.NonceAlreadyUsed,
+      }
       server.use(
         http.post(`${BASE_URL}/createAction`, () =>
           HttpResponse.json({
@@ -5915,30 +6224,27 @@ describe('PerpsClient', () => {
         ),
         http.post(`${BASE_URL}/executeAction`, () =>
           HttpResponse.json({
-            results: [
-              {
-                action: ActionType.META_ONBOARD,
-                success: false,
-                error: 'nonce already used',
-                errorCode: PerpsErrorCode.NonceAlreadyUsed,
-              },
-            ],
+            results: [refused],
           } satisfies ExecuteActionResponse)
         )
       )
       const client = newClient()
       client.setUserWallet(walletClient())
 
-      const error = await client
-        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
-        .catch((e) => e)
-
-      expect(error).toBeInstanceOf(PerpsError)
-      expect(error.code).toBe(PerpsErrorCode.NonceAlreadyUsed)
-      expect(error.message).toBe('nonce already used')
+      await expect(
+        client.submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+        })
+      ).resolves.toEqual({ results: [refused] })
     })
 
-    it('falls back to ExchangeRejected when a failed result carries no errorCode', async () => {
+    it('resolves an Indeterminate onboarding step with no ExchangeRejected fallback', async () => {
+      const uncertain: ActionResult = {
+        action: ActionType.META_ONBOARD,
+        status: UserActionStatus.Indeterminate,
+        error: 'venue gave no answer',
+      }
       server.use(
         http.post(`${BASE_URL}/createAction`, () =>
           HttpResponse.json({
@@ -5947,26 +6253,19 @@ describe('PerpsClient', () => {
         ),
         http.post(`${BASE_URL}/executeAction`, () =>
           HttpResponse.json({
-            results: [
-              {
-                action: ActionType.META_ONBOARD,
-                success: false,
-                error: 'rejected',
-              },
-            ],
+            results: [uncertain],
           } satisfies ExecuteActionResponse)
         )
       )
       const client = newClient()
       client.setUserWallet(walletClient())
 
-      const error = await client
-        .submitOnboarding({ address: account.address, termsVersion: 'v3' })
-        .catch((e) => e)
-
-      expect(error).toBeInstanceOf(PerpsError)
-      expect(error.code).toBe(PerpsErrorCode.ExchangeRejected)
-      expect(error.message).toBe('rejected')
+      await expect(
+        client.submitOnboarding({
+          address: account.address,
+          termsVersion: 'v3',
+        })
+      ).resolves.toEqual({ results: [uncertain] })
     })
 
     it('submits executeAction exactly once on a 503 — outcome-unknown writes must not retry', async () => {
@@ -6138,7 +6437,10 @@ describe('PerpsClient', () => {
         deadline: 1_735_689_600_000,
       })
       expect(response.results).toEqual([
-        { action: ActionType.META_ACCEPT_TERMS, success: true },
+        {
+          action: ActionType.META_ACCEPT_TERMS,
+          status: UserActionStatus.Submitted,
+        },
       ])
     })
   })

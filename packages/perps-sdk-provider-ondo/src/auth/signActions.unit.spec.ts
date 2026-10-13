@@ -1,4 +1,8 @@
-import { createMemoryStorage, PerpsError } from '@lifi/perps-sdk'
+import {
+  createMemoryStorage,
+  PerpsError,
+  PerpsExecutionError,
+} from '@lifi/perps-sdk'
 import type {
   ActionStep,
   HmacActionStep,
@@ -7,7 +11,12 @@ import type {
   SiweActionStep,
   WasmBlobActionStep,
 } from '@lifi/perps-types'
-import { ActionType, PerpsErrorCode, SigningMethod } from '@lifi/perps-types'
+import {
+  ActionType,
+  PerpsErrorCode,
+  SigningMethod,
+  UserActionStatus,
+} from '@lifi/perps-types'
 import { createWalletClient, http, verifyMessage } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
@@ -152,6 +161,11 @@ const WASM_STEP: WasmBlobActionStep = {
   wasmSignParams: {},
 }
 
+const accepted = (step: ActionStep) => ({
+  action: step.action,
+  status: UserActionStatus.Accepted,
+})
+
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -180,8 +194,72 @@ describe('ondoSignActions — SIWE', () => {
       { userWallet }
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(SIWE_STEP)],
+    })
     await expect(deps.tokenStore.get(account.address)).resolves.toEqual(token)
+  })
+
+  it('keeps the completed login result when a later step in the batch is rejected', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: tokenFixture() })
+      )
+    const deps = makeDeps(fetchImpl)
+
+    const error = await ondoSignActions(
+      deps,
+      SigningMethod.SIWE,
+      [SIWE_STEP, TERMS_STEP],
+      account.address,
+      { userWallet }
+    ).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    const { response, cause } = error as PerpsExecutionError
+    expect(response.results).toEqual([accepted(SIWE_STEP)])
+    expect(cause).toMatchObject({ code: PerpsErrorCode.SDKError })
+  })
+
+  it('keeps the venue-accepted login when local token persistence fails', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, result: tokenFixture() })
+      )
+    const storageError = new Error('session storage unavailable')
+    const deps = {
+      ...makeDeps(fetchImpl),
+      tokenStore: new OndoTokenStore(
+        {
+          ...createMemoryStorage(),
+          set: async () => {
+            throw storageError
+          },
+        },
+        BASE_URL
+      ),
+    }
+
+    await expect(
+      ondoSignActions(deps, SigningMethod.SIWE, [SIWE_STEP], account.address, {
+        userWallet,
+      })
+    ).rejects.toMatchObject({
+      name: 'PerpsExecutionError',
+      response: {
+        results: [
+          {
+            action: SIWE_STEP.action,
+            status: UserActionStatus.Accepted,
+          },
+        ],
+      },
+      cause: storageError,
+    })
+    await expect(deps.tokenStore.get(account.address)).resolves.toBeNull()
   })
 
   it('posts the wallet signature to the Ondo login endpoint', async () => {
@@ -270,12 +348,14 @@ describe('ondoSignActions — HMAC', () => {
     await deps.apiKeyStore.set(account.address, apiKey)
 
     const before = Date.now()
-    const signed = (await ondoSignActions(
-      deps,
-      SigningMethod.HMAC,
-      [PLACE_ORDER_STEP],
-      account.address
-    )) as HmacSignedActionStep[]
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
     const after = Date.now()
 
     const [step] = signed
@@ -305,12 +385,14 @@ describe('ondoSignActions — HMAC', () => {
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
-    const signed = (await ondoSignActions(
-      deps,
-      SigningMethod.HMAC,
-      [PLACE_ORDER_STEP],
-      account.address
-    )) as HmacSignedActionStep[]
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
 
     const [listUrl, listInit] = fetchImpl.mock.calls[0] as [string, RequestInit]
     expect(listUrl).toBe(`${BASE_URL}/v1/api_keys`)
@@ -382,12 +464,14 @@ describe('ondoSignActions — HMAC', () => {
       apiKeyFixture({ keyId: 'trade-only-key', scopes: ['trade'] })
     )
 
-    const signed = (await ondoSignActions(
-      deps,
-      SigningMethod.HMAC,
-      [PLACE_ORDER_STEP],
-      account.address
-    )) as HmacSignedActionStep[]
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
 
     const [revokeUrl, revokeInit] = fetchImpl.mock.calls[1] as [
       string,
@@ -467,20 +551,22 @@ describe('ondoSignActions — HMAC', () => {
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
-    const [first, second] = (await Promise.all([
-      ondoSignActions(
-        deps,
-        SigningMethod.HMAC,
-        [PLACE_ORDER_STEP],
-        account.address
-      ),
-      ondoSignActions(
-        deps,
-        SigningMethod.HMAC,
-        [PLACE_ORDER_STEP],
-        account.address
-      ),
-    ])) as HmacSignedActionStep[][]
+    const [first, second] = (
+      await Promise.all([
+        ondoSignActions(
+          deps,
+          SigningMethod.HMAC,
+          [PLACE_ORDER_STEP],
+          account.address
+        ),
+        ondoSignActions(
+          deps,
+          SigningMethod.HMAC,
+          [PLACE_ORDER_STEP],
+          account.address
+        ),
+      ])
+    ).map((result) => result.signed as HmacSignedActionStep[])
 
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     expect(first[0].hmac.keyId).toBe(second[0].hmac.keyId)
@@ -913,12 +999,14 @@ describe('ondoSignActions — API key wire mapping', () => {
     const deps = makeDeps(fetchImpl)
     await deps.tokenStore.set(account.address, tokenFixture())
 
-    const signed = (await ondoSignActions(
-      deps,
-      SigningMethod.HMAC,
-      [PLACE_ORDER_STEP],
-      account.address
-    )) as HmacSignedActionStep[]
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
 
     const { timestampMs } = signed[0].hmac
     const expected = await hmacSignRequest(created.secretKey, {
@@ -976,7 +1064,10 @@ describe('ondoSignActions — SESSION', () => {
       account.address
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(TERMS_STEP)],
+    })
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/v1/agreement`)
     expect(init.method).toBe('POST')
@@ -1022,7 +1113,10 @@ describe('ondoSignActions — SESSION', () => {
       account.address
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(REGISTER_KEY_STEP)],
+    })
     const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/v1/api_keys`)
     expect(init.method).toBe('POST')
@@ -1050,7 +1144,10 @@ describe('ondoSignActions — SESSION', () => {
       account.address
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(REGISTER_KEY_STEP)],
+    })
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
@@ -1080,7 +1177,10 @@ describe('ondoSignActions — SESSION', () => {
         [CREATE_DEPOSIT_STEP],
         account.address
       )
-    ).resolves.toEqual([])
+    ).resolves.toEqual({
+      signed: [],
+      executed: [accepted(CREATE_DEPOSIT_STEP)],
+    })
 
     const accountCall = fetchImpl.mock.calls[0] as [string, RequestInit]
     const provisionCall = fetchImpl.mock.calls[1] as [string, RequestInit]
@@ -1215,7 +1315,10 @@ describe('ondoSignActions — SESSION', () => {
       account.address
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(REFERRAL_SESSION_STEP)],
+    })
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/v1/account/referral`)
     expect(init.method).toBe('POST')
@@ -1248,6 +1351,56 @@ describe('ondoSignActions — SESSION', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
   })
 
+  it('keeps the earlier Accepted result when a later session step fails', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ success: true, result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({ success: false, error: 'venue exploded' }, 500)
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    const error = await ondoSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [TERMS_STEP, REFERRAL_SESSION_STEP],
+      account.address
+    ).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    const { response, cause } = error as PerpsExecutionError
+    expect(response.results).toEqual([accepted(TERMS_STEP)])
+    expect(cause).toBeInstanceOf(OndoApiError)
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports one Accepted result per completed session step, in step order', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () =>
+        jsonResponse({ success: true, result: {} })
+      )
+    const deps = makeDeps(fetchImpl)
+    await deps.tokenStore.set(account.address, tokenFixture())
+
+    await expect(
+      ondoSignActions(
+        deps,
+        SigningMethod.SESSION,
+        [TERMS_STEP, REFERRAL_SESSION_STEP, TERMS_STEP],
+        account.address
+      )
+    ).resolves.toEqual({
+      signed: [],
+      executed: [
+        accepted(TERMS_STEP),
+        accepted(REFERRAL_SESSION_STEP),
+        accepted(TERMS_STEP),
+      ],
+    })
+  })
+
   it('adds the login address to the address book with a signed challenge', async () => {
     const challengeMessage =
       'app.ondo.finance wants you to add a withdrawal address.\nNonce: abc123'
@@ -1271,7 +1424,10 @@ describe('ondoSignActions — SESSION', () => {
       { userWallet }
     )
 
-    expect(signed).toEqual([])
+    expect(signed).toEqual({
+      signed: [],
+      executed: [accepted(ADD_WITHDRAWAL_ADDRESS_STEP)],
+    })
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     const [challengeUrl, challengeInit] = fetchImpl.mock.calls[0] as [
       string,

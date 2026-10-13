@@ -2904,12 +2904,14 @@ describe('LighterProvider — standard auth token after a key rotation', () => {
     const staleToken = authHeader(beforeRotation[0])
     expect(wasm.signingKeyOf(staleToken)).toBe(STORED_API_KEY.apiKeyPrivateKey)
 
-    const [registered] = (await provider.signActions?.(
-      SigningMethod.WASM_BLOB,
-      [registerApiKeyStep],
-      ADDRESS,
-      { userWallet }
-    )) as WasmBlobSignedActionStep[]
+    const [registered] = (
+      await provider.signActions?.(
+        SigningMethod.WASM_BLOB,
+        [registerApiKeyStep],
+        ADDRESS,
+        { userWallet }
+      )
+    )?.signed as WasmBlobSignedActionStep[]
     expect(registered.action).toBe(ActionType.REGISTER_API_KEY)
     const rotatedKey = await storedKeyOf(storage)
     expect(rotatedKey.apiKeyPrivateKey).not.toBe(
@@ -6785,13 +6787,16 @@ describe('LighterProvider — signActions arms', () => {
       provider.signActions?.(SigningMethod.EVM_TX, [depositStep], ADDRESS, {
         userWallet: wallet,
       })
-    ).resolves.toEqual([
-      {
-        action: ActionType.DEPOSIT,
-        txParams: depositStep.txParams,
-        txHash: DEPOSIT_TX_HASH,
-      },
-    ])
+    ).resolves.toEqual({
+      signed: [
+        {
+          action: ActionType.DEPOSIT,
+          txParams: depositStep.txParams,
+          txHash: DEPOSIT_TX_HASH,
+        },
+      ],
+      executed: [],
+    })
     expect(broadcasts).toEqual([DEPOSIT_TX_HASH])
   })
 

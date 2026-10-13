@@ -80,6 +80,23 @@ export interface SignActionProgress {
 }
 
 /**
+ * Output of {@link PerpsProviderPlugin.signActions}, in batch order.
+ *
+ * A plugin that executes a step itself while signing (a venue REST mutation,
+ * a reverted on-chain leg) puts that step's real result in `executed` and
+ * leaves it out of `signed`. The plugin stops at the first `executed` result
+ * that is not `Submitted` or `Accepted`. Core submits `signed` to
+ * `/executeAction` only when every `executed` result is `Submitted` or
+ * `Accepted`, and reports `executed` before the `/executeAction` results.
+ *
+ * @public
+ */
+export interface SignActionsResult {
+  signed: SignedActionStep[]
+  executed: ActionResult[]
+}
+
+/**
  * Per-call context passed by `PerpsClient` to a provider's
  * {@link PerpsProviderPlugin.signActions} implementation. Carries the
  * configured end-user wallet, descriptor-declared signer roles, an optional
@@ -699,12 +716,13 @@ export interface PerpsProviderPlugin {
     steps: ActionStep[],
     address: Address,
     ctx?: SignActionsContext
-  ): Promise<SignedActionStep[]>
+  ): Promise<SignActionsResult>
 
   /**
-   * Observe the per-step results of an `/executeAction` round trip before the
-   * core surfaces failures. Lets a provider react to structured failure codes
-   * — e.g. evicting a locally stored credential the venue no longer accepts.
+   * Observe the execution report of each `execute` call: the results of the
+   * steps the plugin executed while signing, then the `/executeAction`
+   * results. Lets a provider react to structured statuses — e.g. evicting a
+   * locally stored credential the venue refused.
    */
   onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
 

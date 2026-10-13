@@ -3,6 +3,7 @@ import {
   ETHEREUM_USDC,
   PerpsClient,
   PerpsError,
+  PerpsExecutionError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
 } from '@lifi/perps-sdk'
@@ -34,6 +35,7 @@ import {
   PositionSide,
   SigningMethod,
   TriggerCondition,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -3072,13 +3074,13 @@ describe('OndoProvider — write-action surface', () => {
     const { provider, storage } = await loggedInProvider()
     await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
 
-    const signed = (await provider.signActions?.(
+    const result = await provider.signActions?.(
       SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )) as HmacSignedActionStep[]
-
-    const [step] = signed
+    )
+    expect(result?.executed).toEqual([])
+    const [step] = (result?.signed ?? []) as HmacSignedActionStep[]
     expect(step.action).toBe(ActionType.PLACE_ORDER)
     expect(step.request).toEqual(PLACE_ORDER_STEP.request)
     expect(step.hmac.keyId).toBe(API_KEY.keyId)
@@ -3115,11 +3117,12 @@ describe('OndoProvider — write-action surface', () => {
         return respond(envelope(CREATED_API_KEY))
       })
 
-    const signed = (await provider.signActions?.(
+    const result = await provider.signActions?.(
       SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
-    )) as HmacSignedActionStep[]
+    )
+    const signed = (result?.signed ?? []) as HmacSignedActionStep[]
 
     expect(signed[0].hmac.keyId).toBe(CREATED_API_KEY.keyId)
   })
@@ -3183,6 +3186,30 @@ describe('OndoProvider — signActions session errors', () => {
     ).rejects.toBeInstanceOf(OndoSessionExpiredError)
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
+
+  it('keeps the earlier Accepted result and evicts the token when a later step meets an expired session', async () => {
+    const { provider, store } = await loggedInProvider()
+    fetchMock
+      .mockImplementationOnce(async () => respond(envelope({})))
+      .mockImplementationOnce(async () =>
+        respond({ success: false, error: 'token expired' }, 401)
+      )
+
+    const error = await provider
+      .signActions?.(SigningMethod.SESSION, [TERMS_STEP, TERMS_STEP], ADDRESS)
+      .catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    const { response, cause } = error as PerpsExecutionError
+    expect(response.results).toEqual([
+      {
+        action: ActionType.ACCEPT_PROVIDER_TERMS,
+        status: UserActionStatus.Accepted,
+      },
+    ])
+    expect(cause).toBeInstanceOf(OndoSessionExpiredError)
+    await expect(store.get(ADDRESS)).resolves.toBeNull()
+  })
 })
 
 describe('OndoProvider — onExecuteResults key eviction', () => {
@@ -3194,7 +3221,8 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
     await provider.onExecuteResults?.(ADDRESS, [
       {
         action: ActionType.PLACE_ORDER,
-        success: false,
+        status: UserActionStatus.Failed,
+        refused: true,
         error: 'API key not found',
         errorCode: PerpsErrorCode.Unauthorized,
       },
@@ -3203,20 +3231,50 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
     await expect(keyStore.get(ADDRESS)).resolves.toBeNull()
   })
 
+  it('keeps the stored API key when an Unauthorized result is indeterminate or unproven', async () => {
+    const { provider, storage } = await loggedInProvider()
+    const keyStore = new OndoApiKeyStore(storage, API_URL)
+    await keyStore.set(ADDRESS, API_KEY)
+
+    await provider.onExecuteResults?.(ADDRESS, [
+      {
+        action: ActionType.PLACE_ORDER,
+        status: UserActionStatus.Indeterminate,
+        error: 'no answer',
+        errorCode: PerpsErrorCode.Unauthorized,
+      },
+      {
+        action: ActionType.PLACE_ORDER,
+        status: UserActionStatus.Failed,
+        refused: false,
+        error: 'no proof',
+        errorCode: PerpsErrorCode.Unauthorized,
+      },
+    ])
+
+    await expect(keyStore.get(ADDRESS)).resolves.toEqual(API_KEY)
+  })
+
   it('keeps the stored API key on success and on non-Unauthorized failures', async () => {
     const { provider, storage } = await loggedInProvider()
     const keyStore = new OndoApiKeyStore(storage, API_URL)
     await keyStore.set(ADDRESS, API_KEY)
 
     await provider.onExecuteResults?.(ADDRESS, [
-      { action: ActionType.PLACE_ORDER, success: true },
+      { action: ActionType.PLACE_ORDER, status: UserActionStatus.Submitted },
       {
         action: ActionType.PLACE_ORDER,
-        success: false,
+        status: UserActionStatus.Failed,
+        refused: true,
         error: 'insufficient margin',
         errorCode: PerpsErrorCode.InsufficientMargin,
       },
-      { action: ActionType.PLACE_ORDER, success: false, error: 'opaque' },
+      {
+        action: ActionType.PLACE_ORDER,
+        status: UserActionStatus.Failed,
+        refused: true,
+        error: 'opaque',
+      },
     ])
 
     await expect(keyStore.get(ADDRESS)).resolves.toEqual(API_KEY)
@@ -3349,7 +3407,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     await expect(store.get(siweAccount.address)).resolves.toEqual(sessionToken)
   })
 
-  it('execute stops after createAction, returning no results', async () => {
+  it('execute stops after createAction and reports the client-side login as Accepted', async () => {
     const { client, backendCalls, sessionToken, store } = siweClient()
 
     const { results } = await client.execute({
@@ -3359,7 +3417,9 @@ describe('OndoProvider — SIWE login stays client-side', () => {
       params: {},
     })
 
-    expect(results).toEqual([])
+    expect(results).toEqual([
+      { action: ActionType.SIWE_LOGIN, status: UserActionStatus.Accepted },
+    ])
     expect(backendCalls).toEqual(['/providers', '/createAction'])
     await expect(store.get(siweAccount.address)).resolves.toEqual(sessionToken)
   })
@@ -3367,12 +3427,15 @@ describe('OndoProvider — SIWE login stays client-side', () => {
   it('leaves the account logged in with SIWE_LOGIN satisfied', async () => {
     const { client } = siweClient()
 
-    await client.executeProviderSetupAction({
+    const { results } = await client.executeProviderSetupAction({
       provider: 'ondo',
       address: siweAccount.address,
       step: SIWE_STEP,
       checklist: [],
     })
+    expect(results).toEqual([
+      { action: ActionType.SIWE_LOGIN, status: UserActionStatus.Accepted },
+    ])
     const account = await client.getAccount({
       provider: 'ondo',
       address: siweAccount.address,
