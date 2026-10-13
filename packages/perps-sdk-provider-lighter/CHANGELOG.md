@@ -1,5 +1,42 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 39.0.0
+
+### Major Changes
+
+- [#626](https://github.com/lifinance/perps-sdk/pull/626) [`a34db4b`](https://github.com/lifinance/perps-sdk/commit/a34db4bbe4e866c4b00a97cf94323847058d5033) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `UserActionStatus` lifecycle status to every `ActionResult` and keep complete execution reports.
+
+  - `@lifi/perps-types` exports `UserActionStatus` (`Created`, `Indeterminate`, `Submitted`, `Accepted`, `Failed`). `ActionResult` is a union of `AcknowledgedActionResult`, `IndeterminateActionResult` and `FailedActionResult`. The `success` field is removed. A `FailedActionResult` has `refused: true` when the venue refused the action.
+  - `executeProviderSetupAction`, `executeProviderOption` and `executeProviderRevoke` return `ExecuteActionResponse` and not `void`. These methods and `submitOnboarding` do not throw for a refused or uncertain step. The report holds that step.
+  - `PerpsProviderPlugin.signActions` returns `SignActionsResult` (`{ signed, executed }`). The client-executed results (Lighter token-auth, confirmed EVM legs) go into the report before the backend results.
+  - When a later stage or the `onExecuteResults` callback throws after results are known, the SDK throws `PerpsExecutionError`. Its `response` holds the known results. An error with no known result stays the original error.
+  - `rethrowWithKnownResults(known, error)` is exported for provider implementations. It preserves the original error when no results are known and combines nested reports in execution order otherwise.
+  - Hyperliquid removes the local session-agent key after a `Submitted` or `Accepted` revoke; a refused or indeterminate revoke keeps it. Ondo evicts a rejected API key only for `Failed` with `refused: true`.
+  - An indeterminate result does not change to `ExchangeRejected`. `executeAction` is not retried.
+
+### Patch Changes
+
+- [#626](https://github.com/lifinance/perps-sdk/pull/626) [`54937c9`](https://github.com/lifinance/perps-sdk/commit/54937c9e819b5404e2b65d21280e4f9e178b0ad1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Preserve execution evidence across failures after actions have reached the venue.
+
+  - Lighter token-auth mutations report HTTP 5xx and responses without a valid integer result code as indeterminate, without recording a refusal, settling referral state, or retrying the write.
+  - EVM progress-callback failures retain the current transaction hash and submitted or accepted status alongside earlier confirmed legs.
+  - SDK explorer-link and post-signing setup-resolution failures retain known execution results. `PerpsExecutionError` preserves the originating provider's `tool` attribution.
+
+- [#624](https://github.com/lifinance/perps-sdk/pull/624) [`74d3473`](https://github.com/lifinance/perps-sdk/commit/74d3473a6f89574442d3182124f9e123f0348382) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Rename five `math/` exports to the approved naming vocabulary, and remove the deprecated `classifyFill`. The SDK keeps no alias for an old name.
+
+  - `positionSupportsMarginAdjustment` is now `isPositionMarginAdjustable`.
+  - `positionSupportsMarginRemoval` is now `isPositionMarginRemovable`.
+  - `applySlippageToPrice` is now `calculateSlippagePrice`, and `safeApplySlippageToPrice` is now `safeCalculateSlippagePrice`.
+  - `walkOrderbook` is now `calculateOrderbookWalk`, and `safeWalkOrderbook` is now `safeCalculateOrderbookWalk`.
+  - `findMatchingPosition` is now `resolveMatchingPosition`.
+  - `classifyFill` is removed. Read `Fill.classification`, or call `classifyFillFromPosition`.
+
+  The behaviour of each function does not change. The Hyperliquid and Lighter providers call the new margin predicate names.
+
+- Updated dependencies [[`54937c9`](https://github.com/lifinance/perps-sdk/commit/54937c9e819b5404e2b65d21280e4f9e178b0ad1), [`a34db4b`](https://github.com/lifinance/perps-sdk/commit/a34db4bbe4e866c4b00a97cf94323847058d5033), [`74d3473`](https://github.com/lifinance/perps-sdk/commit/74d3473a6f89574442d3182124f9e123f0348382)]:
+  - @lifi/perps-sdk@26.0.0
+  - @lifi/perps-types@23.0.0
+
 ## 38.1.0
 
 ### Minor Changes

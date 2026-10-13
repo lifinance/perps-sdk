@@ -1,5 +1,27 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 29.0.0
+
+### Major Changes
+
+- [#626](https://github.com/lifinance/perps-sdk/pull/626) [`a34db4b`](https://github.com/lifinance/perps-sdk/commit/a34db4bbe4e866c4b00a97cf94323847058d5033) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `UserActionStatus` lifecycle status to every `ActionResult` and keep complete execution reports.
+
+  - `@lifi/perps-types` exports `UserActionStatus` (`Created`, `Indeterminate`, `Submitted`, `Accepted`, `Failed`). `ActionResult` is a union of `AcknowledgedActionResult`, `IndeterminateActionResult` and `FailedActionResult`. The `success` field is removed. A `FailedActionResult` has `refused: true` when the venue refused the action.
+  - `executeProviderSetupAction`, `executeProviderOption` and `executeProviderRevoke` return `ExecuteActionResponse` and not `void`. These methods and `submitOnboarding` do not throw for a refused or uncertain step. The report holds that step.
+  - `PerpsProviderPlugin.signActions` returns `SignActionsResult` (`{ signed, executed }`). The client-executed results (Lighter token-auth, confirmed EVM legs) go into the report before the backend results.
+  - When a later stage or the `onExecuteResults` callback throws after results are known, the SDK throws `PerpsExecutionError`. Its `response` holds the known results. An error with no known result stays the original error.
+  - `rethrowWithKnownResults(known, error)` is exported for provider implementations. It preserves the original error when no results are known and combines nested reports in execution order otherwise.
+  - Hyperliquid removes the local session-agent key after a `Submitted` or `Accepted` revoke; a refused or indeterminate revoke keeps it. Ondo evicts a rejected API key only for `Failed` with `refused: true`.
+  - An indeterminate result does not change to `ExchangeRejected`. `executeAction` is not retried.
+
+### Patch Changes
+
+- [#623](https://github.com/lifinance/perps-sdk/pull/623) [`f605440`](https://github.com/lifinance/perps-sdk/commit/f605440dfdaf40d575e2de961235181e2e7052f1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Ondo `marketContext` and `marketsContext` streams now subscribe to `topOfBooksPerps` and set `midPrice` to the midpoint of the best bid and the best ask. The mark price stays in `midPrice` until a two-sided book arrives for the market.
+
+- Updated dependencies [[`54937c9`](https://github.com/lifinance/perps-sdk/commit/54937c9e819b5404e2b65d21280e4f9e178b0ad1), [`a34db4b`](https://github.com/lifinance/perps-sdk/commit/a34db4bbe4e866c4b00a97cf94323847058d5033), [`74d3473`](https://github.com/lifinance/perps-sdk/commit/74d3473a6f89574442d3182124f9e123f0348382)]:
+  - @lifi/perps-sdk@26.0.0
+  - @lifi/perps-types@23.0.0
+
 ## 28.0.0
 
 ### Major Changes
