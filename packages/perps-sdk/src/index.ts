@@ -71,35 +71,34 @@ export {
 export { PerpsErrorMessage } from './errors/constants.js'
 export { PerpsError } from './errors/PerpsError.js'
 export {
-  classifyFill,
   classifyFillFromPosition,
   FillClassification,
 } from './math/fills.js'
 export type { ExpectedPnl } from './math/order.js'
 export {
-  applySlippageToPrice,
   buildQuote,
   calculateExpectedPnl,
+  calculateOrderbookWalk,
   calculateRealizedPnlPercent,
   calculateSize,
+  calculateSlippagePrice,
   calculateTriggerPercent,
   calculateTriggerPrice,
   estimateFees,
   estimateRealizedPnl,
-  findMatchingPosition,
   resolveCloseSize,
-  safeApplySlippageToPrice,
+  resolveMatchingPosition,
   safeBuildQuote,
   safeCalculateExpectedPnl,
+  safeCalculateOrderbookWalk,
   safeCalculateRealizedPnlPercent,
   safeCalculateSize,
+  safeCalculateSlippagePrice,
   safeCalculateTriggerPercent,
   safeCalculateTriggerPrice,
   safeEstimateFees,
   safeEstimateRealizedPnl,
   safeResolveCloseSize,
-  safeWalkOrderbook,
-  walkOrderbook,
 } from './math/order.js'
 export {
   calculateEffectiveLeverage,
@@ -114,8 +113,8 @@ export {
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
   estimateUnrealizedPnl,
-  positionSupportsMarginAdjustment,
-  positionSupportsMarginRemoval,
+  isPositionMarginAdjustable,
+  isPositionMarginRemovable,
   safeCalculateEffectiveLeverage,
   safeCalculateLiquidationDistance,
   safeCalculateNotionalValue,

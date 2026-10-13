@@ -1,10 +1,10 @@
 import {
   isDecimalString,
   isDecimalStringGreaterThan,
+  isPositionMarginAdjustable,
+  isPositionMarginRemovable,
   multiplyDecimalString,
   PerpsError,
-  positionSupportsMarginAdjustment,
-  positionSupportsMarginRemoval,
   roundDecimalString,
   subtractDecimalString,
 } from '@lifi/perps-sdk'
@@ -65,10 +65,10 @@ function requirePositivePositionAmount(
 export function positionRemovableMargin(
   position: Position
 ): DecimalString | undefined {
-  if (!positionSupportsMarginAdjustment(position)) {
+  if (!isPositionMarginAdjustable(position)) {
     return undefined
   }
-  if (!positionSupportsMarginRemoval(position)) {
+  if (!isPositionMarginRemovable(position)) {
     return '0'
   }
   const marginUsed = requirePositionAmount(position.marginUsed, 'marginUsed')

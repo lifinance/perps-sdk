@@ -337,7 +337,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
 | Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
-| Formulas   | every `calculate*`, `estimate*`, `apply*`, `walkOrderbook`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`       |
+| Formulas   | every `calculate*`, `estimate*`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`                                  |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |
 
 `format*` is display only. It formats with `big.js`, shows a string that does

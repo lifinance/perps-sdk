@@ -4,7 +4,6 @@ import {
   OrderSide,
 } from '@lifi/perps-types'
 import Big from 'big.js'
-import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 
 /**
@@ -68,32 +67,4 @@ export function classifyFillFromPosition(
     return FillClassification.INCREASED_SHORT
   }
   return FillClassification.REDUCED_SHORT
-}
-
-/**
- * Classify a fill as open or close based on realizedPnl.
- * @deprecated Use `Fill.classification` instead — it uses startPosition
- * for accurate open/increase/reduce/close/reverse classification.
- * @returns `BUY` or `SELL` when `realizedPnl` is a string that does not match the
- *   decimal pattern.
- * @public
- */
-export function classifyFill(
-  side: OrderSide,
-  realizedPnl: DecimalString | null | undefined
-): FillClassification {
-  if (realizedPnl != null && !isDecimalString(realizedPnl)) {
-    return side === OrderSide.BUY
-      ? FillClassification.BUY
-      : FillClassification.SELL
-  }
-  const isClose = realizedPnl != null && !isDecimalStringZero(realizedPnl)
-  if (side === OrderSide.BUY) {
-    return isClose
-      ? FillClassification.CLOSED_SHORT
-      : FillClassification.OPENED_LONG
-  }
-  return isClose
-    ? FillClassification.CLOSED_LONG
-    : FillClassification.OPENED_SHORT
 }
