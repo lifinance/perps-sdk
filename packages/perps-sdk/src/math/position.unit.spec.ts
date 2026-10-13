@@ -21,8 +21,8 @@ import {
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
   estimateUnrealizedPnl,
-  positionSupportsMarginAdjustment,
-  positionSupportsMarginRemoval,
+  isPositionMarginAdjustable,
+  isPositionMarginRemovable,
   safeCalculateEffectiveLeverage,
   safeCalculateLiquidationDistance,
   safeCalculateNotionalValue,
@@ -1035,21 +1035,19 @@ const position = (
   marginMode,
 })
 
-describe('positionSupportsMarginAdjustment', () => {
+describe('isPositionMarginAdjustable', () => {
   it.each([
     PositionMarginAdjustment.ADD_ONLY,
     PositionMarginAdjustment.ADD_AND_REMOVE,
   ])('permits an adjustment on an isolated %s market', (capability) => {
     expect(
-      positionSupportsMarginAdjustment(
-        position(MarginMode.ISOLATED, capability)
-      )
+      isPositionMarginAdjustable(position(MarginMode.ISOLATED, capability))
     ).toBe(true)
   })
 
   it('refuses an adjustment when the market exposes no position margin', () => {
     expect(
-      positionSupportsMarginAdjustment(
+      isPositionMarginAdjustable(
         position(MarginMode.ISOLATED, PositionMarginAdjustment.NONE)
       )
     ).toBe(false)
@@ -1061,15 +1059,15 @@ describe('positionSupportsMarginAdjustment', () => {
     PositionMarginAdjustment.ADD_AND_REMOVE,
   ])('refuses an adjustment on a cross position of a %s market', (capability) => {
     expect(
-      positionSupportsMarginAdjustment(position(MarginMode.CROSS, capability))
+      isPositionMarginAdjustable(position(MarginMode.CROSS, capability))
     ).toBe(false)
   })
 })
 
-describe('positionSupportsMarginRemoval', () => {
+describe('isPositionMarginRemovable', () => {
   it('permits a removal on an isolated ADD_AND_REMOVE market', () => {
     expect(
-      positionSupportsMarginRemoval(
+      isPositionMarginRemovable(
         position(MarginMode.ISOLATED, PositionMarginAdjustment.ADD_AND_REMOVE)
       )
     ).toBe(true)
@@ -1080,13 +1078,13 @@ describe('positionSupportsMarginRemoval', () => {
     PositionMarginAdjustment.NONE,
   ])('refuses a removal on an isolated %s market', (capability) => {
     expect(
-      positionSupportsMarginRemoval(position(MarginMode.ISOLATED, capability))
+      isPositionMarginRemovable(position(MarginMode.ISOLATED, capability))
     ).toBe(false)
   })
 
   it('refuses a removal on a cross position of an ADD_AND_REMOVE market', () => {
     expect(
-      positionSupportsMarginRemoval(
+      isPositionMarginRemovable(
         position(MarginMode.CROSS, PositionMarginAdjustment.ADD_AND_REMOVE)
       )
     ).toBe(false)
@@ -1103,8 +1101,7 @@ describe('positionSupportsMarginRemoval', () => {
     const subject = position(marginMode, capability)
 
     expect(
-      positionSupportsMarginRemoval(subject) &&
-        !positionSupportsMarginAdjustment(subject)
+      isPositionMarginRemovable(subject) && !isPositionMarginAdjustable(subject)
     ).toBe(false)
   })
 })

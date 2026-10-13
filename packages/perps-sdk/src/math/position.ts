@@ -417,7 +417,7 @@ export const safeCalculateRealizedPnl = createSafeFunction(
  *
  * @public
  */
-export function positionSupportsMarginAdjustment(position: Position): boolean {
+export function isPositionMarginAdjustable(position: Position): boolean {
   return (
     position.marginMode === MarginMode.ISOLATED &&
     position.market.positionMarginAdjustment !== PositionMarginAdjustment.NONE
@@ -430,9 +430,9 @@ export function positionSupportsMarginAdjustment(position: Position): boolean {
  *
  * @public
  */
-export function positionSupportsMarginRemoval(position: Position): boolean {
+export function isPositionMarginRemovable(position: Position): boolean {
   return (
-    positionSupportsMarginAdjustment(position) &&
+    isPositionMarginAdjustable(position) &&
     position.market.positionMarginAdjustment ===
       PositionMarginAdjustment.ADD_AND_REMOVE
   )
