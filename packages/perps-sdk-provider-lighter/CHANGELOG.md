@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 38.1.0
+
+### Minor Changes
+
+- [#621](https://github.com/lifinance/perps-sdk/pull/621) [`c795c0c`](https://github.com/lifinance/perps-sdk/commit/c795c0c658c0cdac6547112fd5650ec8c413db8a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `LT_ORDER_TYPE_TWAP_SUB` (`7`), the Lighter wire value of a TWAP slice order.
+
 ## 38.0.0
 
 ### Major Changes
