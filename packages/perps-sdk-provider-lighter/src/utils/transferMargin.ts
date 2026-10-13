@@ -2,9 +2,9 @@ import {
   addDecimalString,
   isDecimalString,
   isDecimalStringGreaterThan,
+  isPositionMarginAdjustable,
+  isPositionMarginRemovable,
   PerpsError,
-  positionSupportsMarginAdjustment,
-  positionSupportsMarginRemoval,
   roundDecimalString,
   subtractDecimalString,
 } from '@lifi/perps-sdk'
@@ -60,10 +60,10 @@ function positivePositionAmount(
 export function positionRemovableMargin(
   position: Position
 ): DecimalString | undefined {
-  if (!positionSupportsMarginAdjustment(position)) {
+  if (!isPositionMarginAdjustable(position)) {
     return undefined
   }
-  if (!positionSupportsMarginRemoval(position)) {
+  if (!isPositionMarginRemovable(position)) {
     return '0'
   }
   const removable = subtractDecimalString(

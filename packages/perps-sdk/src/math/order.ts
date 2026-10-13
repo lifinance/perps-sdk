@@ -96,7 +96,7 @@ export const safeEstimateFees = createSafeFunction('estimateFees', estimateFees)
  *   decimal pattern, or `slippagePercent` is -100 or less.
  * @public
  */
-export function applySlippageToPrice(
+export function calculateSlippagePrice(
   price: string,
   slippagePercent: string,
   isBuy: boolean
@@ -116,9 +116,9 @@ export function applySlippageToPrice(
 }
 
 /** @public */
-export const safeApplySlippageToPrice = createSafeFunction(
-  'applySlippageToPrice',
-  applySlippageToPrice
+export const safeCalculateSlippagePrice = createSafeFunction(
+  'calculateSlippagePrice',
+  calculateSlippagePrice
 )
 
 /**
@@ -277,7 +277,7 @@ export const safeCalculateRealizedPnlPercent = createSafeFunction(
   calculateRealizedPnlPercent
 )
 
-/** Result of {@link walkOrderbook} — the fill obtained for a USD-notional walk. */
+/** Result of {@link calculateOrderbookWalk} — the fill obtained for a USD-notional walk. */
 interface BookWalk {
   /** Base amount filled. */
   baseSize: string
@@ -301,7 +301,7 @@ interface BookWalk {
  *   or `size` does not match the decimal pattern.
  * @public
  */
-export function walkOrderbook(
+export function calculateOrderbookWalk(
   levels: OrderbookLevel[],
   sizeUsd: string
 ): BookWalk {
@@ -333,9 +333,9 @@ export function walkOrderbook(
 }
 
 /** @public */
-export const safeWalkOrderbook = createSafeFunction(
-  'walkOrderbook',
-  walkOrderbook
+export const safeCalculateOrderbookWalk = createSafeFunction(
+  'calculateOrderbookWalk',
+  calculateOrderbookWalk
 )
 
 /** Inputs to {@link buildQuote} — the resolved market, its live price, its book, and the trade ask. */
@@ -369,7 +369,7 @@ export function buildQuote(input: BuildQuoteInput): Quote {
   const { market, price, side, sizeUsd, feeTier } = input
   const markPrice = decimalStringToDivBig(price.markPrice)
   const levels = side === 'buy' ? input.asks : input.bids
-  const walk = walkOrderbook(levels, sizeUsd)
+  const walk = calculateOrderbookWalk(levels, sizeUsd)
   const vwap = decimalStringToBig(walk.vwap)
   const priceImpactBps =
     markPrice.eq(0) || vwap.eq(0)
@@ -407,7 +407,7 @@ export const safeBuildQuote = createSafeFunction('buildQuote', buildQuote)
  * @param positions - Open positions list (any market).
  * @public
  */
-export function findMatchingPosition(
+export function resolveMatchingPosition(
   marketId: string,
   positions: readonly Position[]
 ): Position | undefined {

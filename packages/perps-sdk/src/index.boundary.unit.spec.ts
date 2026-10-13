@@ -307,7 +307,6 @@ const LIQUIDATION_INPUT = {
 
 /** One sample call per display-tier formula, keyed by its public name. */
 const MATH_SAMPLES: Record<string, readonly unknown[]> = {
-  applySlippageToPrice: ['100', '0.5', true],
   calculateEffectiveLeverage: [
     { positionValueUsd: '10000', marginUsd: '1000' },
   ],
@@ -316,6 +315,7 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { liquidationPrice: '45000', currentPrice: '50000' },
   ],
   calculateNotionalValue: ['0.5', '60000'],
+  calculateOrderbookWalk: [[{ price: '100', size: '1' }], '50'],
   calculateRealizedPnl: [
     { entryPrice: '100', closePrice: '150', closeSize: '1', isLong: true },
   ],
@@ -323,6 +323,7 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   calculateRequiredMargin: ['10000', '10'],
   calculateRoe: ['500', '1000'],
   calculateSize: ['1000', '10', '50000'],
+  calculateSlippagePrice: ['100', '0.5', true],
   calculateTriggerPercent: ['0.77', '0.7', '3', true],
   calculateTriggerPrice: ['30', '0.7', '3', true],
   calculateUnrealizedPnl: ['50000', '55000', '1'],
@@ -352,9 +353,10 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
 /** Formulas whose DecimalStrings sit on fields rather than on the return value. */
 const DECIMAL_STRING_FIELDS: Record<string, readonly string[]> = {
   calculateExpectedPnl: ['amount', 'percent'],
+  calculateOrderbookWalk: ['baseSize', 'filledNotional', 'vwap'],
 }
 
-const DISPLAY_VERB = /^(calculate|estimate|apply)/
+const DISPLAY_VERB = /^(calculate|estimate)/
 
 const mathFormulaExports = (): string[] =>
   entryExports
@@ -364,7 +366,7 @@ const mathFormulaExports = (): string[] =>
     .sort()
 
 describe('display-tier formulas give back DecimalStrings', () => {
-  it('samples every calculate/estimate/apply export under math/', () => {
+  it('samples every calculate/estimate export under math/', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
@@ -597,7 +599,7 @@ const REPRESENTATIONS = ['decimalString', 'number', 'scaledInteger', 'unknown']
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
-  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round)(?:[A-Z]|$)' +
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round|classify)(?:[A-Z]|$)' +
     `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
 )
 const BANNED_VERB = /^(derive|predict|convert)/
@@ -617,6 +619,10 @@ describe('the vocabulary pattern', () => {
     expect(VOCABULARY.test(name)).toBe(true)
   })
 
+  it('admits the domain verb classify', () => {
+    expect(VOCABULARY.test('classifyFillFromPosition')).toBe(true)
+  })
+
   it.each([
     'walkOrderbookToDepth',
     'stringToFloat',
@@ -634,17 +640,7 @@ describe('the vocabulary pattern', () => {
 })
 
 /** Tier functions outside the vocabulary, each with the reason it keeps its name. */
-const NAMING_EXCEPTIONS: Record<string, string> = {
-  applySlippageToPrice: 'order-entry formula; consumers call it by this name',
-  classifyFill: 'fill taxonomy, deprecated in favour of Fill.classification',
-  classifyFillFromPosition: 'fill taxonomy the providers call',
-  findMatchingPosition: 'structure lookup with no arithmetic',
-  positionSupportsMarginAdjustment:
-    'is-class predicate; a rename is a second breaking change, parked for a human decision',
-  positionSupportsMarginRemoval:
-    'is-class predicate; a rename is a second breaking change, parked for a human decision',
-  walkOrderbook: 'book traversal that buildQuote composes',
-}
+const NAMING_EXCEPTIONS: Record<string, string> = {}
 
 const TIER_MODULE = /^\.\/(decimal|math|wire)\//
 
@@ -723,8 +719,8 @@ describe('runtime helpers that perps-types does not own', () => {
   it('exports them from @lifi/perps-sdk', () => {
     expect(typeof sdk.isDecimalString).toBe('function')
     expect(typeof sdk.unknownToDecimalString).toBe('function')
-    expect(typeof sdk.positionSupportsMarginAdjustment).toBe('function')
-    expect(typeof sdk.positionSupportsMarginRemoval).toBe('function')
+    expect(typeof sdk.isPositionMarginAdjustable).toBe('function')
+    expect(typeof sdk.isPositionMarginRemovable).toBe('function')
   })
 
   it('leaves @lifi/perps-types with no function export', () => {
