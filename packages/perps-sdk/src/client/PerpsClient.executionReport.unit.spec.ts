@@ -320,6 +320,9 @@ describe('PerpsClient execution report (public entrypoint)', () => {
   })
 
   it('preserves setup execution when resolving its submitting signer throws', async () => {
+    if (!('typedData' in orderStep)) {
+      throw new Error('Expected an EIP-712 order fixture')
+    }
     const step: ActionStep = {
       ...orderStep,
       action: ActionType.APPROVE_BUILDER_FEE,
@@ -347,7 +350,10 @@ describe('PerpsClient execution report (public entrypoint)', () => {
 
     expect(error).toBeInstanceOf(PerpsExecutionError)
     expect(error).toMatchObject({ response: { results: [executed] } })
-    expect((error as PerpsExecutionError).cause).toBe(cause)
+    if (!(error instanceof PerpsExecutionError)) {
+      throw error
+    }
+    expect(error.cause).toBe(cause)
     expect(executeRequests).toEqual([])
   })
 })
