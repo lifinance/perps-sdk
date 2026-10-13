@@ -65,6 +65,7 @@ export interface OndoFundingRate {
 /** Server frame envelope. Non-`update` types are acks or errors. @public */
 export type OndoWsMessage =
   | { type: 'update'; channel: 'depthBooksPerps'; data: OndoBookSnapshot[] }
+  | { type: 'update'; channel: 'topOfBooksPerps'; data: OndoBookSnapshot[] }
   | { type: 'update'; channel: 'tradesPerps'; data: OndoWsTrade[] }
   | { type: 'update'; channel: 'kLinePerps'; data: OndoKline }
   | { type: 'update'; channel: 'markPricesPerps'; data: OndoMarkPrice[] }
