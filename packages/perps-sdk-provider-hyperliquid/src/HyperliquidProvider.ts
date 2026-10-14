@@ -2,6 +2,7 @@ import {
   type ActionSignerContribution,
   type DepositFlow,
   HYPERLIQUID_USDC,
+  isSubmittedOrAccepted,
   type LiquidationEstimateParams,
   PerpsError,
   PerpsErrorMessage,
@@ -51,7 +52,6 @@ import {
   type Quote,
   type SetupAction,
   type SigningMethod,
-  UserActionStatus,
 } from '@lifi/perps-types'
 import { type Address, type Hex, isAddress } from 'viem'
 import { projectHyperliquidConfigSettings } from './accountConfig.js'
@@ -321,8 +321,7 @@ export function hyperliquidProvider(
         results.some(
           (result) =>
             result.action === ActionType.REVOKE_SESSION_AGENT &&
-            (result.status === UserActionStatus.Submitted ||
-              result.status === UserActionStatus.Accepted)
+            isSubmittedOrAccepted(result)
         )
       ) {
         await agentStore.remove(address)

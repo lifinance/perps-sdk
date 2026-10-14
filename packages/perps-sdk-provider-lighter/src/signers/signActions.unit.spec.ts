@@ -20,6 +20,7 @@ import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, it, type Mock, vi } from 'vitest'
+import { unconfirmedIndeterminateErrorText } from '../copy.js'
 import { type ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -153,6 +154,7 @@ function makeDeps(
   const apiClient = { get, postForm, getAuthed } as unknown as LighterApiClient
   return {
     deps: {
+      providerKey: 'lighter',
       signer,
       keyStore,
       apiClient,
@@ -193,6 +195,7 @@ function makeWireDeps(mutationResponse?: () => Response): {
   const keyStore = new LighterKeyStore(createMemoryStorage())
   return {
     deps: {
+      providerKey: 'lighter',
       signer: {
         createAuthToken: vi.fn(async () => 'auth-token-xyz'),
       } as unknown as LighterSigner,
@@ -1366,7 +1369,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.ACCOUNT_TYPE,
             status: UserActionStatus.Failed,
-            refused: true,
             errorCode: PerpsErrorCode.SetupRequired,
             error: expect.stringContaining(
               'account is not eligible for this operation'
@@ -1432,7 +1434,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.ACCOUNT_TYPE,
             status: UserActionStatus.Failed,
-            refused: true,
             errorCode: PerpsErrorCode.ExchangeRejected,
             error: expect.stringContaining('account has open positions'),
           },
@@ -1459,7 +1460,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           errorCode: PerpsErrorCode.SetupRequired,
           error: expect.stringContaining(
             'account is not eligible for this operation'
@@ -1484,7 +1484,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           error: expect.stringContaining('code 41003'),
         }),
       ])
@@ -1616,7 +1615,6 @@ describe('lighterSignActions', () => {
         expect.objectContaining({
           action: ActionType.SET_REFERRAL,
           status: UserActionStatus.Failed,
-          refused: true,
           error: expect.stringContaining('referral code already applied'),
         }),
       ])
@@ -1774,7 +1772,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           errorCode: PerpsErrorCode.ExchangeRejected,
           error: expect.stringMatching(
             /rejected \(code 41004\): Referral code does not exist/
@@ -1810,8 +1807,11 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.SET_REFERRAL,
             status: UserActionStatus.Indeterminate,
+            error: unconfirmedIndeterminateErrorText(
+              ActionType.SET_REFERRAL,
+              'lighter'
+            ),
             errorCode: PerpsErrorCode.ServerError,
-            error: expect.stringContaining('socket hang up'),
           },
         ],
       })
@@ -2176,7 +2176,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.DEPOSIT,
             status: UserActionStatus.Failed,
-            refused: true,
             txHash: broadcastHashes[0],
             errorCode: PerpsErrorCode.SDKError,
             error: expect.stringMatching(/revert/i),
@@ -2220,7 +2219,6 @@ describe('lighterSignActions', () => {
         },
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           txHash: broadcastHashes[1],
           errorCode: PerpsErrorCode.SDKError,
         }),
@@ -2266,7 +2264,7 @@ describe('lighterSignActions', () => {
             status: UserActionStatus.Indeterminate,
             txHash: broadcastHashes[0],
             errorCode: PerpsErrorCode.TimeoutError,
-            error: expect.stringContaining('has no receipt'),
+            error: expect.stringContaining('could not confirm it was accepted'),
           },
         ],
       })

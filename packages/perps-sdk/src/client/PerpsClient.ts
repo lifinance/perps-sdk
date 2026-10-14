@@ -30,7 +30,6 @@ import {
   PerpsErrorCode,
   PerpsSigner,
   SigningMethod,
-  UserActionStatus,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
@@ -94,6 +93,7 @@ import type {
   WithdrawalSourceTypes,
   WithdrawFlow,
 } from '../types/withdrawal.js'
+import { isSubmittedOrAccepted } from '../utils/actionResult.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -212,13 +212,6 @@ function currentChoiceValue(
       .find((setting) => setting.type === descriptor.type)
       ?.values.find((v) => names.has(v.name))?.value ?? null
   return value === null ? null : String(value)
-}
-
-function isAcknowledged(result: ActionResult): boolean {
-  return (
-    result.status === UserActionStatus.Submitted ||
-    result.status === UserActionStatus.Accepted
-  )
 }
 
 function isNonNegativeDecimal(value: string): boolean {
@@ -490,7 +483,7 @@ export class PerpsClient {
       } catch (error) {
         rethrowWithKnownResults(executed, error)
       }
-      if (!executed.every(isAcknowledged)) {
+      if (!executed.every(isSubmittedOrAccepted)) {
         break
       }
     }
@@ -514,7 +507,7 @@ export class PerpsClient {
     { signed, executed }: SignActionsResult
   ): Promise<ActionResult[]> {
     let results = executed
-    if (signed.length > 0 && executed.every(isAcknowledged)) {
+    if (signed.length > 0 && executed.every(isSubmittedOrAccepted)) {
       try {
         const response = await executeAction(this.sdkClient, {
           provider,
@@ -1243,7 +1236,9 @@ export class PerpsClient {
             address,
             step
           )
-          const failure = results.find((result) => !isAcknowledged(result))
+          const failure = results.find(
+            (result) => !isSubmittedOrAccepted(result)
+          )
           if (failure !== undefined) {
             console.debug(
               `[perps-sdk] setup step '${descriptor.type}' for '${provider}' reported '${failure.status}'; will retry on the next checkSetup.`,
@@ -1336,8 +1331,8 @@ export class PerpsClient {
    * prerequisites against that same snapshot, without another `createAction`
    * round-trip.
    *
-   * Resolves to the step's execution report. A refused or indeterminate step
-   * is a result in the report, not an exception.
+   * Resolves to the execution report. A `Failed` or `Indeterminate` action is
+   * a result in the report, not an exception.
    *
    * @throws {PerpsError} When the step's action is not in the provider's
    *   `setup` descriptors, when a lower-`sequence` step on the same
@@ -1385,8 +1380,9 @@ export class PerpsClient {
    * Hyperliquid `ACCOUNT_MODE`) end-to-end with its bound `{ type, params }`,
    * through the same {@link execute} pipeline as a trade.
    *
-   * Resolves to the execution report. Read each result's `status`: a refused
-   * selection is a `Failed` result, not an exception.
+   * Resolves to the execution report. Read each result's `status`: a `Failed`
+   * or `Indeterminate` selection is a result, not an exception. `Submitted` and
+   * `Accepted` mean the selection took effect.
    *
    * @throws {PerpsError} The errors {@link execute} throws.
    * @public

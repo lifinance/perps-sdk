@@ -3222,7 +3222,6 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
       {
         action: ActionType.PLACE_ORDER,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'API key not found',
         errorCode: PerpsErrorCode.Unauthorized,
       },
@@ -3231,7 +3230,7 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
     await expect(keyStore.get(ADDRESS)).resolves.toBeNull()
   })
 
-  it('keeps the stored API key when an Unauthorized result is indeterminate or unproven', async () => {
+  it('keeps the stored API key when an Unauthorized result is indeterminate', async () => {
     const { provider, storage } = await loggedInProvider()
     const keyStore = new OndoApiKeyStore(storage, API_URL)
     await keyStore.set(ADDRESS, API_KEY)
@@ -3241,13 +3240,6 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
         action: ActionType.PLACE_ORDER,
         status: UserActionStatus.Indeterminate,
         error: 'no answer',
-        errorCode: PerpsErrorCode.Unauthorized,
-      },
-      {
-        action: ActionType.PLACE_ORDER,
-        status: UserActionStatus.Failed,
-        refused: false,
-        error: 'no proof',
         errorCode: PerpsErrorCode.Unauthorized,
       },
     ])
@@ -3265,14 +3257,12 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
       {
         action: ActionType.PLACE_ORDER,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'insufficient margin',
         errorCode: PerpsErrorCode.InsufficientMargin,
       },
       {
         action: ActionType.PLACE_ORDER,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'opaque',
       },
     ])

@@ -2019,6 +2019,7 @@ export const createLighterProvider = (
       }
       return lighterSignActions(
         {
+          providerKey,
           signer,
           keyStore,
           apiClient: apiClient(),

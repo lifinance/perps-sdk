@@ -1224,7 +1224,6 @@ export const ondoProvider = (
       const unauthorized = results.some(
         (result) =>
           result.status === UserActionStatus.Failed &&
-          result.refused &&
           result.errorCode === PerpsErrorCode.Unauthorized
       )
       if (unauthorized) {

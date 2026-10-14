@@ -159,11 +159,23 @@ step, in step order. Each result carries a `UserActionStatus`:
 - `Accepted`: the venue provably took and applied the step.
 - `Indeterminate`: the SDK cannot tell if the venue applied the step. Read the
   account state before you send the step again.
-- `Failed`: the step did not apply. `refused: true` means that the venue
-  refused the step. `refused: false` means that the venue acknowledged the
-  step but no proof of the effect arrived.
+- `Failed`: the venue refused the step. Nothing was applied.
 
-A refused or indeterminate step is a result, not an exception. The SDK signs
+`Submitted` and `Accepted` mean that the action took effect. Call
+`isSubmittedOrAccepted(result)` to test for them. For any other result, show
+`result.error`. An `Indeterminate` error ends with advice to check the account
+before a retry.
+
+```ts
+const { results } = await client.executeAction(request)
+for (const result of results) {
+  if (!isSubmittedOrAccepted(result)) {
+    console.warn(result.status, result.error)
+  }
+}
+```
+
+A failed or indeterminate step is a result, not an exception. The SDK signs
 and sends no further client step after a step that is not `Submitted` or
 `Accepted`, so those steps have no result. A result keeps the identifiers the venue returned
 (`orderId`, `twapId`, `txHash`, `explorerLink`) for every status.
