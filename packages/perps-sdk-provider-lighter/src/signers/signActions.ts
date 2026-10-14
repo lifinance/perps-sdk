@@ -25,6 +25,13 @@ import {
   LIGHTER_MUTATION_SUCCESS_CODE,
   LIGHTER_REFERRAL_ALREADY_USED_CODE,
 } from '../constants.js'
+import {
+  noAnswerIndeterminateErrorText,
+  noReceiptIndeterminateErrorText,
+  noVerdictIndeterminateErrorText,
+  rejectedFailedErrorText,
+  revertedFailedErrorText,
+} from '../copy.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
 import { lighterErrorCodeFromBody } from '../utils/lighterErrorCode.js'
@@ -512,7 +519,10 @@ async function executeTokenAuthMutation(
     return {
       action: step.action,
       status: UserActionStatus.Indeterminate,
-      error: `Lighter ${step.action} got no answer: ${error instanceof Error ? error.message : String(error)}`,
+      error: noAnswerIndeterminateErrorText(
+        step.action,
+        error instanceof Error ? error.message : String(error)
+      ),
       errorCode:
         error instanceof PerpsError ? error.code : PerpsErrorCode.ServerError,
     }
@@ -524,7 +534,7 @@ async function executeTokenAuthMutation(
     return {
       action: step.action,
       status: UserActionStatus.Indeterminate,
-      error: `Lighter ${step.action} returned no reliable verdict (HTTP ${status})`,
+      error: noVerdictIndeterminateErrorText(step.action, status),
       errorCode: PerpsErrorCode.ServerError,
     }
   }
@@ -538,12 +548,10 @@ async function executeTokenAuthMutation(
     return undefined
   }
   if (status < 200 || status >= 300 || code !== LIGHTER_MUTATION_SUCCESS_CODE) {
-    const suffix = data?.message ? `: ${data.message}` : ''
     return {
       action: step.action,
       status: UserActionStatus.Failed,
-      refused: true,
-      error: `Lighter ${step.action} rejected (code ${code ?? status})${suffix}`,
+      error: rejectedFailedErrorText(step.action, code, status, data?.message),
       errorCode:
         lighterErrorCodeFromBody(code) ?? PerpsErrorCode.ExchangeRejected,
     }
@@ -659,7 +667,7 @@ async function requireApiKey(
  * When every leg confirms, the legs are `signed` for `/executeAction`. A leg
  * that reverts, or whose receipt does not arrive, aborts the remaining legs:
  * the batch then returns no `signed` step and reports each confirmed leg as
- * `Accepted`, then the reverted leg as a refused `Failed` result or the
+ * `Accepted`, then the reverted leg as a `Failed` result or the
  * unconfirmed leg as `Indeterminate`. A leg that throws before its broadcast
  * throws a `PerpsExecutionError` when an earlier leg confirmed.
  *
@@ -763,7 +771,11 @@ export async function signEvmTxActions(
             action: step.action,
             status: UserActionStatus.Indeterminate,
             txHash,
-            error: `EVM_TX leg '${step.action}' (tx ${txHash}) has no receipt: ${error instanceof Error ? error.message : String(error)}`,
+            error: noReceiptIndeterminateErrorText(
+              step.action,
+              txHash,
+              error instanceof Error ? error.message : String(error)
+            ),
             errorCode:
               error instanceof WaitForTransactionReceiptTimeoutError
                 ? PerpsErrorCode.TimeoutError
@@ -780,9 +792,8 @@ export async function signEvmTxActions(
           {
             action: step.action,
             status: UserActionStatus.Failed,
-            refused: true,
             txHash,
-            error: `EVM_TX leg '${step.action}' reverted (tx ${txHash}); aborted the remaining legs.`,
+            error: revertedFailedErrorText(step.action, txHash),
             errorCode: PerpsErrorCode.SDKError,
           },
         ],

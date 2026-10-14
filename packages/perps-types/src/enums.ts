@@ -219,7 +219,7 @@ export enum UserActionStatus {
   Submitted = 'submitted',
   /** The venue provably took and applied the action. */
   Accepted = 'accepted',
-  /** The venue refused the action, or the grace window closed without proof. */
+  /** The venue refused the action. Nothing was applied. */
   Failed = 'failed',
 }
 

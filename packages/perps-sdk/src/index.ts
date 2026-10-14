@@ -297,6 +297,7 @@ export type {
   WithdrawFlowReady,
   WithdrawFlowSetupRequired,
 } from './types/withdrawal.js'
+export { isSubmittedOrAccepted } from './utils/actionResult.js'
 export { paginateActivity } from './utils/activityPaging.js'
 export { createSafeFunction } from './utils/createSafeFunction.js'
 export {

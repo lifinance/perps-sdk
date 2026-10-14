@@ -332,7 +332,7 @@ describe('PerpsClient', () => {
 
     it.each([
       { status: UserActionStatus.Indeterminate },
-      { status: UserActionStatus.Failed, refused: true },
+      { status: UserActionStatus.Failed },
     ] as const)('does not sign a later descriptor after $status', async (outcome) => {
       const { perps, signActions } = await mixedClient()
       const result: ActionResult = {
@@ -906,7 +906,6 @@ describe('PerpsClient', () => {
       respondExecuteAction((action) => ({
         action,
         status: UserActionStatus.Failed,
-        refused: true,
         error: venueError,
         errorCode: PerpsErrorCode.ExchangeRejected,
       }))
@@ -923,7 +922,6 @@ describe('PerpsClient', () => {
           {
             action: ActionType.APPROVE_AGENT,
             status: UserActionStatus.Failed,
-            refused: true,
             error: venueError,
             errorCode: PerpsErrorCode.ExchangeRejected,
           },
@@ -944,7 +942,6 @@ describe('PerpsClient', () => {
       respondExecuteAction((action) => ({
         action,
         status: UserActionStatus.Failed,
-        refused: true,
         error: venueError,
       }))
 
@@ -959,7 +956,6 @@ describe('PerpsClient', () => {
         {
           action: ActionType.REGISTER_API_KEY,
           status: UserActionStatus.Failed,
-          refused: true,
           error: venueError,
         },
       ])
@@ -1007,7 +1003,6 @@ describe('PerpsClient', () => {
       const failed: ActionResult = {
         action: ActionType.APPROVE_AGENT,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'venue says no',
       }
       respondExecuteAction(() => failed)
@@ -1180,7 +1175,6 @@ describe('PerpsClient', () => {
       const failed = (action: ActionType): ActionResult => ({
         action,
         status: UserActionStatus.Failed,
-        refused: true,
         error: venueError,
         errorCode: PerpsErrorCode.SetupRequired,
       })
@@ -1338,7 +1332,6 @@ describe('PerpsClient', () => {
       const refused: ActionResult = {
         action: ActionType.REVOKE_BUILDER_FEE,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'not approved',
       }
       server.use(
@@ -3657,7 +3650,7 @@ describe('PerpsClient', () => {
 
     it.each([
       { status: UserActionStatus.Indeterminate },
-      { status: UserActionStatus.Failed, refused: true },
+      { status: UserActionStatus.Failed },
     ] as const)('stops draining staged setup steps after $status', async (outcome) => {
       const result: ActionResult = {
         action: ActionType.SET_REFERRAL,
@@ -6212,7 +6205,6 @@ describe('PerpsClient', () => {
       const refused: ActionResult = {
         action: ActionType.META_ONBOARD,
         status: UserActionStatus.Failed,
-        refused: true,
         error: 'nonce already used',
         errorCode: PerpsErrorCode.NonceAlreadyUsed,
       }

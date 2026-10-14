@@ -21,6 +21,7 @@ import type {
   WithdrawalAssetRef,
   WithdrawalParams,
 } from './action.js'
+import { CHECK_ACCOUNT_BEFORE_RETRY_TEXT } from './action.js'
 import {
   ActionType,
   MarginMode,
@@ -226,100 +227,46 @@ describe('ActionResult', () => {
       orderId: 'lighter-12345',
     }
 
-    if (result.status === UserActionStatus.Submitted) {
-      expect(result.orderId).toBe('lighter-12345')
-      // @ts-expect-error — `error` is not present on an acknowledged result
-      result.error
-    } else {
-      throw new Error('expected the Submitted branch')
-    }
-
-    const withError: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      status: UserActionStatus.Accepted,
-      // @ts-expect-error — an acknowledged result carries no error
-      error: 'rejected',
-    }
-    expect(withError.status).toBe(UserActionStatus.Accepted)
+    expect(result.orderId).toBe('lighter-12345')
+    expect(result.error).toBeUndefined()
   })
 
-  it('requires `refused` and `error` on a failed result', () => {
+  it('carries error and errorCode on a failed result', () => {
     const result: ActionResult = {
       action: ActionType.PLACE_ORDER,
       status: UserActionStatus.Failed,
-      refused: true,
       error: 'order rejected',
       errorCode: PerpsErrorCode.ExchangeRejected,
     }
 
-    if (result.status === UserActionStatus.Failed) {
-      expect(result.refused).toBe(true)
-      expect(result.error).toBe('order rejected')
-      expect(result.errorCode).toBe(PerpsErrorCode.ExchangeRejected)
-    } else {
-      throw new Error('expected the Failed branch')
+    expect(result.error).toBe('order rejected')
+    expect(result.errorCode).toBe(PerpsErrorCode.ExchangeRejected)
+  })
+
+  it('carries error and errorCode on an indeterminate result', () => {
+    const result: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Indeterminate,
+      error: `request timed out. ${CHECK_ACCOUNT_BEFORE_RETRY_TEXT}`,
+      errorCode: PerpsErrorCode.TimeoutError,
     }
 
-    // @ts-expect-error — `refused` is required on a failed result
-    const missingRefused: ActionResult = {
+    expect(result.error).toContain(CHECK_ACCOUNT_BEFORE_RETRY_TEXT)
+    expect(result.errorCode).toBe(PerpsErrorCode.TimeoutError)
+  })
+
+  it('has no `refused` or `success` field', () => {
+    const base = {
       action: ActionType.PLACE_ORDER,
       status: UserActionStatus.Failed,
       error: 'order rejected',
     }
-    expect(missingRefused.status).toBe(UserActionStatus.Failed)
-  })
-
-  it('keeps an indeterminate result apart from a refusal', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      status: UserActionStatus.Indeterminate,
-      error: 'request timed out',
-      errorCode: PerpsErrorCode.TimeoutError,
-    }
-
-    if (result.status === UserActionStatus.Indeterminate) {
-      expect(result.errorCode).toBe(PerpsErrorCode.TimeoutError)
-      // @ts-expect-error — `refused` is present only on a failed result
-      result.refused
-    } else {
-      throw new Error('expected the Indeterminate branch')
-    }
-  })
-
-  it('classifies a recoverable setup prerequisite through the errorCode field', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      status: UserActionStatus.Failed,
-      refused: true,
-      error: 'Provider setup is incomplete.',
-      errorCode: PerpsErrorCode.SetupRequired,
-    }
-
-    if (result.status === UserActionStatus.Failed) {
-      expect(result.errorCode).toBe(PerpsErrorCode.SetupRequired)
-    } else {
-      throw new Error('expected the Failed branch')
-    }
-
-    const secondField: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      status: UserActionStatus.Failed,
-      refused: true,
-      error: 'Provider setup is incomplete.',
-      // @ts-expect-error — `errorCode` is the only classification field
-      setupRequired: true,
-    }
-    expect(secondField.status).toBe(UserActionStatus.Failed)
-  })
-
-  it('has no `success` field', () => {
-    const result: ActionResult = {
-      action: ActionType.PLACE_ORDER,
-      status: UserActionStatus.Submitted,
-      // @ts-expect-error — `status` replaces `success`
-      success: true,
-    }
-    expect(result.status).toBe(UserActionStatus.Submitted)
+    // @ts-expect-error — `status` replaces `success`
+    const withSuccess: ActionResult = { ...base, success: false }
+    // @ts-expect-error — a failed result is always a refusal, so it has no `refused`
+    const withRefused: ActionResult = { ...base, refused: true }
+    expect(withSuccess.status).toBe(UserActionStatus.Failed)
+    expect(withRefused.status).toBe(UserActionStatus.Failed)
   })
 
   it('keeps venue identifiers on every status', () => {
@@ -343,8 +290,7 @@ describe('ActionResult', () => {
       {
         action: ActionType.PLACE_ORDER,
         status: UserActionStatus.Failed,
-        refused: false,
-        error: 'grace window closed without proof',
+        error: 'order rejected',
         orderId: '11',
         txHash,
       },

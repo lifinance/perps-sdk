@@ -237,12 +237,30 @@ export type SignedActionStep =
   | SiweSignedActionStep
 
 /**
- * Identifiers a venue returned for one action. A result keeps every identifier
- * it knows, whatever its status.
+ * Advice that ends the `error` of every `Indeterminate` result, because the
+ * action may have taken effect.
  *
  * @public
  */
-export interface ActionResultIdentifiers {
+export const CHECK_ACCOUNT_BEFORE_RETRY_TEXT =
+  'Check your account history and positions before you retry.'
+
+/**
+ * Result of one executed action.
+ *
+ * `Submitted` and `Accepted` mean the action took effect. No further feedback
+ * follows. `Indeterminate` means the action may have taken effect. `Failed`
+ * means nothing was applied.
+ *
+ * @public
+ */
+export interface ActionResult {
+  action: ActionType
+  status:
+    | UserActionStatus.Submitted
+    | UserActionStatus.Accepted
+    | UserActionStatus.Indeterminate
+    | UserActionStatus.Failed
   orderId?: string
   /** Provider-native identifier for a placed TWAP parent order. */
   twapId?: string
@@ -255,60 +273,11 @@ export interface ActionResultIdentifiers {
   /** Fully-resolved block-explorer URL for `txHash`; absent when the hash is
    * absent or the provider has no explorer configured. */
   explorerLink?: string
-}
-
-/**
- * Result of an action the venue acknowledged (`Submitted`) or provably applied
- * (`Accepted`).
- *
- * @public
- */
-export interface AcknowledgedActionResult extends ActionResultIdentifiers {
-  action: ActionType
-  status: UserActionStatus.Submitted | UserActionStatus.Accepted
-}
-
-/**
- * Result of an action whose send started without a clear venue answer. The
- * action may have taken effect: inspect the account before any new send.
- *
- * @public
- */
-export interface IndeterminateActionResult extends ActionResultIdentifiers {
-  action: ActionType
-  status: UserActionStatus.Indeterminate
-  error: string
-  /** The cause of the uncertainty, for example `TimeoutError` or `ThirdPartyError`. */
+  /** Set unless `status` is `Submitted` or `Accepted`. */
+  error?: string
+  /** The cause of the failure or uncertainty, for example `TimeoutError`. */
   errorCode?: PerpsErrorCode
 }
-
-/**
- * Result of an action that failed.
- *
- * @public
- */
-export interface FailedActionResult extends ActionResultIdentifiers {
-  action: ActionType
-  status: UserActionStatus.Failed
-  /**
-   * `true` when the venue definitively refused the action. `false` when the
-   * venue acknowledged it but the grace window closed without proof, so the
-   * action may still have taken effect.
-   */
-  refused: boolean
-  error: string
-  errorCode?: PerpsErrorCode
-}
-
-/**
- * Per-action execution result, discriminated on `status`.
- *
- * @public
- */
-export type ActionResult =
-  | AcknowledgedActionResult
-  | IndeterminateActionResult
-  | FailedActionResult
 
 /**
  * Trigger prices used to configure take-profit or stop-loss behavior.

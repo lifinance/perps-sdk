@@ -427,7 +427,6 @@ describe('hyperliquidProvider', () => {
         {
           action: ActionType.REVOKE_SESSION_AGENT,
           status: UserActionStatus.Failed,
-          refused: true,
           error: 'x',
         },
         { action: ActionType.REVOKE_AGENT, status: UserActionStatus.Accepted },
@@ -464,7 +463,6 @@ describe('hyperliquidProvider', () => {
         {
           action: ActionType.REVOKE_SESSION_AGENT,
           status: UserActionStatus.Failed,
-          refused: false,
           error: 'no proof',
         },
       ])

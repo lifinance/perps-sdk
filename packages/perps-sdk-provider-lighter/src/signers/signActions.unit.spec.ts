@@ -1366,7 +1366,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.ACCOUNT_TYPE,
             status: UserActionStatus.Failed,
-            refused: true,
             errorCode: PerpsErrorCode.SetupRequired,
             error: expect.stringContaining(
               'account is not eligible for this operation'
@@ -1432,7 +1431,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.ACCOUNT_TYPE,
             status: UserActionStatus.Failed,
-            refused: true,
             errorCode: PerpsErrorCode.ExchangeRejected,
             error: expect.stringContaining('account has open positions'),
           },
@@ -1459,7 +1457,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           errorCode: PerpsErrorCode.SetupRequired,
           error: expect.stringContaining(
             'account is not eligible for this operation'
@@ -1484,7 +1481,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           error: expect.stringContaining('code 41003'),
         }),
       ])
@@ -1616,7 +1612,6 @@ describe('lighterSignActions', () => {
         expect.objectContaining({
           action: ActionType.SET_REFERRAL,
           status: UserActionStatus.Failed,
-          refused: true,
           error: expect.stringContaining('referral code already applied'),
         }),
       ])
@@ -1774,7 +1769,6 @@ describe('lighterSignActions', () => {
       expect(executed).toEqual([
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           errorCode: PerpsErrorCode.ExchangeRejected,
           error: expect.stringMatching(
             /rejected \(code 41004\): Referral code does not exist/
@@ -2176,7 +2170,6 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.DEPOSIT,
             status: UserActionStatus.Failed,
-            refused: true,
             txHash: broadcastHashes[0],
             errorCode: PerpsErrorCode.SDKError,
             error: expect.stringMatching(/revert/i),
@@ -2220,7 +2213,6 @@ describe('lighterSignActions', () => {
         },
         expect.objectContaining({
           status: UserActionStatus.Failed,
-          refused: true,
           txHash: broadcastHashes[1],
           errorCode: PerpsErrorCode.SDKError,
         }),
