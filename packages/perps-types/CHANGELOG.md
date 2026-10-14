@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 24.0.0
+
+### Major Changes
+
+- [#627](https://github.com/lifinance/perps-sdk/pull/627) [`9c62621`](https://github.com/lifinance/perps-sdk/commit/9c6262198924c1f246ae4be9e0a530ea6713f458) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `ActionResult` is one flat type. Remove the `refused` field. A `Failed` result means the venue refused the action. Add `isSubmittedOrAccepted` and `CHECK_ACCOUNT_BEFORE_RETRY_TEXT`. Every `Indeterminate` error ends with that advice.
+
 ## 23.0.0
 
 ### Major Changes
