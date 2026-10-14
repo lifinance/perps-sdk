@@ -20,6 +20,7 @@ import { type Address, type Chain, createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet } from 'viem/chains'
 import { describe, expect, it, type Mock, vi } from 'vitest'
+import { unconfirmedIndeterminateErrorText } from '../copy.js'
 import { type ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { LighterKeyStore } from './LighterKeyStore.js'
 import type { LighterSigner } from './LighterSigner.js'
@@ -153,6 +154,7 @@ function makeDeps(
   const apiClient = { get, postForm, getAuthed } as unknown as LighterApiClient
   return {
     deps: {
+      providerKey: 'lighter',
       signer,
       keyStore,
       apiClient,
@@ -193,6 +195,7 @@ function makeWireDeps(mutationResponse?: () => Response): {
   const keyStore = new LighterKeyStore(createMemoryStorage())
   return {
     deps: {
+      providerKey: 'lighter',
       signer: {
         createAuthToken: vi.fn(async () => 'auth-token-xyz'),
       } as unknown as LighterSigner,
@@ -1804,8 +1807,11 @@ describe('lighterSignActions', () => {
           {
             action: ActionType.SET_REFERRAL,
             status: UserActionStatus.Indeterminate,
+            error: unconfirmedIndeterminateErrorText(
+              ActionType.SET_REFERRAL,
+              'lighter'
+            ),
             errorCode: PerpsErrorCode.ServerError,
-            error: expect.stringContaining('socket hang up'),
           },
         ],
       })
@@ -2258,7 +2264,7 @@ describe('lighterSignActions', () => {
             status: UserActionStatus.Indeterminate,
             txHash: broadcastHashes[0],
             errorCode: PerpsErrorCode.TimeoutError,
-            error: expect.stringContaining('has no receipt'),
+            error: expect.stringContaining('could not confirm it was accepted'),
           },
         ],
       })

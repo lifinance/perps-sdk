@@ -26,11 +26,9 @@ import {
   LIGHTER_REFERRAL_ALREADY_USED_CODE,
 } from '../constants.js'
 import {
-  noAnswerIndeterminateErrorText,
-  noReceiptIndeterminateErrorText,
-  noVerdictIndeterminateErrorText,
   rejectedFailedErrorText,
   revertedFailedErrorText,
+  unconfirmedIndeterminateErrorText,
 } from '../copy.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
@@ -56,6 +54,8 @@ import type {
  * @internal
  */
 export interface LighterSignActionsDeps {
+  /** Provider key (`lighter` or `lighter-rh`) named in result texts. */
+  providerKey: string
   signer: LighterSigner
   keyStore: LighterKeyStore
   /** REST client bound to the user's Lighter base URL, used for the direct
@@ -519,10 +519,7 @@ async function executeTokenAuthMutation(
     return {
       action: step.action,
       status: UserActionStatus.Indeterminate,
-      error: noAnswerIndeterminateErrorText(
-        step.action,
-        error instanceof Error ? error.message : String(error)
-      ),
+      error: unconfirmedIndeterminateErrorText(step.action, deps.providerKey),
       errorCode:
         error instanceof PerpsError ? error.code : PerpsErrorCode.ServerError,
     }
@@ -534,7 +531,7 @@ async function executeTokenAuthMutation(
     return {
       action: step.action,
       status: UserActionStatus.Indeterminate,
-      error: noVerdictIndeterminateErrorText(step.action, status),
+      error: unconfirmedIndeterminateErrorText(step.action, deps.providerKey),
       errorCode: PerpsErrorCode.ServerError,
     }
   }
@@ -551,7 +548,13 @@ async function executeTokenAuthMutation(
     return {
       action: step.action,
       status: UserActionStatus.Failed,
-      error: rejectedFailedErrorText(step.action, code, status, data?.message),
+      error: rejectedFailedErrorText(
+        step.action,
+        deps.providerKey,
+        code,
+        status,
+        data?.message
+      ),
       errorCode:
         lighterErrorCodeFromBody(code) ?? PerpsErrorCode.ExchangeRejected,
     }
@@ -681,6 +684,7 @@ async function requireApiKey(
  * @internal
  */
 export async function signEvmTxActions(
+  providerKey: string,
   steps: EvmTxActionStep[],
   ctx: SignActionsContext | undefined
 ): Promise<SignActionsResult> {
@@ -771,11 +775,7 @@ export async function signEvmTxActions(
             action: step.action,
             status: UserActionStatus.Indeterminate,
             txHash,
-            error: noReceiptIndeterminateErrorText(
-              step.action,
-              txHash,
-              error instanceof Error ? error.message : String(error)
-            ),
+            error: unconfirmedIndeterminateErrorText(step.action, providerKey),
             errorCode:
               error instanceof WaitForTransactionReceiptTimeoutError
                 ? PerpsErrorCode.TimeoutError
@@ -845,7 +845,7 @@ export async function lighterSignActions(
         ctx
       )
     case SigningMethod.EVM_TX:
-      return signEvmTxActions(steps as EvmTxActionStep[], ctx)
+      return signEvmTxActions(deps.providerKey, steps as EvmTxActionStep[], ctx)
     case SigningMethod.EIP712:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
