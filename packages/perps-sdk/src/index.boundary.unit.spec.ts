@@ -307,6 +307,7 @@ const LIQUIDATION_INPUT = {
 
 /** One sample call per display-tier formula, keyed by its public name. */
 const MATH_SAMPLES: Record<string, readonly unknown[]> = {
+  calculateAverageFillPrice: [[{ size: '0.1', price: '725.66' }]],
   calculateEffectiveLeverage: [
     { positionValueUsd: '10000', marginUsd: '1000' },
   ],
@@ -518,6 +519,7 @@ const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
   calculateWithdrawMax: [
     { available: '10', withdrawalFee: '0.5', isFeeDeducted: false },
   ],
+  safeSnapOrderPrice: [WIRE_CLIENT, WIRE_MARKET, '1234.5678'],
   snapOrderPrice: [WIRE_CLIENT, WIRE_MARKET, '1234.5678'],
   snapOrderSize: [WIRE_CLIENT, WIRE_MARKET, '0.123456'],
 }

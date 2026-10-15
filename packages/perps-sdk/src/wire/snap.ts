@@ -1,6 +1,9 @@
 import type { DecimalString, Market } from '@lifi/perps-types'
 import { requireProvider } from '../client/requireProvider.js'
 import type { PerpsSDKClient } from '../types/provider.js'
+import { createWarnOnce } from '../utils/warnOnce.js'
+
+const warnSnapOrderPriceFailureOnce = createWarnOnce()
 
 /**
  * Snap `size` onto the lot grid of `market`'s venue, truncating toward zero,
@@ -35,4 +38,26 @@ export function snapOrderPrice(
   price: DecimalString
 ): DecimalString {
   return requireProvider(sdk, market.providerId).snapOrderPrice(market, price)
+}
+
+/**
+ * {@link snapOrderPrice}, or `undefined` where it throws. A display calls it
+ * on each render, so it writes one warning per market, not one per call.
+ *
+ * @public
+ */
+export function safeSnapOrderPrice(
+  sdk: PerpsSDKClient,
+  market: Market,
+  price: DecimalString
+): DecimalString | undefined {
+  try {
+    return snapOrderPrice(sdk, market, price)
+  } catch (error) {
+    warnSnapOrderPriceFailureOnce(
+      `${market.providerId}|${market.id}`,
+      `[perps-sdk] snapOrderPrice failed on market '${market.id}' (${market.providerId}): ${error instanceof Error ? error.message : String(error)}`
+    )
+    return undefined
+  }
 }

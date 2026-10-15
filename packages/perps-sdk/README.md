@@ -278,7 +278,9 @@ market's own provider. It truncates toward zero, so the snapped size never
 exceeds the size the user asked for. `snapOrderPrice(sdk, market, price)`
 snaps a price onto the venue tick grid and rounds half-up. Each one resolves
 the provider from `market.providerId`, so a caller never applies one venue's
-rules to another venue's market.
+rules to another venue's market. `safeSnapOrderPrice(sdk, market, price)`
+gives the same result for a display, or `undefined` where `snapOrderPrice`
+throws. It writes one warning per market, not one per call.
 
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. Every venue places an order by size alone, so the size is

@@ -1,11 +1,13 @@
 import {
   createMemoryStorage,
+  createPerpsClient,
   ETHEREUM_USDC,
   PerpsClient,
   PerpsError,
   PerpsExecutionError,
   type PerpsProviderPlugin,
   type PerpsSDKClient,
+  safeSnapOrderPrice,
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
@@ -604,6 +606,15 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
     const provider = ondoProvider()
     expect(provider.snapOrderPrice(market, '201.555')).toBe('201.56')
     expect(provider.snapOrderSize(market, '0.129')).toBe('0.12')
+  })
+
+  it('snaps an off-grid price through safeSnapOrderPrice', () => {
+    const client = createPerpsClient({
+      integrator: 'test',
+      apiKey: 'k',
+      providers: [ondoProvider()],
+    })
+    expect(safeSnapOrderPrice(client, market, '201.555')).toBe('201.56')
   })
 
   it('keeps per-user trading limits out of static market metadata', () => {

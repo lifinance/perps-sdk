@@ -1,9 +1,16 @@
 import {
   type DecimalString,
+  type Fill,
   FillClassification,
   OrderSide,
 } from '@lifi/perps-types'
 import Big from 'big.js'
+import {
+  addDecimalStrings,
+  divideDecimalString,
+  multiplyDecimalString,
+} from '../decimal/arithmetic.js'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 
 /**
@@ -67,4 +74,28 @@ export function classifyFillFromPosition(
     return FillClassification.INCREASED_SHORT
   }
   return FillClassification.REDUCED_SHORT
+}
+
+/**
+ * Size-weighted average price of `fills`, Σ(size × price) / Σ size, to the
+ * 40 decimal places of division with no display rounding. A fill whose `size`
+ * or `price` does not match the decimal pattern is skipped.
+ *
+ * @returns `undefined` when the summed size is not above zero.
+ * @public
+ */
+export function calculateAverageFillPrice(
+  fills: readonly Fill[]
+): DecimalString | undefined {
+  const priced = fills.filter(
+    (fill) => isDecimalString(fill.size) && isDecimalString(fill.price)
+  )
+  const totalSize = addDecimalStrings(priced.map((fill) => fill.size))
+  if (!isDecimalStringGreaterThan(totalSize, '0')) {
+    return undefined
+  }
+  const notional = addDecimalStrings(
+    priced.map((fill) => multiplyDecimalString(fill.size, fill.price))
+  )
+  return divideDecimalString(notional, totalSize)
 }

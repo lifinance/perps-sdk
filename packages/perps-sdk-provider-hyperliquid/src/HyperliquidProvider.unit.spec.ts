@@ -4,6 +4,7 @@ import {
   HYPERLIQUID_USDC,
   type PerpsProvider,
   type PerpsProviderPlugin,
+  safeSnapOrderPrice,
 } from '@lifi/perps-sdk'
 import type {
   Eip712ActionStep,
@@ -134,6 +135,15 @@ describe('hyperliquidProvider', () => {
       // szDecimals 5 => 1 price decimal, then capped to 5 significant figures
       expect(provider.snapOrderPrice(btcMarket, '50000.25')).toBe('50000')
       expect(provider.snapOrderPrice(btcMarket, '1234.5')).toBe('1234.5')
+    })
+
+    it('snaps an off-grid price through safeSnapOrderPrice', () => {
+      const client = createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        providers: [hyperliquidProvider()],
+      })
+      expect(safeSnapOrderPrice(client, btcMarket, '50000.25')).toBe('50000')
     })
 
     it('grants spot markets the wider 8-decimal budget', () => {

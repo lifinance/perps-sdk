@@ -75,6 +75,7 @@ export {
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
 export {
+  calculateAverageFillPrice,
   classifyFillFromPosition,
   FillClassification,
 } from './math/fills.js'
@@ -375,6 +376,10 @@ export {
   calculateRefuelAmount,
   REFUEL_FEE_MARGIN_PERCENT,
 } from './wire/refuel.js'
-export { snapOrderPrice, snapOrderSize } from './wire/snap.js'
+export {
+  safeSnapOrderPrice,
+  snapOrderPrice,
+  snapOrderSize,
+} from './wire/snap.js'
 export { calculateTransferable } from './wire/transferable.js'
 export { calculateWithdrawMax } from './wire/withdraw.js'

@@ -1,8 +1,9 @@
 import { DECIMAL_PATTERN, PerpsErrorCode } from '@lifi/perps-types'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PerpsError } from '../errors/PerpsError.js'
-import { snapOrderPrice, snapOrderSize } from './snap.js'
+import { safeSnapOrderPrice, snapOrderPrice, snapOrderSize } from './snap.js'
 import {
+  VENUE_PROVIDER_ID,
   venueClient,
   venueMarket,
   venueProviderPlugin,
@@ -80,6 +81,54 @@ describe('snapOrderPrice', () => {
       expect(error).toBeInstanceOf(PerpsError)
       expect((error as PerpsError).code).toBe(PerpsErrorCode.SDKError)
     }
+  })
+})
+
+describe('safeSnapOrderPrice', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('gives the same result as snapOrderPrice', () => {
+    const { sdk } = spyingClient()
+
+    expect(safeSnapOrderPrice(sdk, MARKET, '61729.66')).toBe(
+      snapOrderPrice(sdk, MARKET, '61729.66')
+    )
+  })
+
+  it('gives undefined and writes one warning per market when the snap throws', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sdk = venueClient([
+      venueProviderPlugin({
+        snapOrderPrice: () => {
+          throw new PerpsError(PerpsErrorCode.ValidationError, 'no tick')
+        },
+      }),
+    ])
+    const btc = venueMarket({ id: 'SAFE-SNAP-BTC' })
+    const eth = venueMarket({ id: 'SAFE-SNAP-ETH' })
+
+    expect(safeSnapOrderPrice(sdk, btc, '1.23')).toBeUndefined()
+    expect(safeSnapOrderPrice(sdk, btc, '4.56')).toBeUndefined()
+    expect(safeSnapOrderPrice(sdk, eth, '1.23')).toBeUndefined()
+
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn.mock.calls[0]?.[0]).toBe(
+      `[perps-sdk] snapOrderPrice failed on market 'SAFE-SNAP-BTC' (${VENUE_PROVIDER_ID}): no tick`
+    )
+  })
+
+  it('gives undefined when the market has no registered provider', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(
+      safeSnapOrderPrice(
+        venueClient([]),
+        venueMarket({ id: 'SAFE-SNAP-NO-PROVIDER' }),
+        '1'
+      )
+    ).toBeUndefined()
   })
 })
 
