@@ -166,7 +166,11 @@ export const mapOrder = (
       ? '0'
       : subtractDecimalString(sizeValue, filledSize),
     filledSize,
-    reduceOnly: closePosition || (order.reduceOnly ?? false),
+    // Ondo TP/SL is reduce-only, also on a sized stop row that omits the flag.
+    reduceOnly:
+      closePosition ||
+      (!twap && order.stopOrderType !== undefined) ||
+      (order.reduceOnly ?? false),
     createdAt,
     updatedAt,
     ...(isPartlyFilled && averagePrice !== undefined ? { averagePrice } : {}),

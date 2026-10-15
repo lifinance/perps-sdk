@@ -379,6 +379,78 @@ describe('mapOrder', () => {
     })
   })
 
+  const ethMarket: MarketDisplay = { ...MARKET, id: 'ETH-USD.P' }
+  const sizedStopRow = (overrides: Partial<OndoOrder>): OndoOrder => {
+    const {
+      reduceOnly: _reduceOnly,
+      timeInForce: _tif,
+      ...row
+    } = orderFixture({
+      market: 'ETH-USD.P',
+      side: 'sell',
+      size: '0.002',
+      price: '0',
+      filledSize: '0',
+      lastFillSize: '0',
+      filledCost: '0',
+      fee: '0',
+      status: 'untriggered',
+      ...overrides,
+    })
+    return row
+  }
+
+  it('maps a sized position stop without reduceOnly or parent as reduce-only', () => {
+    const mapped = mapOrder(
+      sizedStopRow({
+        orderId: 'KZOVUM',
+        type: 'takeProfitMarket',
+        stopOrderType: 'takeProfit',
+        triggerPrice: '2610',
+      }),
+      ethMarket
+    )
+
+    expect(mapped).toMatchObject({
+      type: OrderType.TAKE_PROFIT_MARKET,
+      triggerPrice: '2610',
+      originalSize: '0.002',
+      remainingSize: '0.002',
+      reduceOnly: true,
+    })
+    expect(mapped).not.toHaveProperty('parentOrderId')
+  })
+
+  it('keeps the parent of an attached stop leg', () => {
+    expect(
+      mapOrder(
+        sizedStopRow({
+          orderId: 'O7FSPS',
+          type: 'stopMarket',
+          stopOrderType: 'stopLoss',
+          triggerPrice: '2300',
+          parentOrderId: 'parent-1',
+        }),
+        ethMarket
+      )
+    ).toMatchObject({
+      type: OrderType.STOP_MARKET,
+      originalSize: '0.002',
+      remainingSize: '0.002',
+      reduceOnly: true,
+      parentOrderId: 'parent-1',
+    })
+  })
+
+  it.each([
+    'stopMarket',
+    'takeProfitMarket',
+  ] as const)('keeps the wire reduceOnly of a %s row without stopOrderType', (type) => {
+    expect(
+      mapOrder(orderFixture({ type, triggerPrice: '190' }), MARKET)?.reduceOnly
+    ).toBe(false)
+  })
+
   it('skips a TWAP row and warns when totalSize is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
