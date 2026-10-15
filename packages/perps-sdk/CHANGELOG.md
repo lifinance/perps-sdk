@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 27.1.0
+
+### Minor Changes
+
+- [#632](https://github.com/lifinance/perps-sdk/pull/632) [`e4cf58a`](https://github.com/lifinance/perps-sdk/commit/e4cf58a0f1a9c48adf40e38262bbc1ae9eec3c5e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `safeSnapOrderPrice`, which gives `undefined` with one warning per market where `snapOrderPrice` throws, and `calculateAverageFillPrice`, which gives the exact size-weighted average price of a list of fills.
+
 ## 27.0.0
 
 ### Major Changes
