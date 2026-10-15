@@ -1,4 +1,5 @@
 import type { LtAccountAsset } from './account.js'
+import type { LtCandle } from './asset.js'
 
 // The Lighter stream server sends JSON messages of shape:
 //   { type: 'subscribed/<channel>' | 'update/<channel>' | 'ping',
@@ -11,6 +12,7 @@ import type { LtAccountAsset } from './account.js'
 //   - spot_market_stats/all   → context across all spot markets
 //   - spot_market_stats/{id}  → context for one spot market
 //   - order_book/{market_id}  → bids/asks per market (stateful with deltas)
+//   - candle/{market_id}/{resolution} → OHLCV bars per market and resolution
 //   - account_all/{account}   → per-asset spot and margin-route balances
 
 /**
@@ -154,6 +156,18 @@ export type LtWsTrade = {
 export type LtWsTradeMessage = LtWsMessage & {
   type: 'subscribed/trade' | 'update/trade'
   trades?: LtWsTrade[]
+}
+
+/**
+ * Subscription or update frame of the public `candle/{market_id}/{resolution}`
+ * channel. The reply `channel` uses colons (`candle:1:1m`). Each bar also
+ * carries the quote volume `V` and a sequence `i`, which the SDK does not read.
+ *
+ * @public
+ */
+export type LtWsCandleMessage = LtWsMessage & {
+  type: 'subscribed/candle' | 'update/candle'
+  candles?: LtCandle[]
 }
 
 /**
