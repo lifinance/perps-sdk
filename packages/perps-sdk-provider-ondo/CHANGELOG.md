@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 30.0.2
+
+### Patch Changes
+
+- [#634](https://github.com/lifinance/perps-sdk/pull/634) [`8de9108`](https://github.com/lifinance/perps-sdk/commit/8de91089284fd61183e58f09dd800253202baa7c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map an Ondo take-profit or stop-loss row as reduce-only when the row omits `reduceOnly`, so a sized position stop stays linked to its position.
+
 ## 30.0.1
 
 ### Patch Changes
