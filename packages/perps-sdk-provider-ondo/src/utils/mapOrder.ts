@@ -109,9 +109,14 @@ export const mapOrder = (
   if (filledSize === undefined) {
     return undefined
   }
+  const closePosition = !twap && order.closePosition === true
+  // Ondo omits `size` on a position-level TP/SL; '0' means the whole position.
+  const wholePosition = closePosition && order.size === undefined
   const sizeValue = twap
     ? orderSizeOrSkip(market.id, 'totalSize', order.totalSize)
-    : orderSizeOrSkip(market.id, 'size', order.size)
+    : wholePosition
+      ? '0'
+      : orderSizeOrSkip(market.id, 'size', order.size)
   if (sizeValue === undefined) {
     return undefined
   }
@@ -157,9 +162,11 @@ export const mapOrder = (
         ? OrderStatus.PARTIALLY_FILLED
         : status,
     originalSize: sizeValue,
-    remainingSize: subtractDecimalString(sizeValue, filledSize),
+    remainingSize: wholePosition
+      ? '0'
+      : subtractDecimalString(sizeValue, filledSize),
     filledSize,
-    reduceOnly: order.reduceOnly ?? false,
+    reduceOnly: closePosition || (order.reduceOnly ?? false),
     createdAt,
     updatedAt,
     ...(isPartlyFilled && averagePrice !== undefined ? { averagePrice } : {}),

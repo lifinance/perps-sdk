@@ -89,7 +89,8 @@ export interface OndoOrder {
   orderId: string
   side: OndoOrderSide
   price: string
-  size: string
+  /** Omitted on a `closePosition` row. */
+  size?: string
   market: string
   filledSize: string
   lastFillSize: string
