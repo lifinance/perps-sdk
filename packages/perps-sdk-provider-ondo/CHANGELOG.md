@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 30.0.1
+
+### Patch Changes
+
+- [#629](https://github.com/lifinance/perps-sdk/pull/629) [`2f67a9f`](https://github.com/lifinance/perps-sdk/commit/2f67a9fd590372994d54e232bf15155cb283379d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Map Ondo position-level TP/SL orders that omit `size`: the order has size `'0'` for the whole position and `reduceOnly: true`.
+
+- [#630](https://github.com/lifinance/perps-sdk/pull/630) [`3470d13`](https://github.com/lifinance/perps-sdk/commit/3470d131c5badaa0f3c7199322fbe31f3372991f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Ondo API client now throws `OndoApiError` instead of a raw `TypeError` when Ondo answers with a body that is not JSON (for example an HTML error page from a proxy), and the error message shows a preview of the raw body.
+
 ## 30.0.0
 
 ### Major Changes
