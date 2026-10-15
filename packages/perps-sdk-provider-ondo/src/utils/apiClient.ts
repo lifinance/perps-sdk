@@ -98,6 +98,17 @@ const isGenericResponse = (
   data !== null &&
   typeof (data as { success?: unknown }).success === 'boolean'
 
+const parseJsonBody = (text: string): unknown => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
+const bodyPreview = (text: string): string =>
+  text.trim() === '' ? 'empty body' : text.slice(0, 200)
+
 /**
  * HTTP boundary against Ondo's REST API.
  *
@@ -124,13 +135,13 @@ export class OndoApiClient {
   }
 
   async get<T>(path: string, options?: OndoRequestOptions): Promise<T> {
-    const { status, data } = await this.perform(path, {
+    const { status, data, text } = await this.perform(path, {
       method: 'GET',
       params: options?.params,
       authToken: options?.authToken,
       policy: this.policy,
     })
-    return this.unwrap<T>(path, status, data)
+    return this.unwrap<T>(path, status, data, text)
   }
 
   /**
@@ -141,13 +152,13 @@ export class OndoApiClient {
     path: string,
     options?: OndoRequestOptions
   ): Promise<OndoPage<T>> {
-    const { status, data } = await this.perform(path, {
+    const { status, data, text } = await this.perform(path, {
       method: 'GET',
       params: options?.params,
       authToken: options?.authToken,
       policy: this.policy,
     })
-    const result = this.unwrap<T[] | null>(path, status, data)
+    const result = this.unwrap<T[] | null>(path, status, data, text)
     const pageInfo = (data as { pageInfo?: OndoPageInfo }).pageInfo
     return { result: result ?? [], pageInfo }
   }
@@ -164,14 +175,14 @@ export class OndoApiClient {
       authToken?: string
     }
   ): Promise<T> {
-    const { status, data } = await this.perform(path, {
+    const { status, data, text } = await this.perform(path, {
       method,
       body: options?.body,
       headers: options?.headers,
       authToken: options?.authToken,
       policy: method === 'GET' ? this.policy : DISABLED_RETRY,
     })
-    return this.unwrap<T>(path, status, data)
+    return this.unwrap<T>(path, status, data, text)
   }
 
   /**
@@ -184,13 +195,13 @@ export class OndoApiClient {
     body?: unknown,
     options?: Pick<OndoRequestOptions, 'authToken'>
   ): Promise<T> {
-    const { status, data } = await this.perform(path, {
+    const { status, data, text } = await this.perform(path, {
       method: 'POST',
       body,
       authToken: options?.authToken,
       policy: DISABLED_RETRY,
     })
-    return this.unwrap<T>(path, status, data)
+    return this.unwrap<T>(path, status, data, text)
   }
 
   private buildUrl(path: string, params?: ApiParams): string {
@@ -216,7 +227,7 @@ export class OndoApiClient {
       headers?: Record<string, string>
       policy: ResolvedRetryPolicy
     }
-  ): Promise<{ status: number; data: unknown }> {
+  ): Promise<{ status: number; data: unknown; text: string }> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...options.headers,
@@ -234,11 +245,16 @@ export class OndoApiClient {
       init,
       { policy: options.policy, fetchImpl: this.fetchImpl, signal: this.signal }
     )
-    const data: unknown = await response.json().catch(() => undefined)
-    return { status: response.status, data }
+    const text = await response.text()
+    return { status: response.status, data: parseJsonBody(text), text }
   }
 
-  private unwrap<T>(path: string, status: number, data: unknown): T {
+  private unwrap<T>(
+    path: string,
+    status: number,
+    data: unknown,
+    text: string
+  ): T {
     // A 401 outranks any body code: only this branch evicts the stale JWT.
     if (status === 401) {
       throw new OndoSessionExpiredError(
@@ -257,14 +273,14 @@ export class OndoApiClient {
     }
     if (status < 200 || status >= 300) {
       throw new OndoApiError(
-        `Ondo API request failed: ${status} — ${JSON.stringify(data).slice(0, 200)}`,
+        `Ondo API request failed: ${status} — ${bodyPreview(text)}`,
         isGenericResponse(data) ? data.error_code : undefined,
         errorCodeFromStatus(status, PerpsErrorCode.ThirdPartyError)
       )
     }
     if (!isGenericResponse(data)) {
       throw new OndoApiError(
-        `Ondo API returned an unexpected body for ${path}: ${JSON.stringify(data).slice(0, 200)}`
+        `Ondo API returned an unexpected body for ${path}: ${bodyPreview(text)}`
       )
     }
     if (!data.success) {
