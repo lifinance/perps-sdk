@@ -10,5 +10,6 @@ Some helpers read SDK structures instead:
 - `resolveMatchingPosition`, `calculateOrderbookWalk` and `buildQuote` take positions, book levels or a quote input.
 - `estimateLiquidationPriceAtMarketRate(market, params)` takes a `PerpsMarket` and the entry, leverage and side, and gives a decimal string, or `undefined` when the market has no `maintenanceMarginRate` or when `1 / leverage` is at or below that rate.
 - `isPositionMarginAdjustable` and `isPositionMarginRemovable` take a `Position` and give a `boolean`.
+- `calculateAverageFillPrice(fills)` takes `Fill`s and gives the size-weighted average price, or `undefined` when the summed size is not above zero. It skips a fill whose `size` or `price` does not match the decimal pattern and never throws.
 - `classifyFillFromPosition` takes decimal strings and gives a `FillClassification`. It gives `BUY` or `SELL` on a malformed decimal string and never throws.
 - `calculateSlippagePrice(price, slippagePercent, isBuy)` is order-entry code. It does not round. Snap the result to the market tick before it goes to a venue.

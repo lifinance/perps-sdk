@@ -1,6 +1,11 @@
-import { FillClassification, OrderSide } from '@lifi/perps-types'
+import {
+  type Fill,
+  FillClassification,
+  LiquidityRole,
+  OrderSide,
+} from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { classifyFillFromPosition } from './fills.js'
+import { calculateAverageFillPrice, classifyFillFromPosition } from './fills.js'
 
 /**
  * Exhaustive coverage of `classifyFillFromPosition` against the
@@ -107,5 +112,70 @@ describe('classifyFillFromPosition with a malformed input', () => {
     expect(
       classifyFillFromPosition('1.0000000000000001', OrderSide.SELL, '1')
     ).toBe(FillClassification.REDUCED_LONG)
+  })
+})
+
+const asset = (id: string) => ({
+  providerId: 'venue',
+  id,
+  displaySymbol: id,
+  logoURI: '',
+})
+
+const fill = (size: string, price: string): Fill => ({
+  id: `${size}@${price}`,
+  orderId: '1',
+  market: {
+    providerId: 'venue',
+    id: 'ETH',
+    categoryId: 'perps',
+    baseAsset: asset('ETH'),
+    quoteAsset: asset('USDC'),
+  },
+  side: OrderSide.BUY,
+  size,
+  price,
+  liquidity: LiquidityRole.TAKER,
+  classification: FillClassification.OPENED_LONG,
+  createdAt: '2026-10-15T00:00:00.000Z',
+})
+
+describe('calculateAverageFillPrice', () => {
+  it('gives the exact average for a quotient that does not terminate', () => {
+    // (0.1 × 1000 + 0.2 × 3128.3) / 0.3 = 725.66 / 0.3
+    expect(
+      calculateAverageFillPrice([fill('0.1', '1000'), fill('0.2', '3128.3')])
+    ).toBe('2418.8666666666666666666666666666666666666667')
+  })
+
+  it('gives the price of a single fill', () => {
+    expect(calculateAverageFillPrice([fill('0.5', '61729.66')])).toBe(
+      '61729.66'
+    )
+  })
+
+  it('skips a fill whose size or price does not match the decimal pattern', () => {
+    expect(
+      calculateAverageFillPrice([
+        fill('1', '100'),
+        fill('NaN', '1'),
+        fill('1', ''),
+        fill('3', '200'),
+      ])
+    ).toBe('175')
+  })
+
+  it('gives undefined for no fills', () => {
+    expect(calculateAverageFillPrice([])).toBeUndefined()
+  })
+
+  it('gives undefined when the summed size is zero', () => {
+    expect(
+      calculateAverageFillPrice([fill('0', '100'), fill('0.0', '200')])
+    ).toBeUndefined()
+  })
+
+  it('gives undefined when every fill is malformed', () => {
+    expect(calculateAverageFillPrice([fill('x', '100')])).toBeUndefined()
   })
 })

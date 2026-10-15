@@ -1,5 +1,6 @@
 import {
   createMemoryStorage,
+  createPerpsClient,
   ETHEREUM_NATIVE_GAS,
   ETHEREUM_USDC,
   isDecimalString,
@@ -9,6 +10,7 @@ import {
   type PerpsSDKClient,
   ROBINHOOD_USDG,
   type StorageAdapter,
+  safeSnapOrderPrice,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
@@ -662,6 +664,35 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
     const provider = lighterProvider()
     expect(provider.snapOrderPrice(btcMarket, '50000.25')).toBe('50000.3')
     expect(provider.snapOrderSize(btcMarket, '0.123456')).toBe('0.1234')
+  })
+
+  describe('safeSnapOrderPrice', () => {
+    const client = () =>
+      createPerpsClient({
+        integrator: 'test',
+        apiKey: 'k',
+        providers: [lighterProvider()],
+      })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('snaps an off-grid price', () => {
+      expect(safeSnapOrderPrice(client(), btcMarket, '50000.25')).toBe(
+        '50000.3'
+      )
+    })
+
+    it('gives undefined for a market without priceDecimals and warns once', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { priceDecimals: _, ...noTickMarket } = btcMarket
+      const sdk = client()
+
+      expect(safeSnapOrderPrice(sdk, noTickMarket, '50000.25')).toBeUndefined()
+      expect(safeSnapOrderPrice(sdk, noTickMarket, '50000.35')).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('estimates liquidation from the market maintenanceMarginRate', () => {
