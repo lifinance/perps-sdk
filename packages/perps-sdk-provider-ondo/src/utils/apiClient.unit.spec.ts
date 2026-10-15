@@ -470,6 +470,131 @@ describe('OndoApiClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 
+  describe('a body that is not JSON', () => {
+    const HTML_503 =
+      '<html><head><title>503 Service Temporarily Unavailable</title></head><body>nginx</body></html>'
+
+    const htmlResponse = (body: string, status: number): Response =>
+      new Response(body, {
+        status,
+        headers: { 'Content-Type': 'text/html' },
+      })
+
+    const createClientRepeating = (response: () => Response) => {
+      const fetchImpl = vi
+        .fn<typeof fetch>()
+        .mockImplementation(() => Promise.resolve(response()))
+      const client = new OndoApiClient(BASE_URL, {
+        fetchImpl,
+        policy: zeroDelayRetry,
+      })
+      return { client, fetchImpl }
+    }
+
+    const calls: [string, (client: OndoApiClient) => Promise<unknown>][] = [
+      ['get', (client) => client.get('/v1/perps/positions')],
+      ['getPage', (client) => client.getPage('/v1/perps/orders')],
+      ['send', (client) => client.send('DELETE', '/v1/api_keys/key-1')],
+      ['post', (client) => client.post('/v1/perps/orders', {})],
+    ]
+
+    it.each(
+      calls
+    )('throws a ThirdPartyError OndoApiError with a body preview for an HTML 503 on %s', async (_name, call) => {
+      const { client } = createClientRepeating(() =>
+        htmlResponse(HTML_503, 503)
+      )
+
+      const promise = call(client)
+      await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+      await expect(promise).rejects.toMatchObject({
+        code: PerpsErrorCode.ThirdPartyError,
+        errorCode: undefined,
+        message: expect.stringContaining(
+          '503 — <html><head><title>503 Service Temporarily Unavailable'
+        ),
+      })
+    })
+
+    it.each(
+      calls
+    )('throws a ThirdPartyError OndoApiError naming the empty body for an empty 502 on %s', async (_name, call) => {
+      const { client } = createClientRepeating(
+        () => new Response(null, { status: 502 })
+      )
+
+      const promise = call(client)
+      await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+      await expect(promise).rejects.toMatchObject({
+        code: PerpsErrorCode.ThirdPartyError,
+        message: expect.stringContaining('502 — empty body'),
+      })
+    })
+
+    it('keeps the status-resolved code for an HTML 429', async () => {
+      const { client } = createClientRepeating(() =>
+        htmlResponse('<html>Too Many Requests</html>', 429)
+      )
+
+      await expect(client.get('/v1/perps/positions')).rejects.toMatchObject({
+        code: PerpsErrorCode.RateLimitExceeded,
+      })
+    })
+
+    it('limits the body preview to 200 characters', async () => {
+      const { client } = createClientRepeating(() =>
+        htmlResponse(`<html>${'x'.repeat(500)}</html>`, 503)
+      )
+
+      const error = await client
+        .get('/v1/perps/positions')
+        .catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(OndoApiError)
+      const preview = (error as OndoApiError).message.split('503 — ')[1]
+      expect(preview).toHaveLength(200)
+    })
+
+    it('throws an unexpected-body OndoApiError for an HTML 200', async () => {
+      const { client } = createClientRepeating(() =>
+        htmlResponse('<html>challenge</html>', 200)
+      )
+
+      const promise = client.get('/v1/perps/positions')
+      await expect(promise).rejects.toBeInstanceOf(OndoApiError)
+      await expect(promise).rejects.toMatchObject({
+        code: PerpsErrorCode.ThirdPartyError,
+        message:
+          'Ondo API returned an unexpected body for /v1/perps/positions: <html>challenge</html>',
+      })
+    })
+
+    it('throws an unexpected-body OndoApiError for an empty 200', async () => {
+      const { client } = createClientRepeating(
+        () => new Response(null, { status: 200 })
+      )
+
+      await expect(client.post('/v1/perps/orders', {})).rejects.toMatchObject({
+        code: PerpsErrorCode.ThirdPartyError,
+        message:
+          'Ondo API returned an unexpected body for /v1/perps/orders: empty body',
+      })
+    })
+
+    it('throws OndoSessionExpiredError for an HTML 401', async () => {
+      const { client } = createClientRepeating(() =>
+        htmlResponse('<html>Unauthorized</html>', 401)
+      )
+
+      const promise = client.get('/v1/perps/positions', {
+        authToken: 'stale-jwt',
+      })
+      await expect(promise).rejects.toBeInstanceOf(OndoSessionExpiredError)
+      await expect(promise).rejects.toMatchObject({
+        code: PerpsErrorCode.Unauthorized,
+      })
+    })
+  })
+
   it('never retries POST, even when the policy would', async () => {
     const { client, fetchImpl } = createClient([
       jsonResponse({ success: false, error: 'unavailable' }, 503),
