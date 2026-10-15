@@ -295,6 +295,90 @@ describe('mapOrder', () => {
     warn.mockRestore()
   })
 
+  it.each([
+    [
+      'takeProfit',
+      'takeProfitMarket',
+      '2590',
+      OrderType.TAKE_PROFIT_MARKET,
+      TriggerCondition.ABOVE,
+    ],
+    [
+      'stopLoss',
+      'stopMarket',
+      '2260',
+      OrderType.STOP_MARKET,
+      TriggerCondition.BELOW,
+    ],
+  ] as const)('maps a position-level %s row that omits size', (stopOrderType, type, triggerPrice, expectedType, triggerCondition) => {
+    const {
+      size: _size,
+      reduceOnly: _reduceOnly,
+      ...row
+    } = orderFixture({
+      side: 'sell',
+      type,
+      stopOrderType,
+      triggerPrice,
+      price: '0',
+      filledSize: '0',
+      lastFillSize: '0',
+      filledCost: '0',
+      fee: '0',
+      status: 'untriggered',
+      closePosition: true,
+      timeInForce: undefined,
+    })
+
+    const mapped = mapOrder(row, MARKET)
+
+    expect(mapped).toMatchObject({
+      type: expectedType,
+      triggerPrice,
+      triggerCondition,
+      originalSize: '0',
+      remainingSize: '0',
+      filledSize: '0',
+      reduceOnly: true,
+      status: OrderStatus.OPEN,
+    })
+    expect(mapped).not.toHaveProperty('parentOrderId')
+  })
+
+  it('skips and warns on a row that omits size without closePosition', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { size: _size, ...row } = orderFixture({
+      type: 'stopMarket',
+      triggerPrice: '190',
+    })
+
+    expect(mapOrder(row, { ...MARKET, id: 'ETH-USD.P' })).toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[ondo] skipping order row on market 'ETH-USD.P': `size` is not a valid decimal: 'undefined'"
+      )
+    )
+    warn.mockRestore()
+  })
+
+  it('keeps the wire size of a closePosition row that carries one', () => {
+    expect(
+      mapOrder(
+        orderFixture({
+          type: 'stopMarket',
+          triggerPrice: '190',
+          filledSize: '0',
+          closePosition: true,
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      originalSize: '10',
+      remainingSize: '10',
+      reduceOnly: true,
+    })
+  })
+
   it('skips a TWAP row and warns when totalSize is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
