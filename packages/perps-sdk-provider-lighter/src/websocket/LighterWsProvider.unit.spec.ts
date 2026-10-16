@@ -293,24 +293,217 @@ describe('LighterWsProvider', () => {
     ;(p as any).channels.set(key, { listeners: new Map([[fn, 1]]) })
   }
 
-  it('rejects candle subscriptions which Lighter does not expose', async () => {
-    const provider = makeProvider()
-    await expect(
-      provider.subscribe(
-        {
-          channel: 'candle',
-          dex: 'lighter',
-          marketId: 'BTC',
-          interval: '1h',
-        },
-        () => {}
+  describe('candle', () => {
+    const BAR = {
+      t: 1792080540000,
+      o: 82442,
+      h: 82519.1,
+      l: 82442,
+      c: 82496.4,
+      v: 11.59658,
+      V: 956565.3256,
+      i: 34861288152,
+    }
+
+    it('subscribes to the candle/{market_id}/{resolution} wire channel', async () => {
+      const { p, send } = connectedProvider()
+
+      await p.subscribe(
+        { channel: 'candle', dex: 'lighter', marketId: '1', interval: '1m' },
+        vi.fn()
       )
-    ).rejects.toThrow(/does not support channel: candle/)
-    provider.close()
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'candle/1/1m' })
+      )
+      p.close()
+    })
+
+    it('maps a subscribed/candle snapshot bar to a CandleEvent', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:1:1m', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          candles: [BAR],
+          channel: 'candle:1:1m',
+          timestamp: 1792080577005,
+          type: 'subscribed/candle',
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'candle',
+        data: {
+          t: 1792080540000,
+          o: '82442',
+          h: '82519.1',
+          l: '82442',
+          c: '82496.4',
+          v: '11.59658',
+        },
+      })
+      p.close()
+    })
+
+    it('emits one CandleEvent per bar of an update/candle frame', () => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:1:1m', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          candles: [
+            { ...BAR, t: 1792080480000, c: 82442 },
+            { ...BAR, c: 82498.7, v: 11.5967, V: 956575.2255 },
+          ],
+          channel: 'candle:1:1m',
+          timestamp: 1792080577164,
+          type: 'update/candle',
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(listener.mock.calls.map(([event]) => event.data)).toEqual([
+        {
+          t: 1792080480000,
+          o: '82442',
+          h: '82519.1',
+          l: '82442',
+          c: '82442',
+          v: '11.59658',
+        },
+        {
+          t: 1792080540000,
+          o: '82442',
+          h: '82519.1',
+          l: '82442',
+          c: '82498.7',
+          v: '11.5967',
+        },
+      ])
+      p.close()
+    })
+
+    it('does not route a bar to another interval of the same market', () => {
+      const p = makeProvider()
+      const oneHour = vi.fn()
+      inject(p, 'candle:1:1h', oneHour)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          candles: [BAR],
+          channel: 'candle:1:1m',
+          type: 'update/candle',
+        })
+      )
+
+      expect(oneHour).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it.each([
+      'candle:abc:1m',
+      'candle:1',
+    ])('drops a frame whose channel %s names no market and interval', (channel) => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'candle:1:1m', listener)
+
+      ;(p as any).handleMessage(
+        JSON.stringify({ candles: [BAR], channel, type: 'update/candle' })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it.each([
+      '3m',
+      '1w',
+    ] as const)('rejects the unsupported interval %s with the REST ValidationError', async (interval) => {
+      const { p, send } = connectedProvider()
+
+      const subscribe = p.subscribe(
+        { channel: 'candle', dex: 'lighter', marketId: '1', interval },
+        vi.fn()
+      )
+
+      await expect(subscribe).rejects.toBeInstanceOf(PerpsError)
+      await expect(subscribe).rejects.toMatchObject({
+        code: PerpsErrorCode.ValidationError,
+      })
+      await expect(subscribe).rejects.toThrow(
+        `Lighter does not support OHLCV interval '${interval}'`
+      )
+      expect(send).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('rejects a non-numeric marketId', async () => {
+      const { p, send } = connectedProvider()
+
+      await expect(
+        p.subscribe(
+          {
+            channel: 'candle',
+            dex: 'lighter',
+            marketId: 'BTC',
+            interval: '1h',
+          },
+          vi.fn()
+        )
+      ).rejects.toThrow(/MarketId must be a numeric market_id string/)
+      expect(send).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('streams candles for a Lighter-rh provider', async () => {
+      const { p, send } = connectedProvider(
+        new LighterWsProvider(
+          LIGHTER_RH_WS_URL,
+          LIGHTER_RH_PROVIDER_KEY,
+          {},
+          freshClient()
+        )
+      )
+      const listener = vi.fn()
+
+      await p.subscribe(
+        { channel: 'candle', dex: 'lighter', marketId: '1', interval: '1m' },
+        listener
+      )
+      ;(p as any).handleMessage(
+        JSON.stringify({
+          candles: [BAR],
+          channel: 'candle:1:1m',
+          type: 'update/candle',
+        })
+      )
+
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({ type: 'subscribe', channel: 'candle/1/1m' })
+      )
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener).toHaveBeenCalledWith({
+        channel: 'candle',
+        data: {
+          t: 1792080540000,
+          o: '82442',
+          h: '82519.1',
+          l: '82442',
+          c: '82496.4',
+          v: '11.59658',
+        },
+      })
+      p.close()
+    })
   })
 
-  it('reports streamsCandles false on the factory', () => {
-    expect(lighterWsProvider().streamsCandles).toBe(false)
+  it('reports streamsCandles true on the factory', () => {
+    expect(lighterWsProvider().streamsCandles).toBe(true)
   })
 
   it('reports streamsAvailableToTrade false on the factory', () => {

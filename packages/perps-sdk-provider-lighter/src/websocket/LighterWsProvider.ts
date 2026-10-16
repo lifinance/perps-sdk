@@ -5,6 +5,7 @@ import {
   getMarketRegistry,
   isDecimalStringGreaterThan,
   type MarketRegistry,
+  numberToDecimalString,
   PerpsError,
   type PerpsProvider,
   type PerpsSDKClient,
@@ -51,6 +52,7 @@ import type {
   LtWsAccountAllOrdersMessage,
   LtWsAccountAllPositionsMessage,
   LtWsAccountAllTradesMessage,
+  LtWsCandleMessage,
   LtWsMarketStats,
   LtWsMarketStatsAllMessage,
   LtWsMessage,
@@ -65,6 +67,7 @@ import {
   fetchDetailedAccount,
   isOpenPosition,
   mapFill,
+  mapInterval,
   mapMarketContext,
   mapOrderUpdates,
   mapPosition,
@@ -74,8 +77,9 @@ import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
-// (order_book/N), `trades` (trade/N), `accountSummary` (user_stats/N +
-// account_all/N, priced by the `marketsContext` spot marks).
+// (order_book/N), `trades` (trade/N), `candle` (candle/N/resolution),
+// `accountSummary` (user_stats/N + account_all/N, priced by the
+// `marketsContext` spot marks).
 // Authenticated channels (resolve an auth token per subscribe send):
 //   - orderUpdates → account_all_orders/{account_index}
 //   - fills        → account_all_trades/{account_index}
@@ -228,8 +232,8 @@ const safeHeldPortfolioValue = createSafeFunction(
 
 /**
  * Lighter WebSocket provider (extends {@link WsProviderBase}): subscribes to
- * Lighter's WS channels (orderbook, marketsContext, orders, positions), attaching auth
- * tokens to gated channels. Construct via {@link lighterWsProvider}.
+ * Lighter's WS channels (orderbook, candle, marketsContext, orders,
+ * positions), attaching auth tokens to gated channels. Construct via {@link lighterWsProvider}.
  *
  * @public
  */
@@ -488,6 +492,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       case 'accountSummary':
         return `accountSummary:${sub.address.toLowerCase()}`
       case 'candle':
+        return `candle:${sub.marketId}:${sub.interval}`
       case 'spotBalances':
       case 'availableToTrade':
         throw new Error(`Lighter WS does not support channel: ${sub.channel}.`)
@@ -528,24 +533,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return [{ channel: `${prefix}/${market.id}`, needsAuth: false }]
     }
     if (sub.channel === 'orderbook') {
-      const id = Number(sub.marketId)
-      if (!Number.isFinite(id)) {
-        throw new Error(
-          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
-            'MarketId must be a numeric market_id string.'
-        )
-      }
+      const id = numericMarketId(sub.marketId)
       return [{ channel: `order_book/${id}`, needsAuth: false }]
     }
     if (sub.channel === 'trades') {
-      const id = Number(sub.marketId)
-      if (!Number.isFinite(id)) {
-        throw new Error(
-          `Lighter WS: unknown market for marketId '${sub.marketId}'. ` +
-            'MarketId must be a numeric market_id string.'
-        )
-      }
+      const id = numericMarketId(sub.marketId)
       return [{ channel: `trade/${id}`, needsAuth: false }]
+    }
+    if (sub.channel === 'candle') {
+      const id = numericMarketId(sub.marketId)
+      const resolution = mapInterval(sub.interval)
+      return [{ channel: `candle/${id}/${resolution}`, needsAuth: false }]
     }
     if (sub.channel === 'accountSummary') {
       // Rejects the subscribe for a provider key with no settlement asset,
@@ -688,6 +686,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     if (msg.type === 'subscribed/trade' || msg.type === 'update/trade') {
       this.handleTrades(msg as LtWsTradeMessage)
+      return
+    }
+
+    if (msg.type === 'subscribed/candle' || msg.type === 'update/candle') {
+      this.handleCandles(msg as LtWsCandleMessage)
       return
     }
 
@@ -1103,6 +1106,37 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     })
   }
 
+  /**
+   * One emit per bar. The reply channel (`candle:1:1m`) names the interval,
+   * because Lighter resolution strings equal the `OhlcvInterval` values.
+   */
+  private handleCandles(msg: LtWsCandleMessage): void {
+    const [prefix, rawMarketId, interval] = msg.channel?.split(/[:/]/) ?? []
+    const marketId = Number(rawMarketId)
+    if (
+      prefix !== 'candle' ||
+      !rawMarketId ||
+      !Number.isFinite(marketId) ||
+      !interval
+    ) {
+      return
+    }
+    const key = `candle:${marketId}:${interval}`
+    for (const bar of msg.candles ?? []) {
+      this.emit(key, {
+        channel: 'candle',
+        data: {
+          t: bar.t,
+          o: numberToDecimalString(bar.o),
+          h: numberToDecimalString(bar.h),
+          l: numberToDecimalString(bar.l),
+          c: numberToDecimalString(bar.c),
+          v: numberToDecimalString(bar.v),
+        },
+      })
+    }
+  }
+
   private marketIdFromChannel(
     channel: string | undefined,
     prefix = 'order_book'
@@ -1131,6 +1165,18 @@ function hasAuthTokenResolver(
     'resolveAuthToken' in provider &&
     typeof (provider as LighterPerpsProvider).resolveAuthToken === 'function'
   )
+}
+
+/** The numeric Lighter `market_id` of a public-channel subscription. */
+function numericMarketId(marketId: string): number {
+  const id = Number(marketId)
+  if (!Number.isFinite(id)) {
+    throw new Error(
+      `Lighter WS: unknown market for marketId '${marketId}'. ` +
+        'MarketId must be a numeric market_id string.'
+    )
+  }
+  return id
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -1238,5 +1284,5 @@ export const lighterWsProvider = (
   Object.assign(
     ({ provider, wsUrl, client }: WsProviderFactoryParams) =>
       new LighterWsProvider(wsUrl, provider, options, client),
-    { streamsCandles: false, streamsAvailableToTrade: false }
+    { streamsCandles: true, streamsAvailableToTrade: false }
   )
