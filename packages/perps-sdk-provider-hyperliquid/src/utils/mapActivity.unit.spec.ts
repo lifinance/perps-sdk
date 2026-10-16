@@ -261,16 +261,39 @@ describe('mapLedgerEntry — spotTransfer', () => {
     expect(t.asset).toEqual(HYPE)
   })
 
-  it('rejects a spot token the registry does not list', () => {
-    const entry = spotTransferUpdate({
-      token: 'NOTLISTED',
-      user: QUERIED as HlSpotTransferDelta['user'],
-      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
-    })
+  it('skips a spot token the registry does not list and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const provider = 'hyperliquid-unlisted-token'
+    const received = (token: string) =>
+      spotTransferUpdate({
+        token,
+        amount: '1',
+        user: COUNTERPARTY as HlSpotTransferDelta['user'],
+        destination: QUERIED as HlSpotTransferDelta['destination'],
+      })
 
-    expect(() =>
-      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
-    ).toThrow(/stale or mis-keyed asset registry/)
+    expect(
+      mapLedgerEntry(
+        received('RED'),
+        provider,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+    expect(
+      mapLedgerEntry(
+        received('BLUE'),
+        provider,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      `[${provider}] skipping ledger row: \`token\` is not a valid registered spot symbol: 'RED'`
+    )
   })
 
   it('preserves spotTransfer metadata fields when present', () => {
@@ -690,16 +713,17 @@ describe('mapLedgerEntry — registry failures', () => {
   it.each([
     'spotTransfer',
     'send',
-  ] as const)('rejects an unresolved %s asset instead of trusting its symbol', (type) => {
+  ] as const)('skips an unresolved %s asset instead of trusting its symbol', (type) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     const builder = type === 'send' ? sendAssetUpdate : spotTransferUpdate
     const entry = builder({
       user: QUERIED,
       destination: COUNTERPARTY,
       token: 'USDC:0xunknown',
     })
-    expect(() =>
+    expect(
       mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
-    ).toThrow(/stale or mis-keyed/)
+    ).toBeNull()
   })
 })
 
@@ -1412,14 +1436,15 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
   it.each([
     STAKE,
     SUPPLY_HYPE,
-  ])('rejects an unresolved $delta.type asset', async (entry) => {
+  ])('skips an unresolved $delta.type asset', async (entry) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify({ assets: [USDC] }), { status: 200 })
     )
     await assetRegistry.sync()
-    expect(() =>
+    expect(
       mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
-    ).toThrow(/stale or mis-keyed/)
+    ).toBeNull()
   })
 })
 

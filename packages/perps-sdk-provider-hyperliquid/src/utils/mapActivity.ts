@@ -69,19 +69,23 @@ const BORROW_LEND_DIRECTION: Record<HlBorrowLendOperation, 'IN' | 'OUT'> = {
 /**
  * A ledger row moves a spot asset — a perp contract cannot be sent, received
  * or withdrawn — so the delta's token symbol resolves inside the spot asset
- * registry. The HIP-1 ticker auction keeps those symbols unique.
+ * registry. The HIP-1 ticker auction keeps those symbols unique. The registry
+ * holds only the legs of listed spot pairs, so a row can name a token outside
+ * it; that row is skipped with a warning.
  */
-const resolveLedgerAsset = (symbol: string, registry: AssetRegistry): Asset => {
+const resolveLedgerAsset = (
+  symbol: string,
+  registry: AssetRegistry,
+  providerKey: string
+): Asset | null => {
   const asset = registry.assets.find(
     (candidate) => candidate.displaySymbol === symbol
   )
   if (asset === undefined) {
-    const error = new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `[hyperliquid] stale or mis-keyed asset registry: unknown spot symbol '${symbol}'`
-    )
-    error.tool = 'hyperliquid'
-    throw error
+    warnSkippedVenueRow(providerKey, 'ledger', 'token', symbol, {
+      expected: 'registered spot symbol',
+    })
+    return null
   }
   return asset
 }
@@ -89,7 +93,8 @@ const resolveLedgerAsset = (symbol: string, registry: AssetRegistry): Asset => {
 /**
  * Map supported ledger entries; exclude same-account moves and unsupported types.
  * Staking and borrow-lend moves map with the queried account as counterparty.
- * Missing assets throw; unresolved liquidation markets omit only those positions.
+ * Missing collateral throws; an unregistered spot token skips the row, and
+ * unresolved liquidation markets omit only those positions.
  * @public
  */
 export const mapLedgerEntry = (
@@ -118,6 +123,12 @@ export const mapLedgerEntry = (
     const sender = delta.user.toLowerCase()
     const recipient = delta.destination.toLowerCase()
     if (sender === recipient && sender === queried) {
+      return null
+    }
+    const asset = isCollateralTransferDelta(delta)
+      ? assetRegistry.require(HL_COLLATERAL_ASSET_ID)
+      : resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+    if (asset === null) {
       return null
     }
     const direction: 'IN' | 'OUT' = queried === sender ? 'OUT' : 'IN'
@@ -156,9 +167,7 @@ export const mapLedgerEntry = (
       type: ActivityType.TRANSFER,
       direction,
       counterpartyAddress: direction === 'OUT' ? recipient : sender,
-      asset: isCollateralTransferDelta(delta)
-        ? assetRegistry.require(HL_COLLATERAL_ASSET_ID)
-        : resolveLedgerAsset(delta.token, assetRegistry),
+      asset,
       amount: isCollateralTransferDelta(delta) ? delta.usdc : delta.amount,
       ...(fees.length === 0 ? {} : { fees }),
       meta,
@@ -167,6 +176,10 @@ export const mapLedgerEntry = (
   }
 
   if (isCStakingTransferDelta(delta) || isBorrowLendDelta(delta)) {
+    const asset = resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+    if (asset === null) {
+      return null
+    }
     // A completed unstake is a system event with the zero hash and no venue
     // transaction, so the id is synthesized and no explorer link applies.
     const hasTransaction = entry.hash !== zeroHash
@@ -186,7 +199,7 @@ export const mapLedgerEntry = (
       type: ActivityType.TRANSFER,
       direction,
       counterpartyAddress: queriedAddress.toLowerCase(),
-      asset: resolveLedgerAsset(delta.token, assetRegistry),
+      asset,
       amount: delta.amount,
       meta: isCStakingTransferDelta(delta)
         ? { transferType: delta.type }

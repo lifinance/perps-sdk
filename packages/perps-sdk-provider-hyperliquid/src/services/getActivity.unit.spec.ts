@@ -8,6 +8,7 @@ import {
   HL_MARKETS,
   HL_USER_FUNDING,
   HL_USER_NON_FUNDING_LEDGER,
+  USDC_ASSET,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -652,11 +653,43 @@ describe('getActivity — transfer registry identity', () => {
     ])
   })
 
-  it('rejects the feed when a transfer asset cannot resolve', async () => {
-    installInfoFetchMock({ userNonFundingLedgerUpdates: ledger })
-    await expect(
-      getActivity(ctx, { address: ADDRESS, type: [ActivityType.TRANSFER] })
-    ).rejects.toThrow(/stale or mis-keyed/)
+  it('skips a transfer whose asset cannot resolve and returns the other rows', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: [
+          {
+            time: 1704067200000,
+            hash: '0xunlisted',
+            delta: {
+              type: 'spotTransfer',
+              token: 'RED',
+              amount: '1',
+              usdcValue: '0',
+              user: '0x2222222222222222222222222222222222222222',
+              destination: ADDRESS,
+            },
+          },
+          ...ledger,
+          {
+            time: 1704067400000,
+            hash: '0xdeposit',
+            delta: { type: 'deposit', usdc: '12.5' },
+          },
+        ],
+      },
+      [],
+      [],
+      [token, USDC_ASSET]
+    )
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.TRANSFER, ActivityType.DEPOSIT],
+    })
+    expect(result.items.map((item) => item.id).sort()).toEqual([
+      '0xdeposit',
+      '0xtransfer',
+    ])
   })
 
   it('does not resolve excluded transfers in a deposit-only request', async () => {
