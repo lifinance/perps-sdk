@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 40.1.0
+
+### Minor Changes
+
+- [#636](https://github.com/lifinance/perps-sdk/pull/636) [`8224374`](https://github.com/lifinance/perps-sdk/commit/8224374313878a1daae4d1cc4040786d0d068975) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Stream Lighter and Lighter-rh candles over the WebSocket `candle` channel; `lighterWsProvider()` now reports `streamsCandles: true`.
+
 ## 40.0.0
 
 ### Major Changes

@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 29.0.1
+
+### Patch Changes
+
+- [#638](https://github.com/lifinance/perps-sdk/pull/638) [`2aeae20`](https://github.com/lifinance/perps-sdk/commit/2aeae208eb1982883dc63fb7aee7b06b9e89ddfe) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getActivity` now skips a ledger row whose spot token is not in the asset registry and warns once, so the other rows of the page are returned.
+
 ## 29.0.0
 
 ### Major Changes
