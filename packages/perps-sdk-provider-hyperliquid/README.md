@@ -69,9 +69,11 @@ summaries also wait for clearinghouse state and venue-reported buying power.
 Transfers carry the backend registry `Asset`, including its logo, numeric `id`,
 and optional `l1Address`. A Hyperliquid ledger row moves a spot asset, and its
 `token` field holds the bare spot symbol. The mapper resolves that symbol in
-the spot asset registry, which the HIP-1 ticker auction keeps unique. Missing
-symbols raise a stale or mis-keyed registry error. The mapper never fabricates
-an asset or drops an unresolved transfer.
+the spot asset registry, which the HIP-1 ticker auction keeps unique. The
+registry holds only the tokens of listed spot pairs. The mapper skips a row
+whose symbol is not in the registry and writes one warning. The mapper never
+fabricates an asset. Missing collateral raises a stale or mis-keyed registry
+error.
 
 The fixed-USDC `deposit` and `withdraw` deltas resolve the registry `Asset`
 by reserved spot token index `0`. Their `usdc` field identifies the venue's
