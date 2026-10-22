@@ -86,4 +86,19 @@ describe('getMarket', () => {
       getMarket(client, { provider: 'hyperliquid', marketId: 'BTC' })
     ).rejects.toThrow('not found')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json({ markets: [mockMarkets.markets[0]] })
+      })
+    )
+
+    await getMarket(client, { provider: 'ondo', marketId: 'BTC' })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

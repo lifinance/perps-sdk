@@ -106,4 +106,28 @@ describe('executeAction', () => {
 
     expect(body.signerAddress).toBe(SIGNER)
   })
+
+  it('sends the provider header', async () => {
+    const client = createPerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+    })
+    let providerHeader: string | null = null
+
+    server.use(
+      http.post(`${DEFAULT_API_URL}/executeAction`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json(mockSubmitOrderResponse)
+      })
+    )
+
+    await executeAction(client, {
+      provider: 'ondo',
+      address: ADDRESS,
+      action: ActionType.PLACE_ORDER,
+      actions: [SIGNED_STEP],
+    })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

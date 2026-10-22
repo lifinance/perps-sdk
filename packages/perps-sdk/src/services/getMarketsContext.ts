@@ -30,5 +30,10 @@ export async function getMarketsContext(
     provider: params.provider,
     marketIds: params.marketIds?.join(','),
   })
-  return request<PricesResponse>(client.config, url, {}, options)
+  return request<PricesResponse>(
+    client.config,
+    url,
+    { provider: params.provider },
+    options
+  )
 }

@@ -91,6 +91,7 @@ export class MarketRegistry extends ReferenceDataRegistry<Market> {
       provider: this.provider,
     })
     return request<MarketsResponse>(this.client.config, url, {
+      provider: this.provider,
       onResponse,
     }).then((response) => response.markets)
   }

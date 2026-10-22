@@ -87,4 +87,19 @@ describe('getMarkets', () => {
       getMarkets(noRetryClient, { provider: 'hyperliquid' })
     ).rejects.toThrow('upstream down')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json(mockMarkets)
+      })
+    )
+
+    await getMarkets(client, { provider: 'ondo' })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

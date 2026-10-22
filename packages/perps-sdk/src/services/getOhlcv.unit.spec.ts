@@ -62,4 +62,23 @@ describe('getOhlcv', () => {
 
     expect(capturedMarketId).toBe('BTC')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/ohlcv`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json(EMPTY_OHLCV)
+      })
+    )
+
+    await getOhlcv(client, {
+      provider: 'ondo',
+      marketId: 'BTC',
+      interval: '1h',
+    })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

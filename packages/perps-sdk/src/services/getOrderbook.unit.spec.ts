@@ -99,4 +99,19 @@ describe('getOrderbook', () => {
       getOrderbook(noRetryClient, { provider: 'hyperliquid', marketId: 'BTC' })
     ).rejects.toThrow('orderbook unavailable')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/orderbook`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json(mockOrderbook)
+      })
+    )
+
+    await getOrderbook(client, { provider: 'ondo', marketId: 'BTC' })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

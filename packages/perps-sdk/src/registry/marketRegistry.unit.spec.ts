@@ -168,6 +168,20 @@ describe('MarketRegistry', () => {
       getMarketRegistry(b, 'hyperliquid')
     )
   })
+
+  it('sends the provider header on a sync', async () => {
+    let providerHeader: string | null = null
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json({ markets: [BTC] })
+      })
+    )
+
+    await getMarketRegistry(freshClient(), 'ondo').sync()
+
+    expect(providerHeader).toBe('ondo')
+  })
 })
 
 describe('toMarketDisplay', () => {

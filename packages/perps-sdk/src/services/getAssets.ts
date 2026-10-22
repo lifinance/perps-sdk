@@ -34,5 +34,10 @@ export async function getAssets(
   const url = buildUrl(`${client.config.apiUrl}/assets`, {
     provider: params.provider,
   })
-  return request<AssetsResponse>(client.config, url, {}, options)
+  return request<AssetsResponse>(
+    client.config,
+    url,
+    { provider: params.provider },
+    options
+  )
 }

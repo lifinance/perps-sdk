@@ -40,5 +40,10 @@ export async function getOrderbook(
     depth: params.depth,
     priceStep: params.priceStep,
   })
-  return request<OrderbookResponse>(client.config, url, {}, options)
+  return request<OrderbookResponse>(
+    client.config,
+    url,
+    { provider: params.provider },
+    options
+  )
 }

@@ -196,6 +196,20 @@ describe('AssetRegistry', () => {
     await expect(registry.sync()).rejects.toThrow(/duplicate l1Address/)
     expect(registry.assets).toEqual([])
   })
+
+  it('sends the provider header on a sync', async () => {
+    let providerHeader: string | null = null
+    server.use(
+      http.get(`${DEFAULT_API_URL}/assets`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json({ assets: [USDC] })
+      })
+    )
+
+    await getAssetRegistry(freshClient(), 'ondo').sync()
+
+    expect(providerHeader).toBe('ondo')
+  })
 })
 
 describe('toAssetDisplay', () => {

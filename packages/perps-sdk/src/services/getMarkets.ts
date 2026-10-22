@@ -43,7 +43,7 @@ export async function getMarkets(
   const response = await request<MarketsResponse>(
     client.config,
     url,
-    {},
+    { provider: params.provider },
     options
   )
   return { markets: response.markets.filter(isActiveMarket) }

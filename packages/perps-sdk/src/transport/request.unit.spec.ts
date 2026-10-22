@@ -374,6 +374,61 @@ describe('request — header handling', () => {
     })
   })
 
+  it('sends the provider header for a provider-scoped request', async () => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    await request(client.config, url, { retry: false, provider: 'ondo' })
+
+    expect(providerHeader).toBe('ondo')
+  })
+
+  it('sends no provider header for a request with no provider', async () => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    await request(client.config, url, { retry: false })
+
+    expect(providerHeader).toBeNull()
+  })
+
+  it('lets the request interceptor replace the provider header', async () => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    const interceptorClient = createPerpsClient({
+      apiKey: 'test-key',
+      requestInterceptor: (_url, options) => ({
+        ...options,
+        headers: {
+          ...(options.headers as Record<string, string>),
+          'x-perps-provider': 'hyperliquid',
+        },
+      }),
+    })
+
+    await request(interceptorClient.config, url, {
+      retry: false,
+      provider: 'ondo',
+    })
+
+    expect(providerHeader).toBe('hyperliquid')
+  })
+
   it('gives the request interceptor the conditional header set', async () => {
     server.use(http.get(url, () => HttpResponse.json({ ok: true })))
     const seen: Record<string, string>[] = []

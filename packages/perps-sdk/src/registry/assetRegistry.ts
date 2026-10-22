@@ -52,6 +52,7 @@ export class AssetRegistry extends ReferenceDataRegistry<Asset> {
       provider: this.provider,
     })
     return request<AssetsResponse>(this.client.config, url, {
+      provider: this.provider,
       onResponse,
     }).then((response) => response.assets)
   }
