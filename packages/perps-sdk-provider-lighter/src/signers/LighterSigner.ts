@@ -4,7 +4,11 @@ import {
   PerpsError,
 } from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
-import { LT_ROUTE_PERP, LT_ROUTE_SPOT } from '../types/action.js'
+import {
+  LT_ROUTE_PERP,
+  LT_ROUTE_SPOT,
+  LT_TX_TYPE_BY_ACTION,
+} from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
   callLighterWasm,
@@ -77,27 +81,6 @@ export interface CreatedApiKey {
 export type LighterL1CountersignedAction =
   | ActionType.APPROVE_INTEGRATOR
   | ActionType.TRANSFER
-
-// lighter-go `types/txtypes/constants.go`.
-const TX_TYPE_BY_ACTION: Partial<Record<ActionType, number>> = {
-  [ActionType.REGISTER_API_KEY]: 8,
-  [ActionType.TRANSFER]: 12,
-  [ActionType.SEND_ASSET]: 12,
-  [ActionType.WITHDRAWAL]: 13,
-  [ActionType.PLACE_ORDER]: 14,
-  [ActionType.PLACE_TRIGGER_ORDER]: 14,
-  [ActionType.PLACE_TWAP_ORDER]: 14,
-  [ActionType.CANCEL_ORDER]: 15,
-  [ActionType.CANCEL_TWAP_ORDER]: 15,
-  [ActionType.CANCEL_ALL_ORDERS]: 16,
-  [ActionType.MODIFY_ORDER]: 17,
-  [ActionType.UPDATE_LEVERAGE]: 20,
-  [ActionType.UPDATE_POSITION_MARGIN]: 29,
-  [ActionType.ACCOUNT_MODE]: 41,
-  [ActionType.UPDATE_ASSET_COLLATERAL]: 42,
-  [ActionType.APPROVE_INTEGRATOR]: 45,
-  [ActionType.REVOKE_INTEGRATOR]: 45,
-}
 
 // Nil sentinels from lighter-go `types/txtypes/constants.go`: the Go side
 // leaves the matching `L2TxAttributes` entry unset.
@@ -389,7 +372,7 @@ export class LighterSigner {
     skipNonce: boolean,
     call: LighterWasmCall<LighterWasmTx>
   ): Promise<LighterSignedBlob> {
-    const txType = TX_TYPE_BY_ACTION[action]
+    const txType = LT_TX_TYPE_BY_ACTION[action]
     if (txType === undefined) {
       throw new PerpsError(
         PerpsErrorCode.ValidationError,
