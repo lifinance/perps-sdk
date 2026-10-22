@@ -143,8 +143,8 @@ describe('createAction', () => {
     await createAction(client, {
       provider: 'ondo',
       address: ADDRESS,
-      action: ActionType.PLACE_ORDER,
-      params: {} as never,
+      action: ActionType.ACCEPT_PROVIDER_TERMS,
+      params: {},
     })
 
     expect(providerHeader).toBe('ondo')
