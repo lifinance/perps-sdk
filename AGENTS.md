@@ -137,7 +137,12 @@ If the trunk has a conflicting change, tell the user before you change the PR hi
 
 # Additional Repository Rules
 
-The Perps SDK is a TypeScript SDK for perpetual futures trading (`@lifi/perps-sdk`). [README.md](./README.md) describes the usage. The [full docs](https://public-perps-docs.mintlify.app/) give more information.
+The Perps SDK is a TypeScript SDK for perpetual futures trading (`@lifi/perps-sdk`). The [full docs](https://public-perps-docs.mintlify.app/) give more information.
+
+Read these two files before you start work:
+
+- [README.md](./README.md) describes the monorepo, the packages, and the package layers.
+- [packages/perps-sdk/README.md](./packages/perps-sdk/README.md) describes the client, the decimal strings, the `X` and `safeX` pairs, the three tiers, the vocabulary, and the WebSocket API.
 
 ## Node Version
 
@@ -165,9 +170,65 @@ pnpm knip:check      # Unused deps/exports check
 - Put a unit test next to its source file. Name the test `FILENAME.unit.spec.ts`.
 - The SDK packages use `@lifi/perps-types` from `packages/perps-types` in this monorepo (`workspace:^`).
 
+## Function Names
+
+The verb at the start of a function name tells the type of change that the function does.
+
+- Read the verb table in `packages/perps-sdk/README.md` § Vocabulary before you name a function.
+- Use only a verb from that table.
+- Do not use the verbs `derive`, `predict`, or `convert`.
+- Do not use a noun alone as a function name.
+- Do not add an exception to `NAMING_EXCEPTIONS` in `packages/perps-sdk/src/index.boundary.unit.spec.ts`. The list must stay empty.
+- If you add a verb, add it to `VOCABULARY` in the spec and to the README table in the same commit.
+
+Note: the spec checks the function names in `decimal/`, `math/`, and `wire/` only. Use the same verbs in all other folders.
+
+## Throwing and Safe Functions
+
+A function that can fail has two forms:
+
+- `X` throws a `PerpsError`.
+- `safeX` gives `undefined` and logs a warning. Make `safeX` with `createSafeFunction` from `packages/perps-sdk/src/utils/createSafeFunction.ts`.
+
+Use these rules for the two forms:
+
+- Do not add a default parameter to `safeX`. The caller writes `?? fallback`.
+- Add a `safeX` only for a function that can fail.
+- Each `safeX` must have its throwing twin `X`.
+
+## Money Path and Display Path
+
+The use of a value decides which form to call.
+
+- On the money path, call `X`. If `X` throws, show the `ValidationError` to the user. Never use `0` or a default value.
+- On the display path, call `safeX`. If `safeX` gives `undefined`, show a placeholder and keep the row.
+- Skip a row only when an identity field (`id` or market) is missing.
+- Do not let one bad row remove the full list.
+- Show a value from a provider as the provider sends it. Do not parse it or format it.
+
+## Decimal Values
+
+- Do all arithmetic with the helpers in `packages/perps-sdk/src/decimal/`, for example `multiplyDecimalString`.
+- Do not call `Big` outside `decimal/`. A `Big` value must never cross the public boundary.
+- Use `decimalStringToNumber` only for a chart value or a pixel value. This conversion loses precision.
+- Do not use `Decimal` alone as a name prefix.
+
+## Folders
+
+- `decimal/` holds string arithmetic, compare, conversion, and format functions. Do not put domain words in this folder.
+- `math/` holds trading formulas for display and preview.
+- `wire/` holds values that are ready for a provider. A value that goes to a provider comes from `wire/` or from a provider field.
+
+## Names of Constants and Types
+
+- The name of a constant must tell what it is and where it is used.
+- A message constant has the name of its enum member, for example `ORDER_SUBMITTED_MESSAGE`.
+- Do not write a one-line wrapper function for an enum compare. Write the compare in the code.
+- Give a shared base type the name `<Name>Base`.
+
 ## Documentation
 
-After you complete a feature or a large change, read README.md again. Tell the user about each part that is not correct.
+After you complete a feature or a large change, read `README.md` and `packages/perps-sdk/README.md` again. Tell the user about each part that is not correct.
 
 ## Commits
 

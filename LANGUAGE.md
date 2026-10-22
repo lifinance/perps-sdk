@@ -102,4 +102,8 @@ Use these rules when text refers to code.
 
 Use each word below with the given meaning only.
 
-<<<< domain-specific words here >>>>
+- **Provider**: a top-level exchange, for example Hyperliquid.
+- **Dex**: a sub-exchange inside Hyperliquid, for example `xyz` or `flv`. A dex is not a provider.
+- **DecimalString**: a `string` that holds a decimal number. The type is an alias only. It does not check the value.
+- **Money path**: code that sends a value to a provider. Examples: order size, price, margin, fees, and withdraw amounts.
+- **Display path**: code that shows a value to the user. Examples: position rows, PnL, history, and totals.
