@@ -135,7 +135,7 @@ If the trunk has a conflicting change, tell the user before you change the PR hi
 
 ---
 
-# Perps SDK
+# Additional Repository Rules
 
 The Perps SDK is a TypeScript SDK for perpetual futures trading (`@lifi/perps-sdk`). [README.md](./README.md) describes the usage. The [full docs](https://public-perps-docs.mintlify.app/) give more information.
 
