@@ -12,7 +12,7 @@
   },
   "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.22.1"
   },
   "license": "Apache-2.0",
   "author": "Aaron Boyd <aaron@li.finance>",

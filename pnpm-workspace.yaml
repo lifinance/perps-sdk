@@ -1,5 +1,6 @@
 packages:
   - packages/*
+engineStrict: true
 allowBuilds:
   esbuild: true
   msw: true
