@@ -19,7 +19,7 @@ We do not use the STE dictionary of approved words. Use normal technical English
 ## Words
 
 - Give each word one meaning and one part of speech. For example, "test" is a noun or a verb, not both.
-- Use the technical nouns and technical verbs of our domain. Define each domain term in the Domain Words section.
+- Use the technical nouns and technical verbs of our domain. Define each domain term in the Glossary section.
 - Do not use a technical noun as a verb. Do not use a technical verb as a noun.
 - Use one term for one thing. Do not use synonyms for variety.
 - Choose a short term that people can understand.
@@ -89,7 +89,16 @@ Use these rules for text about destructive commands, production deploys, data de
 - Use the same style and the same words in all documents.
 - Do not use Latin abbreviations. Write "for example", not "e.g.". Write "that is", not "i.e.".
 
-## Domain Words
+## References
+
+Use these rules when text refers to code.
+
+- Give the repository, the file path from the repository root, and the symbol. For example: `perps-sdk/packages/perps-sdk/src/index.boundary.unit.spec.ts`, `VOCABULARY`.
+- Add the line number when you refer to a specific line.
+- Do not use a file name without its path, or a line number without its file.
+- Do not invent a label for a code path. Use only the real names of files, functions, and branches.
+
+## Glossary
 
 Use each word below with the given meaning only.
 
