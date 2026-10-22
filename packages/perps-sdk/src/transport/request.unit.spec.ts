@@ -374,7 +374,12 @@ describe('request — header handling', () => {
     })
   })
 
-  it('sends the provider header for a provider-scoped request', async () => {
+  it.each([
+    'hyperliquid',
+    'lighter',
+    'lighter-rh',
+    'ondo',
+  ])('sends the provider header %s for a provider-scoped request', async (provider) => {
     let providerHeader: string | null = 'unset'
     server.use(
       http.get(url, ({ request: req }) => {
@@ -383,9 +388,9 @@ describe('request — header handling', () => {
       })
     )
 
-    await request(client.config, url, { retry: false, provider: 'ondo' })
+    await request(client.config, url, { retry: false, provider })
 
-    expect(providerHeader).toBe('ondo')
+    expect(providerHeader).toBe(provider)
   })
 
   it('sends no provider header for a request with no provider', async () => {
@@ -499,6 +504,30 @@ describe('request — retry behaviour', () => {
     })
     expect(result.ok).toBe(true)
     expect(attempts).toBe(2)
+  })
+
+  it('sends the provider header on each retry attempt', async () => {
+    const providerHeaders: (string | null)[] = []
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeaders.push(req.headers.get('x-perps-provider'))
+        if (providerHeaders.length < 3) {
+          return HttpResponse.json(
+            { code: PerpsErrorCode.ServerError, message: 'unavailable' },
+            { status: 503 }
+          )
+        }
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(client.config, url, {
+      retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+      provider: 'ondo',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(providerHeaders).toEqual(['ondo', 'ondo', 'ondo'])
   })
 
   it('honors Retry-After header when present', async () => {
