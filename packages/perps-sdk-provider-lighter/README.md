@@ -31,6 +31,51 @@ const client = createPerpsClient({
 
 Each factory owns its deployment's endpoints, zkLighter signing chain id and collateral asset, and creates its own WASM signer, API-key store and read-only token manager. Registering both keeps their keys, tokens and caches separate.
 
+| Factory | Provider key | Deployment | Collateral | REST URL |
+| --- | --- | --- | --- | --- |
+| `lighterProvider()` | `lighter` (`LIGHTER_PROVIDER_KEY`) | Lighter mainnet | USDC | `DEFAULT_LIGHTER_REST_URL` |
+| `lighterRhProvider()` | `lighter-rh` (`LIGHTER_RH_PROVIDER_KEY`) | Lighter on Robinhood chain | USDG | `LIGHTER_RH_REST_URL` |
+
+Use the provider key in each service call. For example, `getOrders(client, { provider: 'lighter-rh', address })` reads orders from the Robinhood deployment.
+
+## Provider options
+
+Both factories accept `LighterProviderOptions`:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `storage` | The encrypted browser `localStorage` adapter | The `StorageAdapter` that stores the API keypair and the read-only token. See [API key storage](#api-key-storage). |
+| `restUrl` | The REST URL of the deployment | The Lighter REST base URL. Set it to use a reverse proxy, a mirror, or a gateway. The REST client and the read-only token manager of the instance use this URL. |
+| `tokenRenewBufferSeconds` | `60` | The provider creates a new standard token when the remaining life of the cached token is less than this number of seconds. |
+
+## WebSocket
+
+Register `lighterWsProvider()` on `PerpsWsClient` under each provider key that you use:
+
+```ts
+import { PerpsWsClient } from '@lifi/perps-sdk'
+import {
+  LIGHTER_RH_REST_URL,
+  lighterWsProvider,
+} from '@lifi/perps-sdk-provider-lighter'
+
+const ws = new PerpsWsClient(client, {
+  wsProviders: {
+    lighter: lighterWsProvider(),
+    'lighter-rh': lighterWsProvider({ restUrl: LIGHTER_RH_REST_URL }),
+  },
+})
+```
+
+The package has no separate WebSocket factory for the Robinhood deployment. `PerpsWsClient` reads the WebSocket URL for each provider key from the `getProviders` response.
+
+`lighterWsProvider()` accepts `LighterWsProviderOptions`:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `restUrl` | `DEFAULT_LIGHTER_REST_URL` (mainnet) | The REST base URL for `/api/v1/account` lookups. For `lighter-rh`, set it to `LIGHTER_RH_REST_URL`. |
+| `resolveAuthToken` | The `resolveAuthToken` of the provider plugin with the same key on the client | The auth-token resolver for authenticated channels. Supply it only for a WebSocket client that has no Lighter REST plugin on the same client. |
+
 ## Portfolio value
 
 Account summaries and the current portfolio-history anchor include Lighter's settlement equity (`total_asset_value`), every spot-route holding, and the marked USD value of non-settlement margin-route holdings. Settlement margin is already included in equity and is not added again. The deployment's settlement metadata distinguishes USDC on mainnet from USDG on Robinhood chain.
@@ -79,7 +124,7 @@ Go's `wasm_exec.js` ships inside a generated initializer that compiles into both
 
 Under a Content Security Policy, `script-src` must include `'wasm-unsafe-eval'` so the browser can run `WebAssembly.instantiate`. `'unsafe-eval'` is not required.
 
-Applications need no `optimizeDeps.exclude`, no `?url`/`?raw` imports, no `public/` copy step, no caller-supplied URL and no bundler configuration. `loadLighterWasm()` is exported for hosts that want to warm the signer up (and its 12.9 MB download) before the user's first trade:
+Applications need no `optimizeDeps.exclude`, no `?url`/`?raw` imports, no `public/` copy step, no caller-supplied URL and no bundler configuration. `loadLighterWasm()` is exported for hosts that want to warm the signer up (and its 7.5 MB download) before the user's first trade:
 
 ```ts
 import { loadLighterWasm } from '@lifi/perps-sdk-provider-lighter'
@@ -117,6 +162,8 @@ Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
 
 | Lighter status | SDK status |
 | --- | --- |
+| `in-progress` | `ACCEPTED` |
+| `pending` | `OPEN` |
 | `open` with `trigger_status: parent-order` | `PENDING` |
 | `open` with a positive filled amount | `PARTIALLY_FILLED` |
 | `open` | `OPEN` |
@@ -126,18 +173,20 @@ Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
 | `canceled-expired` | `EXPIRED` |
 
 Cancelled rows retain the venue status text in `statusReason`.
-Unknown statuses, including `pending` and `in-progress`, throw `PerpsError`.
+Unknown statuses throw `PerpsError`.
 
 ```ts
+import { getOrders } from '@lifi/perps-sdk'
 import { OrderStatus } from '@lifi/perps-types'
 
-const history = await client.getOrders({
+const history = await getOrders(client, {
+  provider: 'lighter',
   address,
   statuses: [OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.EXPIRED],
 })
 ```
 
-Without `statuses`, the provider requests `PENDING`, `OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`.
+Without `statuses`, the provider requests `ACTIVE_ORDER_STATUSES`: `PENDING`, `OPEN`, `ACCEPTED`, `PARTIALLY_FILLED`, and `TRIGGERED`.
 An empty status list returns no orders.
 Active filters use `accountActiveOrders`. Terminal filters use `accountInactiveOrders`.
 A mixed filter reads both endpoints. Running and finished TWAP parents use these same reads.

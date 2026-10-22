@@ -76,10 +76,11 @@ separate fields. The mapper omits `explorerLink` because these venue rows carry 
 | TWAP `running` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
 | TWAP `completed` | `FILLED` |
 | TWAP `cancelled` | `CANCELLED`; `statusReason` preserves the venue cancellation code |
-| `pending` or an unknown status | The mapper throws `PerpsError` |
+| `pending` | `PENDING` |
+| An unknown status | The mapper throws `PerpsError` |
 
 `getOrders({ statuses })` defaults to `ACTIVE_ORDER_STATUSES`: `PENDING`,
-`OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`. Active reads use
+`OPEN`, `ACCEPTED`, `PARTIALLY_FILLED`, and `TRIGGERED`. Active reads use
 `/v1/perps/orders?status=open` and `/v1/perps/twap/orders/running`.
 Terminal reads use the documented order history queries
 `/v1/perps/orders?status=canceled` and `/v1/perps/orders?status=fullyfilled`,
@@ -87,9 +88,11 @@ plus `/v1/perps/twap/orders/history`. A mixed filter reads both endpoint groups.
 The provider applies the exact requested status filter after the mapper.
 
 ```ts
+import { getOrders } from '@lifi/perps-sdk'
 import { OrderStatus } from '@lifi/perps-types'
 
-const history = await client.getOrders({
+const history = await getOrders(client, {
+  provider: 'ondo',
   address,
   statuses: [OrderStatus.FILLED, OrderStatus.CANCELLED],
 })
@@ -193,7 +196,22 @@ returns `false`. `getDepositFlow` and `getWithdrawFlow` return
 
 ## Environments
 
-Production `https://api.ondoperps.xyz` is the default; the sandbox `https://api.ondoperps-sandbox.xyz` can be selected by passing its base URL.
+`ondoProvider()` accepts `OndoProviderOptions`:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `apiUrl` | `DEFAULT_ONDO_API_URL` (`https://api.ondoperps.xyz`) | The Ondo REST base URL. |
+| `storage` | The encrypted browser `localStorage` adapter | The `StorageAdapter` that stores the session token and the trading API key. |
+
+To use the sandbox, pass the exported `ONDO_SANDBOX_API_URL` (`https://api.ondoperps-sandbox.xyz`):
+
+```ts
+import { ONDO_SANDBOX_API_URL, ondoProvider } from '@lifi/perps-sdk-provider-ondo'
+
+ondoProvider({ apiUrl: ONDO_SANDBOX_API_URL, storage: myStorageAdapter })
+```
+
+The token store and the API key store put the API host in each storage key. Thus production and sandbox credentials stay separate in one adapter.
 
 ## Documentation
 

@@ -21,13 +21,13 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 | --- | --- | --- |
 | [`@lifi/perps-sdk`](./packages/perps-sdk/README.md) | every project | Core SDK — `PerpsClient`, service functions, `PerpsWsClient` WebSocket client |
 | [`@lifi/perps-sdk-provider-hyperliquid`](./packages/perps-sdk-provider-hyperliquid/README.md) | Hyperliquid | Hyperliquid provider plugin |
-| [`@lifi/perps-sdk-provider-lighter`](./packages/perps-sdk-provider-lighter/README.md) | Lighter | Lighter provider plugin |
+| [`@lifi/perps-sdk-provider-lighter`](./packages/perps-sdk-provider-lighter/README.md) | Lighter | Lighter provider plugin. `lighterProvider()` connects to Lighter mainnet (provider key `lighter`, USDC collateral). `lighterRhProvider()` connects to the Lighter deployment on Robinhood chain (provider key `lighter-rh`, USDG collateral). |
 | [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo provider plugin |
 | [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
 ## Development
 
-pnpm workspace — Node `>=24`, pnpm `11` (pinned via `packageManager`). From the repository root:
+pnpm workspace — Node `>=24.22.1` (`.nvmrc` pins `24.22.1`), pnpm `11` (pinned via `packageManager`). From the repository root:
 
 | Command | Does |
 | --- | --- |
@@ -101,7 +101,7 @@ The bump level never selects a channel — the channel is whole-repo state, not 
 | Channel | npm dist-tag | How |
 | --- | --- | --- |
 | Stable | `latest` | default; merge changesets as above |
-| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` for each package that has a changeset, then comments the install command on the PR and removes the label |
+| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` for each package that has a changeset and for each workspace package that depends on one of those packages, then comments the install command on the PR and removes the label |
 | Alpha / Beta | `alpha` / `beta` | enter pre-release mode (below) |
 
 For a sustained pre-release line, enter pre mode on `main`:
@@ -116,7 +116,7 @@ While in pre mode, authors still write ordinary changesets — pre mode applies 
 
 ## Examples
 
-Example scripts in [`examples/`](./examples). Each script uses a placeholder `apiKey`, and `agent-trading.ts` uses a placeholder wallet client. Replace them before you run a script.
+Example scripts in [`examples/`](./examples). The scripts use a placeholder API key and placeholder wallet addresses. Replace them before you run a script.
 
 Scripts:
 
@@ -125,7 +125,7 @@ Scripts:
 | [`market-data.ts`](./examples/market-data.ts) | Fetching markets, assets, prices, orderbook, OHLCV |
 | [`account-data.ts`](./examples/account-data.ts) | Account state, positions, orders, fills |
 | [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
-| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
+| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes |
 | [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
 | [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket prices, orderbook, multi-listener dedup, status |
 

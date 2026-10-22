@@ -1,32 +1,28 @@
-import { createPerpsClient, getMarkets, PerpsWsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, getMarket, PerpsWsClient } from '@lifi/perps-sdk'
 import { hyperliquidWsProvider } from '@lifi/perps-sdk-provider-hyperliquid'
 import { lighterWsProvider } from '@lifi/perps-sdk-provider-lighter'
 
-async function run() {
-  const client = createPerpsClient({
-    apiKey: 'your-api-key',
-  })
+// Optional on the production API. Get a key at https://portal.li.fi/.
+const API_KEY = 'YOUR_API_KEY'
 
-  // Create the WebSocket client. Each provider key maps to a factory that is
-  // invoked lazily on first subscribe. Lighter authenticated channels
-  // (orderUpdates, positions) require an authProvider that returns a fresh
-  // token for the given wallet address — see LighterAuthProvider in
-  // @lifi/perps-sdk-provider-lighter. Public channels work without it.
+async function run() {
+  const client = createPerpsClient({ apiKey: API_KEY })
+
+  // Each provider key maps to a factory that the client calls on the first
+  // subscribe to that provider. Lighter account channels (orderUpdates,
+  // positions, ...) need an auth token: register lighterProvider() on the
+  // client, or pass `resolveAuthToken`. Public channels need neither.
   const ws = new PerpsWsClient(client, {
     wsProviders: {
       hyperliquid: hyperliquidWsProvider(),
-      lighter: lighterWsProvider({
-        // authProvider: (address) => myPlugin.resolveAuthToken(address),
-      }),
+      lighter: lighterWsProvider(),
     },
   })
 
-  // Resolve a market to subscribe to.
-  const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
-  const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
-  if (!btc) {
-    throw new Error('BTC market not found')
-  }
+  const btc = await getMarket(client, {
+    provider: 'hyperliquid',
+    marketId: 'BTC',
+  })
 
   // --- Markets-context subscription ---
   // subscribe() returns an unsubscribe function. Multiple consumers may call

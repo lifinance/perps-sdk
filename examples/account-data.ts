@@ -6,47 +6,57 @@ import {
   getOrders,
   getPositions,
 } from '@lifi/perps-sdk'
+import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
+
+// Optional on the production API. Get a key at https://portal.li.fi/.
+const API_KEY = 'YOUR_API_KEY'
+const USER_ADDRESS = '0xYOUR_WALLET_ADDRESS'
 
 async function run() {
+  // Account reads go through the provider plugin, so register it.
   const client = createPerpsClient({
-    apiKey: 'your-api-key',
+    apiKey: API_KEY,
+    providers: [hyperliquidProvider()],
   })
 
-  // Get account info (balances, margin details)
   const account = await getAccount(client, {
     provider: 'hyperliquid',
-    address: '0x1234...',
+    address: USER_ADDRESS,
   })
   console.log('Account:', account)
 
-  // Get open positions
   const { positions } = await getPositions(client, {
     provider: 'hyperliquid',
-    address: '0x1234...',
+    address: USER_ADDRESS,
   })
   console.log('Positions:', positions)
 
+  // Without a status filter, getOrders returns the active orders.
   const { orders } = await getOrders(client, {
     provider: 'hyperliquid',
-    address: '0x1234...',
+    address: USER_ADDRESS,
   })
   console.log('Orders:', orders)
 
-  // Get order fills
   const { items, pagination } = await getFills(client, {
     provider: 'hyperliquid',
-    address: '0x1234...',
+    address: USER_ADDRESS,
     limit: 50,
   })
-  console.log('Fills:', items, pagination)
+  console.log('Fills:', items)
+  if (pagination.hasMore) {
+    console.log('More fills after cursor:', pagination.cursor)
+  }
 
-  // Get specific order
-  const order = await getOrder(client, {
-    provider: 'hyperliquid',
-    address: '0x1234...',
-    id: 'order123',
-  })
-  console.log('Order:', order)
+  const first = orders[0]
+  if (first) {
+    const order = await getOrder(client, {
+      provider: 'hyperliquid',
+      address: USER_ADDRESS,
+      id: first.orderId,
+    })
+    console.log('Order:', order)
+  }
 }
 
 run()

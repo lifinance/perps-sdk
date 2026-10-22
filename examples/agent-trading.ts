@@ -1,93 +1,155 @@
 import {
-  getMarkets,
+  calculateSlippagePrice,
+  type ExecuteActionResponse,
+  getMarket,
+  getMarketsContext,
+  isSubmittedOrAccepted,
+  multiplyDecimalString,
   OrderSide,
   OrderType,
   PerpsClient,
-  UserActionStatus,
+  type PerpsClientSigner,
+  type ProviderSetup,
+  type SetupChecklistItem,
+  snapOrderPrice,
 } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
-import type { Account, Chain, Transport, WalletClient } from 'viem'
+
+// Optional on the production API. Get a key at https://portal.li.fi/.
+const API_KEY = 'YOUR_API_KEY'
+const USER_ADDRESS = '0xYOUR_WALLET_ADDRESS'
+// A viem WalletClient with an account for USER_ADDRESS, e.g. wagmi's
+// useWalletClient() or createWalletClient({ account: privateKeyToAccount(...) }).
+declare const walletClient: PerpsClientSigner
 
 async function run() {
+  // A browser wallet that cannot sign for another chain also needs the
+  // `switchChain` option.
   const perps = new PerpsClient({
-    apiKey: 'your-api-key',
+    apiKey: API_KEY,
     providers: [hyperliquidProvider()],
   })
-
-  // The user wallet signs setup steps that name PerpsSigner.USER. Pass any
-  // viem WalletClient (wagmi's useWalletClient(), a private-key client, etc.).
   perps.setUserWallet(walletClient)
 
-  const userAddress = '0x1234567890123456789012345678901234567890' as const
-
-  // 1. Check which setup gates are unsatisfied (creates the agent keypair
-  //    locally when the provider requires one).
-  const setup = await perps.checkSetup({
+  // 1. Complete the provider setup. checkSetup drains the SDK-signed steps
+  //    itself; the steps on the checklist need the user.
+  let setup = await perps.checkSetup({
     provider: 'hyperliquid',
-    address: userAddress,
+    address: USER_ADDRESS,
   })
+  if (!setup.accountExists) {
+    throw new Error('No Hyperliquid account. Deposit funds first.')
+  }
 
-  // 2. Sign and submit each outstanding setup step in sequence order. Each
-  //    step resolves to its execution report; read each result's status.
-  for (const step of setup.setup) {
-    const { results } = await perps.executeProviderSetupAction({
+  while (!setup.isReady) {
+    const next = setup.checklist.find((item) => !item.satisfied)
+    if (!next) {
+      throw new Error('Setup is not ready but no checklist step is open.')
+    }
+
+    const { results } = await runChecklistStep(perps, setup, next)
+    const failed = results.find((r) => !isSubmittedOrAccepted(r))
+    if (failed) {
+      throw new Error(`Setup step ${next.descriptor.type}: ${failed.status}`)
+    }
+
+    setup = await perps.checkSetup({
       provider: 'hyperliquid',
-      address: userAddress,
-      step,
-      checklist: setup.checklist,
+      address: USER_ADDRESS,
     })
-    const unconfirmed = results.find(
-      (r) =>
-        r.status !== UserActionStatus.Submitted &&
-        r.status !== UserActionStatus.Accepted
+    const stillOpen = setup.checklist.find(
+      (item) => item.descriptor.type === next.descriptor.type
     )
-    if (unconfirmed) {
-      throw new Error(`Setup step ${step.action}: ${unconfirmed.status}`)
+    if (stillOpen && !stillOpen.satisfied) {
+      throw new Error(`Setup step ${next.descriptor.type} is not reflected yet`)
     }
   }
 
-  const confirmedSetup = await perps.checkSetup({
+  // 2. Resolve the market and its current mid price.
+  const btc = await getMarket(perps.client, {
     provider: 'hyperliquid',
-    address: userAddress,
+    marketId: 'BTC',
   })
-  if (!confirmedSetup.isReady) {
-    throw new Error(
-      'Provider setup is not ready; inspect the account before trading.'
-    )
+  const { prices } = await getMarketsContext(perps.client, {
+    provider: 'hyperliquid',
+    marketIds: [btc.id],
+  })
+  const mid = prices[0]?.midPrice
+  if (!mid) {
+    throw new Error('No BTC price')
   }
 
-  // 4. Resolve the market by its opaque Market.id — placeOrder references a
-  //    market via { marketId, categoryId }, not a display symbol.
-  const { markets } = await getMarkets(perps.client, {
-    provider: 'hyperliquid',
-  })
-  const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
-  if (!btc) {
-    throw new Error('BTC market not found')
-  }
-
-  // 5. Place orders — the agent signs automatically, no wallet popups.
-  const result = await perps.placeOrder({
-    address: userAddress,
+  // 3. Place a market order. The agent key signs it, so the wallet does not
+  //    prompt. On a market order, `price` is the worst accepted fill price.
+  const market = await perps.placeOrder({
+    address: USER_ADDRESS,
     provider: 'hyperliquid',
     market: { marketId: btc.id, categoryId: btc.categoryId },
     side: OrderSide.BUY,
     type: OrderType.MARKET,
-    size: '0.1',
-    price: '95000.00',
+    size: '0.001',
+    price: snapOrderPrice(
+      perps.client,
+      btc,
+      calculateSlippagePrice(mid, '1', true)
+    ),
     leverage: 10,
   })
-  console.log('Order result:', result)
+  console.log('Market order:', market.results)
 
-  // 6. Cancel orders — also automatic.
-  await perps.cancelOrders({
-    address: userAddress,
+  // 4. Place a limit order below the market, then cancel it.
+  const limit = await perps.placeOrder({
+    address: USER_ADDRESS,
     provider: 'hyperliquid',
-    ids: ['order1', 'order2'],
+    market: { marketId: btc.id, categoryId: btc.categoryId },
+    side: OrderSide.BUY,
+    type: OrderType.LIMIT,
+    size: '0.001',
+    price: snapOrderPrice(perps.client, btc, multiplyDecimalString(mid, '0.9')),
   })
+  const orderId = limit.results[0]?.orderId
+  if (!orderId) {
+    throw new Error(`Limit order not placed: ${limit.results[0]?.status}`)
+  }
+
+  const cancel = await perps.cancelOrders({
+    address: USER_ADDRESS,
+    provider: 'hyperliquid',
+    ids: [orderId],
+  })
+  console.log('Cancel:', cancel.results)
 }
 
-// Placeholder — replace with your wallet client (e.g. a viem WalletClient).
-declare const walletClient: WalletClient<Transport, Chain, Account>
+async function runChecklistStep(
+  perps: PerpsClient,
+  setup: ProviderSetup,
+  item: SetupChecklistItem
+): Promise<ExecuteActionResponse> {
+  const { options, type } = item.descriptor
+  if (options !== null) {
+    // A choice step needs a user decision. This example takes the default.
+    const option = options.find((o) => o.default) ?? options[0]
+    if (!option) {
+      throw new Error(`Setup choice ${type} has no options`)
+    }
+    return perps.executeProviderOption({
+      provider: 'hyperliquid',
+      address: USER_ADDRESS,
+      option,
+    })
+  }
+
+  const step = setup.setup.find((s) => s.action === type)
+  if (!step) {
+    throw new Error(`Setup step ${type} is not staged`)
+  }
+  // The step and the checklist must come from the same checkSetup call.
+  return perps.executeProviderSetupAction({
+    provider: 'hyperliquid',
+    address: USER_ADDRESS,
+    step,
+    checklist: setup.checklist,
+  })
+}
 
 run()

@@ -1,61 +1,64 @@
 import {
   createPerpsClient,
   getAssets,
+  getMarket,
   getMarkets,
+  getMarketsContext,
   getOhlcv,
   getOrderbook,
-  getPrices,
   getProviders,
 } from '@lifi/perps-sdk'
 
+// Optional on the production API. Get a key at https://portal.li.fi/.
+const API_KEY = 'YOUR_API_KEY'
+
 async function run() {
-  const client = createPerpsClient({
-    apiKey: 'your-api-key',
+  // Market data reads need no provider plugin.
+  const client = createPerpsClient({ apiKey: API_KEY })
+
+  const { providers } = await getProviders(client)
+  console.log(
+    'Providers:',
+    providers.map((p) => p.key)
+  )
+
+  const { assets } = await getAssets(client, { provider: 'hyperliquid' })
+  console.log('Assets:', assets.length)
+
+  const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+  console.log('Markets:', markets.length)
+
+  // marketId is the opaque Market.id, not a display symbol.
+  const btc = await getMarket(client, {
+    provider: 'hyperliquid',
+    marketId: 'BTC',
   })
 
-  // Get available providers
-  const { providers } = await getProviders(client)
-  console.log('Providers:', providers)
+  const { prices } = await getMarketsContext(client, {
+    provider: 'hyperliquid',
+  })
+  console.log('Market contexts:', prices.length)
 
-  // Get all assets for a provider
-  const { assets } = await getAssets(client, { provider: 'hyperliquid' })
-  console.log('Assets:', assets)
-
-  // Resolve a market by its opaque Market.id — the OHLCV/orderbook/prices
-  // filters key off Market.id, not a display symbol.
-  const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
-  const btc = markets.find((m) => m.baseAsset.displaySymbol === 'BTC')
-  if (!btc) {
-    throw new Error('BTC market not found')
-  }
-
-  // Get all prices
-  const { prices } = await getPrices(client, { provider: 'hyperliquid' })
-  console.log('All prices:', prices)
-
-  // Filter prices by opaque Market.id
-  const filtered = await getPrices(client, {
+  const { prices: btcPrices } = await getMarketsContext(client, {
     provider: 'hyperliquid',
     marketIds: [btc.id],
   })
-  console.log('Filtered prices:', filtered)
+  console.log('BTC mid/mark:', btcPrices[0]?.midPrice, btcPrices[0]?.markPrice)
 
-  // Get OHLCV candles
   const { candles } = await getOhlcv(client, {
     provider: 'hyperliquid',
     marketId: btc.id,
     interval: '1h',
     limit: 100,
   })
-  console.log('Candles:', candles)
+  console.log('Candles:', candles.length)
 
-  // Get orderbook
   const { bids, asks } = await getOrderbook(client, {
     provider: 'hyperliquid',
     marketId: btc.id,
     depth: 20,
   })
-  console.log('Orderbook:', { bids, asks })
+  console.log('Best bid/ask:', bids[0]?.price, asks[0]?.price)
 }
 
 run()

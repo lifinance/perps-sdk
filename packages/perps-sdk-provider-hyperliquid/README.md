@@ -29,6 +29,37 @@ const client = createPerpsClient({
 })
 ```
 
+## Provider options
+
+`hyperliquidProvider()` accepts `HyperliquidProviderOptions`:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `apiUrl` | `DEFAULT_HYPERLIQUID_API_URL` (`https://api.hyperliquid.xyz`) | The Hyperliquid REST base URL. Set it to use a reverse proxy, a mirror, or a gateway. |
+| `storage` | The encrypted browser `localStorage` adapter | The `StorageAdapter` that stores the agent keypair for each address. |
+
+```ts
+hyperliquidProvider({
+  apiUrl: 'https://hl-proxy.example.com',
+  storage: myStorageAdapter,
+})
+```
+
+## WebSocket
+
+Register `hyperliquidWsProvider()` on `PerpsWsClient` under the `hyperliquid` provider key:
+
+```ts
+import { PerpsWsClient } from '@lifi/perps-sdk'
+import { hyperliquidWsProvider } from '@lifi/perps-sdk-provider-hyperliquid'
+
+const ws = new PerpsWsClient(client, {
+  wsProviders: { hyperliquid: hyperliquidWsProvider() },
+})
+```
+
+The factory takes no options. `PerpsWsClient` reads the WebSocket URL from the `getProviders` response.
+
 ## Account boundary
 
 A Hyperliquid account exists only after its first deposit. `accountExists`
@@ -48,7 +79,7 @@ return their normal empty data.
 
 Setup registers an agent keypair whose private key signs orders locally, so trading needs no per-order wallet popups. The agent key authorizes trading only — it cannot withdraw funds.
 
-The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass your own `StorageAdapter` to the `HyperliquidAgentStore` constructor to use a different backend — a custom adapter bypasses this encryption and is responsible for protecting the key at rest.
+The keypair is persisted through a `StorageAdapter`. The default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. To use a different backend, pass your own `StorageAdapter` as `hyperliquidProvider({ storage })`. A custom adapter bypasses this encryption and is responsible for protecting the key at rest.
 
 After a `REVOKE_SESSION_AGENT` result is `Submitted` or `Accepted`, the provider removes the local agent key so it is no longer used for signing. `Submitted` is an acknowledgement, not proof of venue revocation. An `Indeterminate` or `Failed` revoke keeps the key; a refused revoke does not mean the credential itself was refused.
 
@@ -211,7 +242,7 @@ const { orders } = await getOrders(client, {
 })
 ```
 
-The default filter is `ACTIVE_ORDER_STATUSES`: PENDING, OPEN,
+The default filter is `ACTIVE_ORDER_STATUSES`: PENDING, OPEN, ACCEPTED,
 PARTIALLY_FILLED, and TRIGGERED. Active filters read `frontendOpenOrders`.
 Terminal filters read `historicalOrders`. Mixed filters read both.
 `twapHistory` supplies both running and finished TWAP parents.

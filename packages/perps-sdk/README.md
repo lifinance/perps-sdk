@@ -11,7 +11,7 @@
 
 Core of the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/) — a TypeScript SDK for trading perpetuals across multiple DEXes through one unified interface.
 
-- **Unified API** across perpetual DEXes (Hyperliquid, Lighter, Ondo).
+- **Unified API** across perpetual DEXes (Hyperliquid, Lighter, Lighter Robinhood, Ondo).
 - **Provider plugins** — each DEX ships as a separate package you register on the client.
 - **Agent-based signing** — trades execute without per-order wallet popups (one-time wallet signature during setup).
 - **Two layers** — low-level service functions and the high-level `PerpsClient`.
@@ -30,8 +30,15 @@ pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
 | --- | --- |
 | `@lifi/perps-sdk` | every project |
 | [`@lifi/perps-sdk-provider-hyperliquid`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-hyperliquid) | Hyperliquid |
-| [`@lifi/perps-sdk-provider-lighter`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-lighter) | Lighter |
+| [`@lifi/perps-sdk-provider-lighter`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-lighter) | Lighter, Lighter Robinhood |
 | [`@lifi/perps-sdk-provider-ondo`](https://www.npmjs.com/package/@lifi/perps-sdk-provider-ondo) | Ondo |
+
+The Lighter package exports two provider factories. `lighterProvider()`
+registers Lighter mainnet as the provider `lighter`, which settles in USDC.
+`lighterRhProvider()` registers the Lighter deployment on Robinhood chain as
+the provider `lighter-rh`, which settles in USDG. Each factory keeps its own
+signer, API-key store, and caches, so you can register both on one client.
+In this README, "Lighter" applies to both deployments.
 
 `apiKey` is optional. The default host `https://li.quest/v1/perps` accepts
 anonymous requests. The `develop.li.quest` and `staging.li.quest` hosts require
@@ -64,6 +71,32 @@ const client = createPerpsClient({
 })
 ```
 
+## Transport options
+
+`PerpsConfig` accepts three HTTP transport options:
+
+- `retry`: a `RetryConfig`. Pass `false` to send each request one time only.
+  Pass one `RetryPolicy` for all providers, or an object keyed by provider
+  type (`'lifi'` for backend requests) with an optional `default`. A provider
+  that the object does not name uses its built-in policy.
+- `fetch`: a replacement for the global `fetch` in the SDK and provider HTTP
+  clients. It does not change the retry policy.
+- `requestInterceptor`: a hook that receives the URL and the `RequestInit` of
+  each request. It returns the `RequestInit` that the SDK sends.
+
+`DISABLED_RETRY` is the resolved single-attempt policy. A provider author
+passes it as the `policy` of `fetchWithRetry`, for example on a write request.
+
+`PerpsClientOptions` does not accept these three options. To use them, call
+`createPerpsClient` and pass the result to the service functions.
+
+```ts
+const client = createPerpsClient({
+  providers: [hyperliquidProvider()],
+  retry: { default: { maxAttempts: 2 }, lifi: false },
+})
+```
+
 ## Reference registry caching
 
 Asset and market registries are scoped to each SDK client and provider. In Node,
@@ -90,9 +123,19 @@ price, or authenticated trading responses.
 `placeOrder()`, `placeTriggerOrder()`, `placeTwapOrder()`, `cancelOrders()`,
 `cancelTwapOrder()`, and `modifyOrders()`.
 
+The client has these other write methods:
+
+- `withdraw()`, `sendAsset()`, and `updatePositionMargin()` wrap one venue
+  action each.
+- `execute({ provider, address, action, params, onProgress })` runs any
+  `ActionType`. All the wrappers above call it. `onProgress` is optional and
+  reports each on-chain leg, for example the approval and the deposit.
+- `submitOnboarding()` and `createReferralCode()` wrap `executeMetaAction()`.
+  A meta action has no venue. The user wallet signs it as EIP-712 typed data.
+
 Account-specific reads go directly to the venue. `getOrders()` returns the
-`Order` union with regular, trigger, and TWAP rows. Its default filter includes
-PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
+`Order` union with regular, trigger, and TWAP rows. Its default filter is
+`ACTIVE_ORDER_STATUSES`. Use `statuses` to read history.
 
 `getWithdrawableBalances()` returns the `(asset, category)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
@@ -148,6 +191,64 @@ const { orders } = await client.getOrders({
 const runningTwaps = orders.filter(isTwapOrder)
 ```
 
+### Wallet setup
+
+The user wallet signs each action whose descriptor names `PerpsSigner.USER`
+as its signer. The wallet is a viem `WalletClient` with an account.
+
+- On a `PerpsClient`, call `setUserWallet(wallet)`. Pass `undefined` to clear
+  the wallet. `PerpsClientOptions` has no `userWallet` option.
+- On a client from `createPerpsClient`, pass `userWallet` in `PerpsConfig`.
+
+Before the SDK signs a USER-signed EIP-712 action, it calls the
+`SwitchChainHook` with the target chain ID. The hook resolves to a wallet on
+that chain, or to `undefined` when it cannot switch. Pass the hook as the
+`switchChain` option of `PerpsClientOptions`, or call `setSwitchChain()`.
+Without a hook, a wallet on the wrong chain signs without a switch.
+
+```ts
+client.setUserWallet(walletClient)
+client.setSwitchChain(async (chainId) => {
+  await walletClient.switchChain({ id: chainId })
+  return walletClient
+})
+```
+
+### Agent setup
+
+A provider account needs setup steps before it can trade, for example an
+agent approval. `checkSetup({ provider, address })` returns a `ProviderSetup`:
+
+- `accountExists`: `false` for an address with no venue account. Send a
+  deposit first.
+- `setup`: the unsatisfied steps that the user wallet signs, in `sequence`
+  order. The SDK signs and sends the SDK-signed steps inside `checkSetup()`.
+- `checklist`: the list to show to the user, with each step and its
+  `satisfied` state.
+- `isReady`: `true` when no step is staged and each choice is satisfied.
+
+Send a step with `executeProviderSetupAction({ provider, address, step,
+checklist })`. Use the `checklist` from the same `checkSetup()` result. The
+method throws when a lower-`sequence` step on that `checklist` is not
+satisfied, so call `checkSetup()` again after each step. A
+choice step, for example Lighter `ACCOUNT_TYPE`, has `options`. Send the
+option that the user selects with `executeProviderOption({ provider, address,
+option })`. `executeProviderRevoke({ provider, address, step })` sends the
+`revoke` action of a satisfied step. `buildProviderSetup({ provider, address
+})` returns the unsigned USER-signed steps and does not send them.
+
+```ts
+const provider = 'hyperliquid'
+const address = '0xUser'
+
+const { setup, checklist } = await client.checkSetup({ provider, address })
+const [step] = setup
+if (step !== undefined) {
+  await client.executeProviderSetupAction({ provider, address, step, checklist })
+}
+const { isReady } = await client.checkSetup({ provider, address })
+```
+
 ### Execution reports
 
 Every write wrapper, setup step, setup option, and revoke resolves to an
@@ -167,7 +268,14 @@ step, in step order. Each result carries a `UserActionStatus`:
 before a retry.
 
 ```ts
-const { results } = await client.executeAction(request)
+import { ActionType, isSubmittedOrAccepted } from '@lifi/perps-sdk'
+
+const { results } = await client.execute({
+  provider: 'hyperliquid',
+  address: '0xUser',
+  action: ActionType.CANCEL_ORDER,
+  params: { ids: ['123'] },
+})
 for (const result of results) {
   if (!isSubmittedOrAccepted(result)) {
     console.warn(result.status, result.error)
@@ -224,19 +332,23 @@ displays read the account-scoped figure.
 Some providers answer it directly. Hyperliquid reads it from
 `activeAssetData`, and also streams it on the `availableToTrade` WebSocket
 channel. Ondo reads it from `/v1/perps/max_order_size` over REST only, and
-needs a session. Lighter publishes no per-market figure, so the Lighter
+needs a session. Without a session, the Ondo read throws
+`PerpsError(SetupRequired)`. It does not fall back to the account summary.
+Lighter publishes no per-market figure, so the Lighter
 provider calculates it over REST only, from `availableMargin` and the open
 position on each perps market. The side that adds to the position gets
 `availableMargin`. The side that reduces or flips the position gets the
 initial margin requirement of the position, plus `availableMargin` and the
-margin that the close releases. Without an Ondo session, for Lighter spot
-markets, and for every other provider, the client falls back to the account
-summary, so `buy` and `sell` both equal `availableMargin`.
+margin that the close releases. For Lighter spot markets and for every other
+provider, the client falls back to the account summary, so `buy` and `sell`
+both equal `availableMargin`.
 
 Each collateral row in `Account.collateralBalances` and each spot row carries
 `transferable`: the part of `units` that the venue releases from that category.
-The value is always from `0` to `units`. No WebSocket channel updates it. It is
-not the withdrawal ceiling: read `getWithdrawableBalances` for that.
+The value is always from `0` to `units`. Each `spotBalances` WebSocket frame
+carries `transferable` for its spot rows. Hyperliquid fills it. No WebSocket
+channel updates the collateral rows. `transferable` is not the withdrawal
+ceiling: read `getWithdrawableBalances` for that.
 
 - Hyperliquid: the sub-dex `clearinghouseState.withdrawable`, one row per
   sub-dex.
@@ -328,8 +440,10 @@ const amounts = calculateOrderAmounts({
 Send `amounts.size` as `PlaceOrderParams.size`. It is the same string that the
 size field shows.
 
-`roundDecimalString(value, decimals, rounding)` rounds to `decimals` places,
-with `'truncate'` or `'round'` (half-up), and keeps no trailing zeros.
+`roundDecimalString(value, decimals, rounding)` rounds to `decimals` places
+and keeps no trailing zeros. The `rounding` argument is a `DecimalRounding`:
+`'truncate'` (toward zero), `'round'` (half away from zero), or `'up'` (away
+from zero).
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
 a plain decimal string, so `1e-7` becomes `'0.0000001'`.
 
@@ -372,9 +486,11 @@ signature carries a `Big` or does float math on an amount.
 
 - Display shows the venue string unchanged. The SDK tests a string only where
   it sorts or calculates with it.
-- To read a string for a calculation, the SDK tests `DECIMAL_PATTERN` (an
-  optional `-`, digits, and an optional `.` with digits), then reads it with
-  `big.js`. The SDK does not clean the string. A display form such as `'$4'`
+- To read a string for a calculation, the SDK tests `DECIMAL_PATTERN`
+  (`/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/`), then reads it with `big.js`. The pattern
+  accepts an optional `-`, an integer part, and an optional `.` with digits.
+  The integer part is `0` or starts with a non-zero digit, so `'01'` fails the
+  test. The SDK does not clean the string. A display form such as `'$4'`
   or `'0.05%'`, or an exponent form such as `'1e-7'`, fails the test and
   throws.
 - `isDecimalString(value)` tests a value against `DECIMAL_PATTERN`. It never
@@ -404,8 +520,12 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
 | Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
-| Formulas   | every `calculate*`, `estimate*`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`                                  |
+| Formulas   | every `calculate*` except `calculateAverageFillPrice`, every `estimate*`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/` |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |
+
+`calculateAverageFillPrice` never throws and has no `safe` form. It skips a
+fill whose `size` or `price` does not match the decimal pattern. It gives
+`undefined` when the summed size is not above zero.
 
 `format*` is display only. It formats with `big.js`, shows a string that does
 not match the decimal pattern unchanged, and shows the placeholder for `null`
@@ -427,17 +547,17 @@ One verb names one kind of transformation.
 
 | Verb                        | Input → output                                     | Fallible                          | Example                                                    |
 | --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
-| `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseStoredRecord`                                        |
+| `parse<X>`                  | `string` → typed value, or `null` on garbage       | no; gives `null`                  | `parseStoredRecord`                                        |
 | `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `scaledInteger`, `decimalString`, `number`, `timestamp` or `isoString` | throws on invalid; `safe<a>To<B>` gives `undefined` | `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber` |
 | `format<X>`                 | value → human string (grouped, localised)          | no; renders the value or a placeholder | `formatUsd`, `formatNumber`                                |
 | `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`                          |
 | `calculate<X>`              | values → exact result by formula                   | throws; `safe` form               | `calculateNotionalValue`, `calculateOrderAmounts`          |
 | `estimate<X>`               | values → approximation or forward-looking value    | throws; `safe` form               | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
-| `resolve<X>`                | candidates and rules → the one to use              | throws; `safe` form               | `resolveCloseSize`, `resolveQuote`                         |
+| `resolve<X>`                | candidates and rules → the one to use              | `resolveCloseSize` throws; `safe` form. `resolveMatchingPosition` never throws | `resolveCloseSize`, `resolveMatchingPosition` |
 | `is<X>`                     | value → `boolean`, a pattern test                  | no                                | `isDecimalString`                                          |
 | `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
 | `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
-| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
+| `build<X>`                  | inputs → payload struct                            | throws; `safe` form               | `buildQuote`                                               |
 | `aggregate<X>`              | collection → total                                 | throws; `safe` form               | `addDecimalStrings`                                        |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
@@ -460,6 +580,28 @@ const ws = new PerpsWsClient(client, {
 const unsubscribe = await ws.subscribe(
   { channel: 'orderbook', dex: 'hyperliquid', marketId: markets[0].id },
   (event) => console.log(event.data)
+)
+```
+
+`subscribe()` takes an optional third argument, `onStatus`. It receives each
+`WsConnectionStatus` change of the connection: `'connected'`,
+`'reconnecting'` after a transient drop, or `'disconnected'` when the client
+stops the reconnection. Call `reconnect(provider)` to open a `'disconnected'`
+connection again.
+
+`subscribeQuote(params, onQuote)` streams a live fill `Quote` for a `symbol`,
+`side`, USD `size`, and `type`. The provider builds the quote on its orderbook
+channel, so an orderbook subscription on the same market shares one wire
+subscription. `streamsCandles(provider)` tells, before the first subscribe,
+whether the provider streams the `candle` channel.
+
+`close()` closes each connection. After `close()`, `subscribe()` and
+`subscribeQuote()` reject. Create a new `PerpsWsClient` to subscribe again.
+
+```ts
+const stopQuote = await ws.subscribeQuote(
+  { provider: 'hyperliquid', symbol: 'ETH', side: 'buy', size: '1000', type: 'perps' },
+  (quote) => console.log(quote.expectedFillPrice)
 )
 ```
 
