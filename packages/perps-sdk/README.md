@@ -428,7 +428,7 @@ One verb names one kind of transformation.
 | Verb                        | Input → output                                     | Fallible                          | Example                                                    |
 | --------------------------- | -------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
 | `parse<X>`                  | `string` → typed value, or `undefined` on garbage  | yes                               | `parseStoredRecord`                                        |
-| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `scaledInteger`, `decimalString`, `number`, `timestamp` or `isoString` | throws on invalid; `safe<a>To<B>` gives `undefined` | `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber` |
+| `<a>To<B>`                  | representation A → B, no domain meaning; A and B are each `scaledInteger`, `decimalString`, `number` or `unknown` | throws on invalid; `safe<a>To<B>` gives `undefined` | `scaledIntegerToDecimalString`, `numberToDecimalString`, `unknownToDecimalString` |
 | `format<X>`                 | value → human string (grouped, localised)          | no; renders the value or a placeholder | `formatUsd`, `formatNumber`                                |
 | `snap<X>`                   | `DecimalString` → venue-grid `DecimalString`       | throws on a missing grid          | `snapOrderSize`, `snapOrderPrice`                          |
 | `calculate<X>`              | values → exact result by formula                   | throws; `safe` form               | `calculateNotionalValue`, `calculateOrderAmounts`          |
@@ -438,7 +438,10 @@ One verb names one kind of transformation.
 | `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
 | `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
 | `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
-| `aggregate<X>`              | collection → total                                 | throws; `safe` form               | `addDecimalStrings`                                        |
+| `aggregate<X>`              | collection → total                                 | throws; `safe` form               | —                                                          |
+| `add` `subtract` `multiply` `divide` `abs` `compare` `round` | decimal strings → exact `DecimalString`, or `-1 \| 0 \| 1` for `compare` | throws; `safe` form | `addDecimalString`, `addDecimalStrings`, `compareDecimalStrings`, `roundDecimalString` |
+| `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
+| `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every
