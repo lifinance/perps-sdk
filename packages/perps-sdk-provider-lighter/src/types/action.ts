@@ -1,3 +1,5 @@
+import { ActionType } from '@lifi/perps-types'
+
 // Shapes of `wasmSignParams` per action. The backend populates these and the
 // SDK passes them to the WASM signer alongside SDK-managed fields (nonce,
 // account_index, api_key_index).
@@ -252,3 +254,92 @@ export const LT_NIL_TRIGGER_PRICE = 0
  * @public
  */
 export const LT_DEFAULT_ORDER_EXPIRY = -1
+
+// Tx type values from lighter-go `types/txtypes/constants.go`.
+/**
+ * Lighter tx type `TxTypeL2ChangePubKey`.
+ * @public
+ */
+export const LT_TX_TYPE_CHANGE_PUB_KEY = 8
+/**
+ * Lighter tx type `TxTypeL2Transfer`.
+ * @public
+ */
+export const LT_TX_TYPE_TRANSFER = 12
+/**
+ * Lighter tx type `TxTypeL2Withdraw`.
+ * @public
+ */
+export const LT_TX_TYPE_WITHDRAW = 13
+/**
+ * Lighter tx type `TxTypeL2CreateOrder`.
+ * @public
+ */
+export const LT_TX_TYPE_CREATE_ORDER = 14
+/**
+ * Lighter tx type `TxTypeL2CancelOrder`.
+ * @public
+ */
+export const LT_TX_TYPE_CANCEL_ORDER = 15
+/**
+ * Lighter tx type `TxTypeL2CancelAllOrders`.
+ * @public
+ */
+export const LT_TX_TYPE_CANCEL_ALL_ORDERS = 16
+/**
+ * Lighter tx type `TxTypeL2ModifyOrder`.
+ * @public
+ */
+export const LT_TX_TYPE_MODIFY_ORDER = 17
+/**
+ * Lighter tx type `TxTypeL2UpdateLeverage`.
+ * @public
+ */
+export const LT_TX_TYPE_UPDATE_LEVERAGE = 20
+/**
+ * Lighter tx type `TxTypeL2UpdateMargin`.
+ * @public
+ */
+export const LT_TX_TYPE_UPDATE_MARGIN = 29
+/**
+ * Lighter tx type `TxTypeL2UpdateAccountConfig`.
+ * @public
+ */
+export const LT_TX_TYPE_UPDATE_ACCOUNT_CONFIG = 41
+/**
+ * Lighter tx type `TxTypeL2UpdateAccountAssetConfig`.
+ * @public
+ */
+export const LT_TX_TYPE_UPDATE_ACCOUNT_ASSET_CONFIG = 42
+/**
+ * Lighter tx type `TxTypeL2ApproveIntegrator`.
+ * @public
+ */
+export const LT_TX_TYPE_APPROVE_INTEGRATOR = 45
+
+/**
+ * Lighter tx type of the signed tx the SDK's WASM signer emits for each
+ * action. An action without an entry has no Lighter signing path.
+ * @public
+ */
+export const LT_TX_TYPE_BY_ACTION: Readonly<
+  Partial<Record<ActionType, number>>
+> = Object.freeze({
+  [ActionType.REGISTER_API_KEY]: LT_TX_TYPE_CHANGE_PUB_KEY,
+  [ActionType.TRANSFER]: LT_TX_TYPE_TRANSFER,
+  [ActionType.SEND_ASSET]: LT_TX_TYPE_TRANSFER,
+  [ActionType.WITHDRAWAL]: LT_TX_TYPE_WITHDRAW,
+  [ActionType.PLACE_ORDER]: LT_TX_TYPE_CREATE_ORDER,
+  [ActionType.PLACE_TRIGGER_ORDER]: LT_TX_TYPE_CREATE_ORDER,
+  [ActionType.PLACE_TWAP_ORDER]: LT_TX_TYPE_CREATE_ORDER,
+  [ActionType.CANCEL_ORDER]: LT_TX_TYPE_CANCEL_ORDER,
+  [ActionType.CANCEL_TWAP_ORDER]: LT_TX_TYPE_CANCEL_ORDER,
+  [ActionType.CANCEL_ALL_ORDERS]: LT_TX_TYPE_CANCEL_ALL_ORDERS,
+  [ActionType.MODIFY_ORDER]: LT_TX_TYPE_MODIFY_ORDER,
+  [ActionType.UPDATE_LEVERAGE]: LT_TX_TYPE_UPDATE_LEVERAGE,
+  [ActionType.UPDATE_POSITION_MARGIN]: LT_TX_TYPE_UPDATE_MARGIN,
+  [ActionType.ACCOUNT_MODE]: LT_TX_TYPE_UPDATE_ACCOUNT_CONFIG,
+  [ActionType.UPDATE_ASSET_COLLATERAL]: LT_TX_TYPE_UPDATE_ACCOUNT_ASSET_CONFIG,
+  [ActionType.APPROVE_INTEGRATOR]: LT_TX_TYPE_APPROVE_INTEGRATOR,
+  [ActionType.REVOKE_INTEGRATOR]: LT_TX_TYPE_APPROVE_INTEGRATOR,
+})
