@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 27.2.0
+
+### Minor Changes
+
+- [#647](https://github.com/lifinance/perps-sdk/pull/647) [`9978c9e`](https://github.com/lifinance/perps-sdk/commit/9978c9e2acaf47e43c47d9e09e9c06ecb3c462fc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Send `x-perps-provider: <provider>` on each perps API request that is scoped to a provider, so the LI.FI edge can route the request to a cluster that the provider accepts. A request with no provider sends no header. A browser preflights this header. Do not release this version to a consumer before the `lifi-perps-backend` change that adds `x-perps-provider` to the CORS `allowedHeaders` is live in production.
+
 ## 27.1.0
 
 ### Minor Changes
