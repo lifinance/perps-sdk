@@ -593,6 +593,53 @@ describe('lighterProvider() — pre-sign account tier gate', () => {
     expect(requestsTo('/api/v1/accountLimits')).toHaveLength(1)
   })
 
+  it('reads the tier with the standard token when Lighter rejects the read-only token', async () => {
+    const readOnlyToken = 'ro:rejected'
+    const limitsTokens: (string | null)[] = []
+    const baseFetch = globalThis.fetch
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL, init?: RequestInit) => {
+        const u = String(url)
+        if (u.includes('/api/v1/tokens/create')) {
+          return respond({
+            api_token: readOnlyToken,
+            account_index: ACCOUNT_INDEX,
+            expiry: 4_000_000_000,
+            scopes: 'all',
+            token_id: 1,
+          })
+        }
+        if (u.includes('/api/v1/tokens?')) {
+          return respond({ code: 200, api_tokens: [] })
+        }
+        if (u.includes('/api/v1/accountLimits')) {
+          const token = new Headers(init?.headers).get('Authorization')
+          limitsTokens.push(token)
+          if (token === readOnlyToken) {
+            return respond({ code: 20013, message: 'invalid auth string' })
+          }
+        }
+        return baseFetch(url, init)
+      })
+    )
+    accountLimits = () => accountLimitsWith('standard')
+    const provider = await registeredProvider()
+    const sign = vi.spyOn(LighterSigner.prototype, 'sign')
+
+    await expect(
+      provider.signActions!(
+        SigningMethod.WASM_BLOB,
+        [createOrderStep],
+        ADDRESS as Address
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(sign).not.toHaveBeenCalled()
+    expect(limitsTokens).toHaveLength(2)
+    expect(limitsTokens[0]).toBe(readOnlyToken)
+    expect(limitsTokens[1]).not.toBe(readOnlyToken)
+  })
+
   it('signs anyway when the venue reports no tier name', async () => {
     vi.spyOn(console, 'debug').mockImplementation(() => {})
     accountLimits = () => accountLimitsWith(undefined)

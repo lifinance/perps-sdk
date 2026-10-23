@@ -8,12 +8,14 @@ import {
   PerpsClient,
   PerpsError,
   type PerpsSDKClient,
+  type ProviderSetup,
   ROBINHOOD_USDG,
   type StorageAdapter,
   safeSnapOrderPrice,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
+  ActionRelay,
   ActionType,
   ActivityType,
   type EvmTxActionStep,
@@ -24,6 +26,7 @@ import {
   OrderSide,
   OrderStatus,
   PerpsErrorCode,
+  PerpsSigner,
   type PortfolioHistoryRange,
   PositionMarginAdjustment,
   type PricesResponse,
@@ -2429,6 +2432,10 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     leased_lit: '0',
     effective_lit_stakes: '0',
   }
+  const limitsTokens = () =>
+    recorded
+      .filter((r) => r.url.includes('/api/v1/accountLimits'))
+      .map(authHeader)
 
   it('replaces a 61006-revoked read-only token without stale-token cleanup and retries once', async () => {
     const storage = await storageWithApiKey()
@@ -2465,6 +2472,7 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     expect(createCount).toBe(2)
     expect(listCount).toBe(1)
     expect(limitsCalls).toBe(2)
+    expect(limitsTokens()).toEqual(['ro-stale', 'ro-fresh'])
     expect(account.feeTier.maker).not.toBe('0')
     const stored = await storage.get(
       `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
@@ -2615,20 +2623,18 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
           p.getAvailableToTrade!({ address: ADDRESS, marketId: '0' }),
       },
     ])
-  )('$read throws Unauthorized without evicting or recreating an SDK-owned token rejected by $label', async ({
+  )('$read throws Unauthorized without evicting or recreating an SDK-owned token when $label rejects both tokens', async ({
     rejection,
     call,
   }) => {
     const storage = await storageWithApiKey()
     let createCount = 0
-    let limitsCalls = 0
     overrideFetch((url) => {
       if (url.includes('/api/v1/tokens/create')) {
         createCount += 1
         return respond(readOnlyTokenResponse('ro-rejected'))
       }
       if (url.includes('/api/v1/accountLimits')) {
-        limitsCalls += 1
         return rejection()
       }
       return undefined
@@ -2642,11 +2648,174 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
     })
 
     expect(createCount).toBe(1)
-    expect(limitsCalls).toBe(1)
+    expect(limitsTokens()).toEqual([
+      'ro-rejected',
+      expect.stringMatching(/^std-\d+$/),
+    ])
     const stored = await storage.get(
       `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
     )
     expect(JSON.parse(stored as string).token).toBe('ro-rejected')
+  })
+
+  it.each([
+    {
+      label: 'HTTP 400 with body code 20013',
+      rejection: () =>
+        respond({ code: 20013, message: 'invalid auth string' }, 400),
+    },
+    {
+      label: 'body code 20013',
+      rejection: () => respond({ code: 20013, message: 'invalid auth string' }),
+    },
+    {
+      label: 'HTTP 401',
+      rejection: () => new Response('unauthorized', { status: 401 }),
+    },
+  ])('getAccount reads accountLimits with the standard token when $label rejects the read-only token', async ({
+    rejection,
+  }) => {
+    const storage = await storageWithApiKey()
+    let createCount = 0
+    overrideFetch((url, init) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        createCount += 1
+        return respond(readOnlyTokenResponse('ro-rejected'))
+      }
+      if (url.includes('/api/v1/accountLimits')) {
+        return sentToken(init) === 'ro-rejected'
+          ? rejection()
+          : respond(LIMITS_OK)
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+
+    const account = await provider.getAccount({ address: ADDRESS })
+
+    expect(account.feeTier).toEqual({ maker: '0.0001', taker: '0.00028' })
+    expect(account.config).toMatchObject({
+      apiKeyRegistered: true,
+      readOnlyTokenApproved: true,
+    })
+    expect(limitsTokens()).toEqual([
+      'ro-rejected',
+      expect.stringMatching(/^std-\d+$/),
+    ])
+    expect(createCount).toBe(1)
+    const stored = await storage.get(
+      `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
+    )
+    expect(JSON.parse(stored as string).token).toBe('ro-rejected')
+  })
+
+  describe('PerpsClient.checkSetup', () => {
+    const SETUP_PROVIDERS_RESPONSE = {
+      providers: [
+        {
+          ...PROVIDERS_RESPONSE.providers[0],
+          actions: [],
+          setup: [
+            {
+              type: ActionType.REGISTER_API_KEY,
+              signer: PerpsSigner.USER,
+              signingMethod: SigningMethod.WASM_BLOB,
+              relay: ActionRelay.API,
+              sequence: 10,
+              gatesAccountReads: true,
+              params: [],
+              options: null,
+              revoke: null,
+            },
+            {
+              type: ActionType.ACCOUNT_TYPE,
+              signer: PerpsSigner.SDK,
+              signingMethod: SigningMethod.WASM_BLOB,
+              relay: ActionRelay.CLIENT,
+              sequence: 25,
+              params: [],
+              options: [
+                {
+                  title: 'Plus',
+                  type: ActionType.ACCOUNT_TYPE,
+                  params: { tier: 'plus' },
+                  default: true,
+                },
+                {
+                  title: 'Premium',
+                  type: ActionType.ACCOUNT_TYPE,
+                  params: { tier: 'premium' },
+                },
+              ],
+              revoke: null,
+            },
+          ],
+        },
+      ],
+    }
+    const REJECTED_AUTH = () =>
+      respond({ code: 20013, message: 'invalid auth string' }, 400)
+
+    const checkSetup = async (
+      limits: (token: string | null) => Response
+    ): Promise<ProviderSetup> => {
+      overrideFetch((url, init) => {
+        if (url.includes('backend.test/v1/perps/providers')) {
+          return respond(SETUP_PROVIDERS_RESPONSE)
+        }
+        if (url.includes('/api/v1/tokens/create')) {
+          return respond(readOnlyTokenResponse('ro-rejected'))
+        }
+        if (url.includes('/api/v1/accountLimits')) {
+          return limits(sentToken(init))
+        }
+        return undefined
+      })
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        apiUrl: STUB_CLIENT.config.apiUrl,
+        providers: [lighterProvider({ storage: await storageWithApiKey() })],
+      })
+      return client.checkSetup({
+        provider: LIGHTER_PROVIDER_KEY,
+        address: ADDRESS,
+      })
+    }
+
+    it('reports a ready account when the standard token reads the tier after a 20013 on the read-only token', async () => {
+      const setup = await checkSetup((token) =>
+        token === 'ro-rejected'
+          ? REJECTED_AUTH()
+          : respond({ ...LIMITS_OK, user_tier_name: 'plus' })
+      )
+
+      expect(setup).toMatchObject({
+        accountExists: true,
+        setup: [],
+        isReady: true,
+      })
+      expect(setup.checklist.map(({ satisfied }) => satisfied)).toEqual([
+        true,
+        true,
+      ])
+      expect(limitsTokens()).toEqual([
+        'ro-rejected',
+        expect.stringMatching(/^std-\d+$/),
+      ])
+    })
+
+    it('rejects with Unauthorized when Lighter returns 20013 for both tokens', async () => {
+      await expect(checkSetup(REJECTED_AUTH)).rejects.toMatchObject({
+        name: 'PerpsError',
+        code: PerpsErrorCode.Unauthorized,
+      })
+      expect(limitsTokens()).toEqual([
+        'ro-rejected',
+        expect.stringMatching(/^std-\d+$/),
+      ])
+    })
   })
 })
 
