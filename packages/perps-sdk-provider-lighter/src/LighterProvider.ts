@@ -1000,12 +1000,16 @@ export const createLighterProvider = (
       const limits =
         token === undefined
           ? undefined
-          : await retryOnRevoked(address, token, (resolvedToken) =>
-              fetchAccountLimits(
-                apiClient(),
-                localKey.accountIndex,
-                resolvedToken
-              )
+          : await retryWithStandardToken(
+              address,
+              localKey,
+              token,
+              (resolvedToken) =>
+                fetchAccountLimits(
+                  apiClient(),
+                  localKey.accountIndex,
+                  resolvedToken
+                )
             )
       userTierName = limits?.user_tier_name
     } catch (err) {
@@ -1082,8 +1086,12 @@ export const createLighterProvider = (
           getMarketsContext(requireClient(), { provider: providerKey }, opts),
           token === undefined
             ? Promise.resolve(undefined)
-            : retryOnRevoked(params.address, token, (resolvedToken) =>
-                fetchAccountLimits(client, account.index, resolvedToken)
+            : retryWithStandardToken(
+                params.address,
+                localKey,
+                token,
+                (resolvedToken) =>
+                  fetchAccountLimits(client, account.index, resolvedToken)
               ),
           apiKeyRegistered
             ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
