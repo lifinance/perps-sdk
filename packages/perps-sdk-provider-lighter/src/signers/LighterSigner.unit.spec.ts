@@ -5,7 +5,7 @@ import {
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
 } from '../constants.js'
-import { LT_ASSET_ID_USDC } from '../types/action.js'
+import { LT_ASSET_ID_USDC, LT_TX_TYPE_BY_ACTION } from '../types/action.js'
 import {
   createSignerSeed,
   LighterSigner,
@@ -474,16 +474,145 @@ describe('LighterSigner', () => {
     ).rejects.toThrow(/unsupported dex 'margin'/)
   })
 
-  it('rejects unsupported action types with a clear error', async () => {
-    await expect(
-      signer.sign(
-        // DEPOSIT has no Lighter WASM binding — exercises the dispatch
-        // default branch.
-        ActionType.DEPOSIT,
-        { nonce: 1 },
-        ctx()
-      )
-    ).rejects.toThrow(/does not support action/)
+  const ORDER_PARAMS = {
+    market_index: 0,
+    client_order_index: 0,
+    base_amount: 1000,
+    price: 50_000_000_000,
+    is_ask: 0,
+    order_type: 0,
+    time_in_force: 1,
+    reduce_only: false,
+    trigger_price: 0,
+    order_expiry: -1,
+    nonce: 42,
+  }
+  const INTEGRATOR_PARAMS = {
+    integrator_account_index: 5,
+    max_perps_taker_fee: 250,
+    max_perps_maker_fee: 100,
+    max_spot_taker_fee: 300,
+    max_spot_maker_fee: 150,
+    approval_expiry: 1_893_456_000,
+    nonce: 3,
+  }
+  const CANCEL_PARAMS = { market_index: 0, order_index: 999, nonce: 7 }
+
+  const SUPPORTED_ACTION_PARAMS: [ActionType, Record<string, unknown>][] = [
+    [ActionType.REGISTER_API_KEY, {}],
+    [ActionType.TRANSFER, TRANSFER_PARAMS],
+    [
+      ActionType.SEND_ASSET,
+      {
+        sourceDex: 'spot',
+        destinationDex: 'perps',
+        amount: 250_000,
+        nonce: 20,
+      },
+    ],
+    [ActionType.WITHDRAWAL, { ...USDC_PERPS_WITHDRAWAL, nonce: 8 }],
+    [ActionType.PLACE_ORDER, ORDER_PARAMS],
+    [
+      ActionType.PLACE_TRIGGER_ORDER,
+      {
+        ...ORDER_PARAMS,
+        order_type: 2,
+        time_in_force: 0,
+        reduce_only: true,
+        trigger_price: 49_000_000_000,
+      },
+    ],
+    [
+      ActionType.PLACE_TWAP_ORDER,
+      {
+        ...ORDER_PARAMS,
+        client_order_index: 3156,
+        price: 1,
+        order_type: 6,
+        order_expiry: 1_775_000_900_000,
+      },
+    ],
+    [ActionType.CANCEL_ORDER, CANCEL_PARAMS],
+    [ActionType.CANCEL_TWAP_ORDER, CANCEL_PARAMS],
+    [
+      ActionType.CANCEL_ALL_ORDERS,
+      { time_in_force: 0, timestamp_ms: 0, nonce: 5 },
+    ],
+    [
+      ActionType.MODIFY_ORDER,
+      {
+        market_index: 0,
+        order_index: 1,
+        base_amount: 100,
+        price: 50_000_000_000,
+        trigger_price: 0,
+        nonce: 11,
+      },
+    ],
+    [
+      ActionType.UPDATE_LEVERAGE,
+      { market_index: 0, fraction: 1000, margin_mode: 0, nonce: 9 },
+    ],
+    [
+      ActionType.UPDATE_POSITION_MARGIN,
+      { market_index: 0, usdc_amount: 1000, direction: 1, nonce: 10 },
+    ],
+    [ActionType.ACCOUNT_MODE, { account_trading_mode: 1, nonce: 4 }],
+    [
+      ActionType.UPDATE_ASSET_COLLATERAL,
+      { asset_index: 5, enabled: true, nonce: 4 },
+    ],
+    [ActionType.APPROVE_INTEGRATOR, INTEGRATOR_PARAMS],
+    [
+      ActionType.REVOKE_INTEGRATOR,
+      {
+        ...INTEGRATOR_PARAMS,
+        max_perps_taker_fee: 0,
+        max_perps_maker_fee: 0,
+        max_spot_taker_fee: 0,
+        max_spot_maker_fee: 0,
+        approval_expiry: 0,
+      },
+    ],
+  ]
+
+  const signSupportedAction = (
+    action: ActionType,
+    params: Record<string, unknown>
+  ) => {
+    if (action === ActionType.REGISTER_API_KEY) {
+      return signer.signChangePubKey(ctx(), 0, false, L1_SIGNATURE)
+    }
+    if (
+      action === ActionType.TRANSFER ||
+      action === ActionType.APPROVE_INTEGRATOR
+    ) {
+      return signer.signL1Countersigned(action, params, ctx(), L1_SIGNATURE)
+    }
+    return signer.sign(action, params, ctx())
+  }
+
+  it('maps a tx type for exactly the actions it signs', () => {
+    expect(Object.keys(LT_TX_TYPE_BY_ACTION).sort()).toEqual(
+      SUPPORTED_ACTION_PARAMS.map(([action]) => action).sort()
+    )
+  })
+
+  it.each(
+    SUPPORTED_ACTION_PARAMS
+  )('signs %s with its LT_TX_TYPE_BY_ACTION tx type', async (action, params) => {
+    const signed = await signSupportedAction(action, params)
+    expect(signed.txType).toBe(LT_TX_TYPE_BY_ACTION[action])
+  })
+
+  it.each(
+    Object.values(ActionType).filter(
+      (action) => LT_TX_TYPE_BY_ACTION[action] === undefined
+    )
+  )('rejects %s, which has no Lighter tx type', async (action) => {
+    await expect(signer.sign(action, { nonce: 1 }, ctx())).rejects.toThrow(
+      /does not support action/
+    )
   })
 
   it('signs UPDATE_LEVERAGE', async () => {
