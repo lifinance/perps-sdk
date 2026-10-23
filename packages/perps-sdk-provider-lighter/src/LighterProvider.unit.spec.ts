@@ -8,12 +8,14 @@ import {
   PerpsClient,
   PerpsError,
   type PerpsSDKClient,
+  type ProviderSetup,
   ROBINHOOD_USDG,
   type StorageAdapter,
   safeSnapOrderPrice,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
+  ActionRelay,
   ActionType,
   ActivityType,
   type EvmTxActionStep,
@@ -24,6 +26,7 @@ import {
   OrderSide,
   OrderStatus,
   PerpsErrorCode,
+  PerpsSigner,
   type PortfolioHistoryRange,
   PositionMarginAdjustment,
   type PricesResponse,
@@ -2705,6 +2708,114 @@ describe('LighterProvider — read-only token revocation self-heal', () => {
       `lifi:perps:lighter:rotoken:${ADDRESS}:${STORED_API_KEY.accountIndex}`
     )
     expect(JSON.parse(stored as string).token).toBe('ro-rejected')
+  })
+
+  describe('PerpsClient.checkSetup', () => {
+    const SETUP_PROVIDERS_RESPONSE = {
+      providers: [
+        {
+          ...PROVIDERS_RESPONSE.providers[0],
+          actions: [],
+          setup: [
+            {
+              type: ActionType.REGISTER_API_KEY,
+              signer: PerpsSigner.USER,
+              signingMethod: SigningMethod.WASM_BLOB,
+              relay: ActionRelay.API,
+              sequence: 10,
+              gatesAccountReads: true,
+              params: [],
+              options: null,
+              revoke: null,
+            },
+            {
+              type: ActionType.ACCOUNT_TYPE,
+              signer: PerpsSigner.SDK,
+              signingMethod: SigningMethod.WASM_BLOB,
+              relay: ActionRelay.CLIENT,
+              sequence: 25,
+              params: [],
+              options: [
+                {
+                  title: 'Plus',
+                  type: ActionType.ACCOUNT_TYPE,
+                  params: { tier: 'plus' },
+                  default: true,
+                },
+                {
+                  title: 'Premium',
+                  type: ActionType.ACCOUNT_TYPE,
+                  params: { tier: 'premium' },
+                },
+              ],
+              revoke: null,
+            },
+          ],
+        },
+      ],
+    }
+    const REJECTED_AUTH = () =>
+      respond({ code: 20013, message: 'invalid auth string' }, 400)
+
+    const checkSetup = async (
+      limits: (token: string | null) => Response
+    ): Promise<ProviderSetup> => {
+      overrideFetch((url, init) => {
+        if (url.includes('backend.test/v1/perps/providers')) {
+          return respond(SETUP_PROVIDERS_RESPONSE)
+        }
+        if (url.includes('/api/v1/tokens/create')) {
+          return respond(readOnlyTokenResponse('ro-rejected'))
+        }
+        if (url.includes('/api/v1/accountLimits')) {
+          return limits(sentToken(init))
+        }
+        return undefined
+      })
+      const client = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        apiUrl: STUB_CLIENT.config.apiUrl,
+        providers: [lighterProvider({ storage: await storageWithApiKey() })],
+      })
+      return client.checkSetup({
+        provider: LIGHTER_PROVIDER_KEY,
+        address: ADDRESS,
+      })
+    }
+
+    it('reports a ready account when the standard token reads the tier after a 20013 on the read-only token', async () => {
+      const setup = await checkSetup((token) =>
+        token === 'ro-rejected'
+          ? REJECTED_AUTH()
+          : respond({ ...LIMITS_OK, user_tier_name: 'plus' })
+      )
+
+      expect(setup).toMatchObject({
+        accountExists: true,
+        setup: [],
+        isReady: true,
+      })
+      expect(setup.checklist.map(({ satisfied }) => satisfied)).toEqual([
+        true,
+        true,
+      ])
+      expect(limitsTokens()).toEqual([
+        'ro-rejected',
+        expect.stringMatching(/^std-\d+$/),
+      ])
+    })
+
+    it('rejects with Unauthorized when Lighter returns 20013 for both tokens', async () => {
+      await expect(checkSetup(REJECTED_AUTH)).rejects.toMatchObject({
+        name: 'PerpsError',
+        code: PerpsErrorCode.Unauthorized,
+      })
+      expect(limitsTokens()).toEqual([
+        'ro-rejected',
+        expect.stringMatching(/^std-\d+$/),
+      ])
+    })
   })
 })
 
