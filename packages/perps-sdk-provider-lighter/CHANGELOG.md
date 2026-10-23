@@ -1,5 +1,15 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 40.2.0
+
+### Minor Changes
+
+- [#644](https://github.com/lifinance/perps-sdk/pull/644) [`67990dd`](https://github.com/lifinance/perps-sdk/commit/67990dd7b6e2cea22c3d9c3a3c8a66db02cfecb1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Export the Lighter tx-type constants (`LT_TX_TYPE_*`) and `LT_TX_TYPE_BY_ACTION`, the read-only map from `ActionType` to the tx type that the Lighter signer emits.
+
+### Patch Changes
+
+- [#645](https://github.com/lifinance/perps-sdk/pull/645) [`baf55f5`](https://github.com/lifinance/perps-sdk/commit/baf55f5814628294c6a132cf24bf773130b99378) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter account read and the pre-sign tier check retry `/api/v1/accountLimits` one time with the standard token when Lighter rejects the read-only token.
+
 ## 40.1.0
 
 ### Minor Changes
