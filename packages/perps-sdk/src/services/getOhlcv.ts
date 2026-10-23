@@ -50,5 +50,10 @@ export async function getOhlcv(
     endTime: params.endTime,
     limit: params.limit,
   })
-  return request<OhlcvResponse>(client.config, url, {}, options)
+  return request<OhlcvResponse>(
+    client.config,
+    url,
+    { provider: params.provider },
+    options
+  )
 }

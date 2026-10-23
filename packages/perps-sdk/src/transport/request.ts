@@ -25,6 +25,11 @@ export interface RequestOptions extends RequestInit {
    * does not allow the header, so a browser blocks a LI.FI API call that sends it.
    */
   perpsSdkHeader?: boolean
+  /**
+   * Provider key of a provider-scoped request. Sent as `x-perps-provider`, which
+   * the LI.FI edge reads to route the request to a cluster the provider accepts.
+   */
+  provider?: string
   /** Successful response metadata, delivered only after JSON decoding. */
   onResponse?: (
     headers: Headers,
@@ -45,7 +50,13 @@ export async function request<T>(
   options: RequestOptions = {},
   sdkOptions?: SDKRequestOptions
 ): Promise<T> {
-  const { retry, onResponse, perpsSdkHeader = true, ...fetchInit } = options
+  const {
+    retry,
+    onResponse,
+    perpsSdkHeader = true,
+    provider,
+    ...fetchInit
+  } = options
   const policy =
     retry !== undefined
       ? resolveRetryPolicy(LIFI_RETRY_DEFAULTS, retry, LIFI_REQUEST_KEY)
@@ -54,6 +65,7 @@ export async function request<T>(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(perpsSdkHeader && { 'x-lifi-perps-sdk': version }),
+    ...(provider && { 'x-perps-provider': provider }),
     ...(fetchInit.headers as Record<string, string>),
   }
 

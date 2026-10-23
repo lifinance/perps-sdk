@@ -129,4 +129,24 @@ describe('createAction', () => {
       })
     ).rejects.toThrow('invalid order')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.post(`${DEFAULT_API_URL}/createAction`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json(mockCreateOrderResponse)
+      })
+    )
+
+    await createAction(client, {
+      provider: 'ondo',
+      address: ADDRESS,
+      action: ActionType.ACCEPT_PROVIDER_TERMS,
+      params: {},
+    })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

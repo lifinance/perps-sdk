@@ -48,4 +48,19 @@ describe('getAssets', () => {
       },
     ])
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/assets`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json({ assets: [] })
+      })
+    )
+
+    await getAssets(client, { provider: 'ondo' })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

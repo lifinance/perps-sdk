@@ -75,4 +75,19 @@ describe('getMarketsContext', () => {
       getMarketsContext(noRetryClient, { provider: 'hyperliquid' })
     ).rejects.toThrow('market context unavailable')
   })
+
+  it('sends the provider header', async () => {
+    let providerHeader: string | null = null
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/marketsContext`, ({ request }) => {
+        providerHeader = request.headers.get('x-perps-provider')
+        return HttpResponse.json({ prices: [] })
+      })
+    )
+
+    await getMarketsContext(client, { provider: 'ondo' })
+
+    expect(providerHeader).toBe('ondo')
+  })
 })

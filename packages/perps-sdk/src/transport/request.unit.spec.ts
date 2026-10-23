@@ -374,6 +374,66 @@ describe('request — header handling', () => {
     })
   })
 
+  it.each([
+    'hyperliquid',
+    'lighter',
+    'lighter-rh',
+    'ondo',
+  ])('sends the provider header %s for a provider-scoped request', async (provider) => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    await request(client.config, url, { retry: false, provider })
+
+    expect(providerHeader).toBe(provider)
+  })
+
+  it('sends no provider header for a request with no provider', async () => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    await request(client.config, url, { retry: false })
+
+    expect(providerHeader).toBeNull()
+  })
+
+  it('lets the request interceptor replace the provider header', async () => {
+    let providerHeader: string | null = 'unset'
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeader = req.headers.get('x-perps-provider')
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    const interceptorClient = createPerpsClient({
+      apiKey: 'test-key',
+      requestInterceptor: (_url, options) => ({
+        ...options,
+        headers: {
+          ...(options.headers as Record<string, string>),
+          'x-perps-provider': 'hyperliquid',
+        },
+      }),
+    })
+
+    await request(interceptorClient.config, url, {
+      retry: false,
+      provider: 'ondo',
+    })
+
+    expect(providerHeader).toBe('hyperliquid')
+  })
+
   it('gives the request interceptor the conditional header set', async () => {
     server.use(http.get(url, () => HttpResponse.json({ ok: true })))
     const seen: Record<string, string>[] = []
@@ -444,6 +504,30 @@ describe('request — retry behaviour', () => {
     })
     expect(result.ok).toBe(true)
     expect(attempts).toBe(2)
+  })
+
+  it('sends the provider header on each retry attempt', async () => {
+    const providerHeaders: (string | null)[] = []
+    server.use(
+      http.get(url, ({ request: req }) => {
+        providerHeaders.push(req.headers.get('x-perps-provider'))
+        if (providerHeaders.length < 3) {
+          return HttpResponse.json(
+            { code: PerpsErrorCode.ServerError, message: 'unavailable' },
+            { status: 503 }
+          )
+        }
+        return HttpResponse.json({ ok: true })
+      })
+    )
+
+    const result = await request<{ ok: boolean }>(client.config, url, {
+      retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+      provider: 'ondo',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(providerHeaders).toEqual(['ondo', 'ondo', 'ondo'])
   })
 
   it('honors Retry-After header when present', async () => {

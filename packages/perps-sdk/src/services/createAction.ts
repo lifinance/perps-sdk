@@ -41,6 +41,7 @@ export async function createAction<T extends ActionType>(
     `${client.config.apiUrl}/createAction`,
     {
       method: 'POST',
+      provider: params.provider,
       body: JSON.stringify({
         provider: params.provider,
         address: params.address,

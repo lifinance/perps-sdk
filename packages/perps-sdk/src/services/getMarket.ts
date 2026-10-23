@@ -50,7 +50,7 @@ export async function getMarket(
   const { markets } = await request<MarketsResponse>(
     client.config,
     url,
-    {},
+    { provider: params.provider },
     options
   )
   const market = markets[0]

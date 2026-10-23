@@ -41,6 +41,7 @@ export async function executeAction(
     `${client.config.apiUrl}/executeAction`,
     {
       method: 'POST',
+      provider: params.provider,
       // Money-moving write: a network/5xx failure is outcome-unknown, so the
       // request must never be auto-resubmitted (the signed bytes could already
       // have landed). Retries stay enabled for reads and `createAction`.
