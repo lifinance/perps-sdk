@@ -293,6 +293,12 @@ export interface TriggerOrderInput {
    * tracking later size changes; set, it is a fixed partial amount.
    */
   size?: DecimalString
+  /**
+   * Maximum slippage for a market trigger leg (one without `limitPrice`), as a
+   * percent (`'3'` = 3%) measured from `triggerPrice`. Venues that need it
+   * advertise a `slippagePercent` action param.
+   */
+  slippagePercent?: DecimalString
 }
 
 /**
@@ -306,6 +312,12 @@ export interface ModifyOrderInput {
   size?: DecimalString
   triggerPrice?: DecimalString
   limitPrice?: DecimalString
+  /**
+   * Maximum slippage for a modified market trigger (one without `limitPrice`),
+   * as a percent (`'3'` = 3%) measured from its trigger price. Venues that
+   * need it advertise a `slippagePercent` action param.
+   */
+  slippagePercent?: DecimalString
 }
 
 /**

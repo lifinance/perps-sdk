@@ -10,6 +10,7 @@ import type {
   EvmTxSignedActionStep,
   HmacActionStep,
   HmacSignedActionStep,
+  ModifyOrderInput,
   PlaceOrderParams,
   RevokeAgentParams,
   SessionActionStep,
@@ -119,6 +120,44 @@ describe('TriggerOrderInput', () => {
     }
 
     expect(leg.size).toBe('0.0876')
+  })
+
+  it('accepts a market leg without slippagePercent (optional field)', () => {
+    const leg: TriggerOrderInput = {
+      triggerPrice: '65000',
+    }
+
+    expect(leg.slippagePercent).toBeUndefined()
+  })
+
+  it('accepts slippagePercent on a market leg', () => {
+    const leg: TriggerOrderInput = {
+      triggerPrice: '65000',
+      slippagePercent: '3',
+    }
+
+    expect(leg.slippagePercent).toBe('3')
+  })
+})
+
+describe('ModifyOrderInput', () => {
+  it('accepts a modification without slippagePercent (optional field)', () => {
+    const modification: ModifyOrderInput = {
+      id: '12345',
+      triggerPrice: '66000',
+    }
+
+    expect(modification.slippagePercent).toBeUndefined()
+  })
+
+  it('accepts slippagePercent on a modified market trigger', () => {
+    const modification: ModifyOrderInput = {
+      id: '12345',
+      triggerPrice: '66000',
+      slippagePercent: '0.5',
+    }
+
+    expect(modification.slippagePercent).toBe('0.5')
   })
 })
 

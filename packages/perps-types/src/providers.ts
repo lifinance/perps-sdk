@@ -21,7 +21,12 @@ export interface ParamOption {
  * @public
  */
 export interface Param {
-  /** Wire key for the action params object: `{ [param.name]: value }`. */
+  /**
+   * Wire key. Usually the key in the action params object:
+   * `{ [param.name]: value }`. For a trigger-leg param such as
+   * `slippagePercent`, the key on each `TriggerOrderInput` /
+   * `ModifyOrderInput` leg.
+   */
   name: string
   /**
    * Primitive type of the wire value. `ParamOption.value` and `default`
