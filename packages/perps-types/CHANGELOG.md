@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 24.1.0
+
+### Minor Changes
+
+- [#648](https://github.com/lifinance/perps-sdk/pull/648) [`05ff418`](https://github.com/lifinance/perps-sdk/commit/05ff418613df93b9c219fde087e8e605551e60a1) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `slippagePercent` to `TriggerOrderInput` and `ModifyOrderInput`. It sets the maximum slippage of a market trigger leg, as a percent of `triggerPrice`.
+
 ## 24.0.0
 
 ### Major Changes
