@@ -342,7 +342,8 @@ Send `amounts.size` as `PlaceOrderParams.size`. It is the same string that the
 size field shows.
 
 `roundDecimalString(value, decimals, rounding)` rounds to `decimals` places,
-with `'truncate'` or `'round'` (half-up), and keeps no trailing zeros.
+with `'truncate'`, `'round'` (half-up), or `'up'` (away from zero), and keeps
+no trailing zeros.
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
 a plain decimal string, so `1e-7` becomes `'0.0000001'`.
 
