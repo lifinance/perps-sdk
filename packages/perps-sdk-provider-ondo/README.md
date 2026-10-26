@@ -76,7 +76,10 @@ separate fields. The mapper omits `explorerLink` because these venue rows carry 
 | TWAP `running` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
 | TWAP `completed` | `FILLED` |
 | TWAP `cancelled` | `CANCELLED`; `statusReason` preserves the venue cancellation code |
-| `pending` or an unknown status | The mapper throws `PerpsError` |
+| `pending` | `PENDING` |
+| An unknown status | The mapper throws `PerpsError` |
+
+Only an unknown status throws `PerpsError`.
 
 `getOrders({ statuses })` defaults to `ACTIVE_ORDER_STATUSES`: `PENDING`,
 `OPEN`, `PARTIALLY_FILLED`, and `TRIGGERED`. Active reads use

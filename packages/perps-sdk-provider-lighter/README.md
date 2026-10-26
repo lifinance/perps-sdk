@@ -118,6 +118,8 @@ Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
 
 | Lighter status | SDK status |
 | --- | --- |
+| `in-progress` | `ACCEPTED` |
+| `pending` | `OPEN` |
 | `open` with `trigger_status: parent-order` | `PENDING` |
 | `open` with a positive filled amount | `PARTIALLY_FILLED` |
 | `open` | `OPEN` |
@@ -127,7 +129,7 @@ Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
 | `canceled-expired` | `EXPIRED` |
 
 Cancelled rows retain the venue status text in `statusReason`.
-Unknown statuses, including `pending` and `in-progress`, throw `PerpsError`.
+Only an unknown status throws `PerpsError`.
 
 ```ts
 import { OrderStatus } from '@lifi/perps-types'
