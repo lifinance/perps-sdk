@@ -10,7 +10,7 @@ import {
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { lighterProvider } from '../LighterProvider.js'
+import { lighterProvider, lighterRhProvider } from '../LighterProvider.js'
 import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
 
 // Decimal budgets mirror live Lighter orderBookDetails:
@@ -195,5 +195,17 @@ describe('calculateOrderAmounts over the Lighter plugin', () => {
         price: '61729.6',
       })
     ).toEqual({ margin: '9.25944', size: '0.0015', notional: '92.5944' })
+  })
+})
+
+describe('triggerOrders on the Lighter plugins', () => {
+  it.each([
+    ['lighter', lighterProvider],
+    ['lighter-rh', lighterRhProvider],
+  ])('sets the %s TP/SL settings', (_key, factory) => {
+    expect(factory().triggerOrders).toEqual({
+      modifyCanChangeType: false,
+      marketSlippage: { min: '1', max: '10', step: '0.01', default: '1' },
+    })
   })
 })

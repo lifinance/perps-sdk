@@ -611,6 +611,28 @@ export interface PerpsProviderPlugin {
   snapOrderSize(market: Market, size: DecimalString): DecimalString
 
   /**
+   * TP/SL order settings of the venue.
+   *
+   * - `modifyCanChangeType`: a modify can change a trigger order between
+   *   `MARKET` and `LIMIT`.
+   * - `marketSlippage`: present when a market trigger leg on the venue takes a
+   *   slippage-adjusted `limitPrice`. `min`, `max`, `step` and `default` bound
+   *   the slippage input, as decimal string percents where `'1'` is 1%. The
+   *   consumer calculates that price with `calculateSlippagePrice(triggerPrice,
+   *   slippagePercent, isBuy)` and `snapOrderPrice`, where `isBuy` is `true`
+   *   for a buy trigger order.
+   */
+  triggerOrders?: {
+    modifyCanChangeType: boolean
+    marketSlippage?: {
+      min: DecimalString
+      max: DecimalString
+      step: DecimalString
+      default: DecimalString
+    }
+  }
+
+  /**
    * Estimate the liquidation price of a new isolated position on `market`
    * using the venue's margin model. A preview helper — for existing
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —

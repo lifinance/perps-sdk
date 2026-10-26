@@ -174,15 +174,13 @@ export const mapOrder = (
     case OrderType.STOP_LIMIT:
     case OrderType.TAKE_PROFIT_MARKET:
     case OrderType.TAKE_PROFIT_LIMIT: {
+      // A market trigger's `price` is its slippage-adjusted limit price.
       return {
         ...base,
         type,
         triggerPrice: order.trigger_price,
         triggerCondition: triggerConditionFor(type, base.side),
-        ...(type === OrderType.STOP_LIMIT ||
-        type === OrderType.TAKE_PROFIT_LIMIT
-          ? { limitPrice: order.price }
-          : {}),
+        limitPrice: order.price,
       }
     }
     case OrderType.MARKET:

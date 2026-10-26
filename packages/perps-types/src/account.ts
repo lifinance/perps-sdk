@@ -113,6 +113,11 @@ export interface TriggerOrder extends OrderBase {
     | OrderType.TAKE_PROFIT_LIMIT
   triggerPrice?: DecimalString
   triggerCondition: TriggerCondition
+  /**
+   * For a `*_LIMIT` type, the limit price. For a `*_MARKET` type, the
+   * slippage-adjusted limit price that the venue holds, when the venue holds
+   * one.
+   */
   limitPrice?: DecimalString
 }
 

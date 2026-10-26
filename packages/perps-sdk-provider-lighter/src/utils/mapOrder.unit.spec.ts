@@ -147,11 +147,20 @@ describe('mapOrder (Lighter)', () => {
       triggerCondition,
       triggerPrice: '2100',
     })
-    if (type.endsWith('-limit')) {
-      expect(order).toHaveProperty('limitPrice', '2000')
-    } else {
-      expect(order).not.toHaveProperty('limitPrice')
-    }
+  })
+
+  it.each([
+    ['stop-loss', OrderType.STOP_MARKET],
+    ['stop-loss-limit', OrderType.STOP_LIMIT],
+    ['take-profit', OrderType.TAKE_PROFIT_MARKET],
+    ['take-profit-limit', OrderType.TAKE_PROFIT_LIMIT],
+  ])('keeps the venue price of a %s order as limitPrice', (type, expectedType) => {
+    expect(
+      mapOrder(
+        baseOrder({ type, trigger_price: '2100', price: '2079.123' }),
+        MARKET
+      )
+    ).toMatchObject({ type: expectedType, limitPrice: '2079.123' })
   })
 
   it.each([

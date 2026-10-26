@@ -608,6 +608,12 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
     expect(provider.snapOrderSize(market, '0.129')).toBe('0.12')
   })
 
+  it('keeps the trigger type on a modify and takes no market slippage', () => {
+    expect(ondoProvider().triggerOrders).toEqual({
+      modifyCanChangeType: false,
+    })
+  })
+
   it('snaps an off-grid price through safeSnapOrderPrice', () => {
     const client = createPerpsClient({
       integrator: 'test',

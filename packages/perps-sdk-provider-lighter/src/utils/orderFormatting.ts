@@ -16,6 +16,20 @@ import {
 import Big from 'big.js'
 
 /**
+ * Range of the Lighter market TP/SL slippage input, as decimal string
+ * percents (`'1'` is 1%). The minimum is above Lighter's own `0`, because a
+ * 0% bound can leave the trigger order unfilled and the position unprotected.
+ *
+ * @public
+ */
+export const LIGHTER_MARKET_SLIPPAGE_PERCENT = {
+  min: '1',
+  max: '10',
+  step: '0.01',
+  default: '1',
+} as const
+
+/**
  * Snap a price onto a Lighter market's tick grid: rounded half-up to the
  * market's `priceDecimals` (Lighter's `supported_price_decimals`), trailing
  * zeros stripped.

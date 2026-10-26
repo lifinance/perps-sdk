@@ -282,6 +282,18 @@ rules to another venue's market. `safeSnapOrderPrice(sdk, market, price)`
 gives the same result for a display, or `undefined` where `snapOrderPrice`
 throws. It writes one warning per market, not one per call.
 
+A TP/SL leg (`TriggerOrderInput`) has an explicit `type`: `MARKET` or `LIMIT`.
+Its `takeProfit` or `stopLoss` key gives the TP or SL kind. `limitPrice` is
+the resting limit price of a `LIMIT` leg, and the slippage-adjusted limit
+price of a `MARKET` leg on a provider that takes one. A provider gives its
+TP/SL settings in `triggerOrders`. `modifyCanChangeType` tells if a modify can
+change the `type` of a trigger order. `marketSlippage` is present when a
+`MARKET` leg on the provider takes a slippage-adjusted `limitPrice`. It gives
+the `min`, `max`, `step` and `default` of the slippage input as percents
+(`'1'` is 1%). Calculate that price with the same pair as a market order:
+`snapOrderPrice(sdk, market, calculateSlippagePrice(triggerPrice, slippagePercent, isBuy))`,
+where `isBuy` is `true` for a buy trigger order.
+
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. Every venue places an order by size alone, so the size is
 the only amount that snaps onto a grid: the venue lot grid. Margin and notional
@@ -329,7 +341,8 @@ Send `amounts.size` as `PlaceOrderParams.size`. It is the same string that the
 size field shows.
 
 `roundDecimalString(value, decimals, rounding)` rounds to `decimals` places,
-with `'truncate'` or `'round'` (half-up), and keeps no trailing zeros.
+with `'truncate'`, `'round'` (half-up), or `'up'` (away from zero), and keeps
+no trailing zeros.
 `numberToDecimalString(value)` spells a `number` from a venue or browser API as
 a plain decimal string, so `1e-7` becomes `'0.0000001'`.
 

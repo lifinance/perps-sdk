@@ -106,6 +106,7 @@ describe('UpdateLeverageParams', () => {
 describe('TriggerOrderInput', () => {
   it('accepts a fixture without size (entire position)', () => {
     const leg: TriggerOrderInput = {
+      type: OrderType.MARKET,
       triggerPrice: '65000',
     }
 
@@ -114,6 +115,7 @@ describe('TriggerOrderInput', () => {
 
   it('accepts a fixed partial size', () => {
     const leg: TriggerOrderInput = {
+      type: OrderType.LIMIT,
       triggerPrice: '65000',
       limitPrice: '64900',
       size: '0.0876',
@@ -122,42 +124,36 @@ describe('TriggerOrderInput', () => {
     expect(leg.size).toBe('0.0876')
   })
 
-  it('accepts a market leg without slippagePercent (optional field)', () => {
+  it('accepts a slippage-adjusted limitPrice on a market leg', () => {
     const leg: TriggerOrderInput = {
+      type: OrderType.MARKET,
       triggerPrice: '65000',
+      limitPrice: '63050',
     }
 
-    expect(leg.slippagePercent).toBeUndefined()
-  })
-
-  it('accepts slippagePercent on a market leg', () => {
-    const leg: TriggerOrderInput = {
-      triggerPrice: '65000',
-      slippagePercent: '3',
-    }
-
-    expect(leg.slippagePercent).toBe('3')
+    expect(leg).toMatchObject({ type: OrderType.MARKET, limitPrice: '63050' })
   })
 })
 
 describe('ModifyOrderInput', () => {
-  it('accepts a modification without slippagePercent (optional field)', () => {
+  it('accepts a modification without type (optional field)', () => {
     const modification: ModifyOrderInput = {
       id: '12345',
       triggerPrice: '66000',
     }
 
-    expect(modification.slippagePercent).toBeUndefined()
+    expect(modification.type).toBeUndefined()
   })
 
-  it('accepts slippagePercent on a modified market trigger', () => {
+  it('accepts a type on a modified trigger', () => {
     const modification: ModifyOrderInput = {
       id: '12345',
+      type: OrderType.LIMIT,
       triggerPrice: '66000',
-      slippagePercent: '0.5',
+      limitPrice: '65900',
     }
 
-    expect(modification.slippagePercent).toBe('0.5')
+    expect(modification.type).toBe(OrderType.LIMIT)
   })
 })
 

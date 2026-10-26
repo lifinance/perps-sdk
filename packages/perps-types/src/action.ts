@@ -280,25 +280,25 @@ export interface ActionResult {
 }
 
 /**
- * Trigger prices used to configure take-profit or stop-loss behavior.
+ * One take-profit or stop-loss leg. The `takeProfit` or `stopLoss` key that
+ * holds the leg gives the TP or SL kind, and `type` gives the execution kind.
  * Prices are decimal strings in the market's quote currency.
  *
  * @public
  */
 export interface TriggerOrderInput {
+  type: OrderType.MARKET | OrderType.LIMIT
   triggerPrice: DecimalString
+  /**
+   * For `LIMIT`, the resting limit price. For `MARKET`, the slippage-adjusted
+   * limit price, on providers that take one.
+   */
   limitPrice?: DecimalString
   /**
    * Base-asset size the trigger closes. Omitted covers the entire position,
    * tracking later size changes; set, it is a fixed partial amount.
    */
   size?: DecimalString
-  /**
-   * Maximum slippage for a market trigger leg (one without `limitPrice`), as a
-   * percent (`'3'` = 3%) measured from `triggerPrice`. Venues that need it
-   * advertise a `slippagePercent` action param.
-   */
-  slippagePercent?: DecimalString
 }
 
 /**
@@ -308,16 +308,16 @@ export interface TriggerOrderInput {
  */
 export interface ModifyOrderInput {
   id: string
+  /**
+   * Execution kind of a modified trigger order. Some providers cannot change
+   * the type of an order: see `triggerOrders.modifyCanChangeType` on the
+   * provider plugin.
+   */
+  type?: OrderType.MARKET | OrderType.LIMIT
   price?: DecimalString
   size?: DecimalString
   triggerPrice?: DecimalString
   limitPrice?: DecimalString
-  /**
-   * Maximum slippage for a modified market trigger (one without `limitPrice`),
-   * as a percent (`'3'` = 3%) measured from its trigger price. Venues that
-   * need it advertise a `slippagePercent` action param.
-   */
-  slippagePercent?: DecimalString
 }
 
 /**

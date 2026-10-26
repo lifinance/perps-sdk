@@ -487,6 +487,8 @@ export function hyperliquidProvider(
     snapOrderSize: (market: Market, size: DecimalString): DecimalString =>
       snapOrderSize(size, market.szDecimals),
 
+    triggerOrders: { modifyCanChangeType: true },
+
     estimateLiquidationPrice: (
       market: PerpsMarket,
       params: LiquidationEstimateParams

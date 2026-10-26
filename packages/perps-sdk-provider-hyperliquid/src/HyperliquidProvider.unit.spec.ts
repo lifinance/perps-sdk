@@ -158,6 +158,12 @@ describe('hyperliquidProvider', () => {
       expect(provider.snapOrderSize(btcMarket, '0.123456')).toBe('0.12345')
     })
 
+    it('lets a modify change the trigger type and takes no market slippage', () => {
+      expect(hyperliquidProvider().triggerOrders).toEqual({
+        modifyCanChangeType: true,
+      })
+    })
+
     it('estimates liquidation with mmr derived from the market maxLeverage', () => {
       const provider = hyperliquidProvider()
       // mmr = 1/(2*50) = 0.01; entry * (1 - 1/leverage) / (1 - mmr)

@@ -1168,6 +1168,8 @@ export const ondoProvider = (
 
     snapOrderSize,
 
+    triggerOrders: { modifyCanChangeType: false },
+
     estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,
