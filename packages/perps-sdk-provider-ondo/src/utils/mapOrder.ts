@@ -80,6 +80,42 @@ const twapStatus = (status: string): OrderStatus => {
   }
 }
 
+// Lowercase keys: the Ondo spec spells `selfMatchPrevention` in two cases.
+const CANCEL_REASONS: ReadonlyMap<string, string> = new Map([
+  ['', 'Cancelled.'],
+  ['liquidation', 'Cancelled: the account was liquidated.'],
+  [
+    'selfmatchprevention',
+    'Cancelled: the order would have traded with your own order.',
+  ],
+  ['cancelaftertimeout', 'Cancelled: the order timed out.'],
+  [
+    'startupbadprice',
+    'Cancelled: the price was not valid when the venue started.',
+  ],
+  [
+    'immediateorcancel',
+    'Cancelled: the immediate-or-cancel order could not fill.',
+  ],
+  ['cancelaftertimeoutonshutdown', 'Cancelled: the venue shut down.'],
+  ['cancelonstartup', 'Cancelled: the venue restarted.'],
+  ['cancelbyadmin', 'Cancelled by the venue.'],
+  ['positionclosed', 'Cancelled: the position closed.'],
+  [
+    'stoporderpositionneutral',
+    'Cancelled: no open position for this TP/SL order.',
+  ],
+  [
+    'stoporderpositiondirectionmismatch',
+    'Cancelled: the position direction changed.',
+  ],
+])
+
+const TWAP_CANCEL_REASONS: Record<1 | 2, string> = {
+  1: 'Cancelled.',
+  2: 'Cancelled: too many child orders failed.',
+}
+
 const mapTimeInForce = (tif: string): TimeInForce => {
   switch (tif) {
     case 'GTC':
@@ -181,9 +217,10 @@ export const mapOrder = (
   if (twap) {
     if (
       status === OrderStatus.CANCELLED &&
-      order.twapCancelReason !== undefined
+      order.twapCancelReason !== undefined &&
+      order.twapCancelReason !== 0
     ) {
-      base.statusReason = String(order.twapCancelReason)
+      base.statusReason = TWAP_CANCEL_REASONS[order.twapCancelReason]
     }
     return {
       ...base,
@@ -199,7 +236,9 @@ export const mapOrder = (
     base.parentOrderId = order.parentOrderId
   }
   if (status === OrderStatus.CANCELLED && order.cancelReason !== undefined) {
-    base.statusReason = order.cancelReason
+    base.statusReason =
+      CANCEL_REASONS.get(order.cancelReason.toLowerCase()) ??
+      'Cancelled by the venue.'
   }
   const stopOrderType =
     order.stopOrderType ??

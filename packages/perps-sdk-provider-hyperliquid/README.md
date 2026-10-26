@@ -197,8 +197,8 @@ explorer failure leaves the rows unlinked instead of failing the order read.
 | TWAP `error` | REJECTED |
 
 Hyperliquid does not document an EXPIRED order status. Unknown status strings
-throw `PerpsError`. Cancel and rejection rows keep the venue reason in
-`statusReason`.
+throw `PerpsError`. Cancel and rejection rows give a short display text for the
+venue reason in `statusReason`, not the venue status code.
 
 ```ts
 import { getOrders } from '@lifi/perps-sdk'

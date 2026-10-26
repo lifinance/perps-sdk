@@ -233,7 +233,9 @@ describe('Ondo getOrders', () => {
         ['terminal', OrderStatus.CANCELLED],
       ]
     )
-    expect(result.orders[1]).toMatchObject({ statusReason: 'liquidation' })
+    expect(result.orders[1]).toMatchObject({
+      statusReason: 'Cancelled: the account was liquidated.',
+    })
   })
   it('filters open rows by partial fill status and excludes other markets', async () => {
     const { provider } = await setup((url) => ({

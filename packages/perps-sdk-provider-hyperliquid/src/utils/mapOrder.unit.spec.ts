@@ -252,13 +252,77 @@ describe('mapOrder', () => {
     expect(order?.status).toBe(expected)
     expect(order?.updatedAt).toBe('2023-11-14T22:13:21.000Z')
     if (
-      expected === OrderStatus.CANCELLED ||
-      expected === OrderStatus.REJECTED
+      expected !== OrderStatus.CANCELLED &&
+      expected !== OrderStatus.REJECTED
     ) {
-      expect(order?.statusReason).toBe(status)
-    } else {
-      expect(order?.statusReason).toBeUndefined()
+      expect(order).not.toHaveProperty('statusReason')
     }
+  })
+  it.each([
+    ['canceled', 'Cancelled.'],
+    ['scheduledCancel', 'Cancelled: the scheduled cancel deadline passed.'],
+    ['marginCanceled', 'Cancelled: not enough margin to fill the order.'],
+    ['vaultWithdrawalCanceled', 'Cancelled: a user withdrew from the vault.'],
+    [
+      'openInterestCapCanceled',
+      'Cancelled: the price was too aggressive at the open interest cap.',
+    ],
+    [
+      'selfTradeCanceled',
+      'Cancelled: the order would have traded with your own order.',
+    ],
+    [
+      'reduceOnlyCanceled',
+      'Cancelled: the reduce-only order would not reduce the position.',
+    ],
+    ['siblingFilledCanceled', 'Cancelled: the linked TP/SL order filled.'],
+    ['delistedCanceled', 'Cancelled: the market was delisted.'],
+    ['liquidatedCanceled', 'Cancelled: the account was liquidated.'],
+    ['rejected', 'Rejected.'],
+    ['tickRejected', 'Rejected: the price does not match the tick size.'],
+    ['minTradeNtlRejected', 'Rejected: the order value is below the minimum.'],
+    ['perpMarginRejected', 'Rejected: not enough margin for this order.'],
+    [
+      'reduceOnlyRejected',
+      'Rejected: the reduce-only order would not reduce the position.',
+    ],
+    [
+      'badAloPxRejected',
+      'Rejected: the post-only order would have filled immediately.',
+    ],
+    [
+      'iocCancelRejected',
+      'Rejected: the immediate-or-cancel order could not fill.',
+    ],
+    ['badTriggerPxRejected', 'Rejected: the TP/SL trigger price is not valid.'],
+    [
+      'marketOrderNoLiquidityRejected',
+      'Rejected: not enough liquidity for the market order.',
+    ],
+    [
+      'positionIncreaseAtOpenInterestCapRejected',
+      'Rejected: the market is at its open interest cap.',
+    ],
+    [
+      'positionFlipAtOpenInterestCapRejected',
+      'Rejected: the market is at its open interest cap.',
+    ],
+    [
+      'tooAggressiveAtOpenInterestCapRejected',
+      'Rejected: the price was too aggressive at the open interest cap.',
+    ],
+    [
+      'openInterestIncreaseRejected',
+      'Rejected: the market is at its open interest cap.',
+    ],
+    ['insufficientSpotBalanceRejected', 'Rejected: not enough spot balance.'],
+    ['oracleRejected', 'Rejected: the price is too far from the oracle price.'],
+    [
+      'perpMaxPositionRejected',
+      'Rejected: the position is larger than the limit for the current leverage.',
+    ],
+  ])('gives display text for the %s status reason', (status, statusReason) => {
+    expect(mapOrder(detail(status), MARKET)?.statusReason).toBe(statusReason)
   })
   it.each([
     'unrecognized',
@@ -293,13 +357,13 @@ describe('mapOrder', () => {
     ).toMatchObject({ type, timeInForce })
   })
   it.each([
-    ['activated', OrderStatus.PARTIALLY_FILLED],
-    ['finished', OrderStatus.FILLED],
-    ['terminated', OrderStatus.CANCELLED],
-    ['stopped', OrderStatus.CANCELLED],
-    ['waitingForTrigger', OrderStatus.OPEN],
-    ['error', OrderStatus.REJECTED],
-  ])('maps TWAP lifecycle %s', (status, expected) => {
+    ['activated', OrderStatus.PARTIALLY_FILLED, undefined],
+    ['finished', OrderStatus.FILLED, undefined],
+    ['terminated', OrderStatus.CANCELLED, 'Cancelled.'],
+    ['stopped', OrderStatus.CANCELLED, 'Cancelled.'],
+    ['waitingForTrigger', OrderStatus.OPEN, undefined],
+    ['error', OrderStatus.REJECTED, 'Rejected.'],
+  ])('maps TWAP lifecycle %s', (status, expected, statusReason) => {
     const entry: HlTwapHistoryEntry = {
       twapId: 5,
       time: 1_700_000_002,
@@ -315,7 +379,8 @@ describe('mapOrder', () => {
       },
       status: { status, description: 'venue reason' },
     }
-    expect(mapOrder(entry, MARKET)).toMatchObject({
+    const order = mapOrder(entry, MARKET)
+    expect(order).toMatchObject({
       orderId: '5',
       type: OrderType.TWAP,
       originalSize: '2',
@@ -328,5 +393,6 @@ describe('mapOrder', () => {
       startedAt: '2023-11-14T22:13:20.000Z',
       updatedAt: '2023-11-14T22:13:22.000Z',
     })
+    expect(order?.statusReason).toBe(statusReason)
   })
 })

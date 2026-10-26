@@ -204,7 +204,7 @@ describe('mapOrder', () => {
     )
     expect(() => mapOrder(raw, MARKET)).toThrow(PerpsError)
   })
-  it('keeps the venue cancellation reason and transition time', () => {
+  it('gives display text for the cancellation reason and keeps the transition time', () => {
     expect(
       mapOrder(
         orderFixture({
@@ -216,7 +216,7 @@ describe('mapOrder', () => {
       )
     ).toMatchObject({
       status: OrderStatus.CANCELLED,
-      statusReason: 'liquidation',
+      statusReason: 'Cancelled: the account was liquidated.',
       updatedAt: '2026-07-01T13:00:00.000Z',
     })
     expect(
@@ -236,6 +236,65 @@ describe('mapOrder', () => {
       remainingSize: '0',
       updatedAt: '2026-07-01T13:00:00.000Z',
     })
+  })
+  it.each([
+    ['', 'Cancelled.'],
+    ['liquidation', 'Cancelled: the account was liquidated.'],
+    [
+      'selfMatchPrevention',
+      'Cancelled: the order would have traded with your own order.',
+    ],
+    [
+      'selfmatchprevention',
+      'Cancelled: the order would have traded with your own order.',
+    ],
+    ['cancelAfterTimeout', 'Cancelled: the order timed out.'],
+    [
+      'startupBadPrice',
+      'Cancelled: the price was not valid when the venue started.',
+    ],
+    [
+      'immediateOrCancel',
+      'Cancelled: the immediate-or-cancel order could not fill.',
+    ],
+    ['cancelAfterTimeoutOnShutdown', 'Cancelled: the venue shut down.'],
+    ['cancelOnStartup', 'Cancelled: the venue restarted.'],
+    ['cancelByAdmin', 'Cancelled by the venue.'],
+    ['positionClosed', 'Cancelled: the position closed.'],
+    [
+      'stopOrderPositionNeutral',
+      'Cancelled: no open position for this TP/SL order.',
+    ],
+    [
+      'stopOrderPositionDirectionMismatch',
+      'Cancelled: the position direction changed.',
+    ],
+    ['user', 'Cancelled by the venue.'],
+    ['constructor', 'Cancelled by the venue.'],
+  ])("gives display text for the cancelReason '%s'", (cancelReason, statusReason) => {
+    expect(
+      mapOrder(orderFixture({ status: 'canceled', cancelReason }), MARKET)
+        ?.statusReason
+    ).toBe(statusReason)
+  })
+  it.each([
+    [1, 'Cancelled.'],
+    [2, 'Cancelled: too many child orders failed.'],
+  ] as const)('gives display text for the twapCancelReason %s', (twapCancelReason, statusReason) => {
+    expect(
+      mapOrder(
+        twapFixture({ orderStatus: 'cancelled', twapCancelReason }),
+        MARKET
+      )
+    ).toMatchObject({ status: OrderStatus.CANCELLED, statusReason })
+  })
+  it('omits the status reason for twapCancelReason 0', () => {
+    expect(
+      mapOrder(
+        twapFixture({ orderStatus: 'cancelled', twapCancelReason: 0 }),
+        MARKET
+      )
+    ).not.toHaveProperty('statusReason')
   })
   it('maps running and completed TWAPs through the same order mapper', () => {
     expect(mapOrder(twapFixture(), MARKET)).toMatchObject({
@@ -268,11 +327,8 @@ describe('mapOrder', () => {
       updatedAt: '2026-07-01T12:30:00.000Z',
     })
     expect(
-      mapOrder(
-        twapFixture({ orderStatus: 'cancelled', twapCancelReason: 2 }),
-        MARKET
-      )
-    ).toMatchObject({ status: OrderStatus.CANCELLED, statusReason: '2' })
+      mapOrder(twapFixture({ orderStatus: 'cancelled' }), MARKET)
+    ).toMatchObject({ status: OrderStatus.CANCELLED })
     expect(() =>
       mapOrder(twapFixture({ orderStatus: 'unexpected' }), MARKET)
     ).toThrow(PerpsError)

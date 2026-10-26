@@ -81,7 +81,10 @@ export interface OrderBase {
   market: MarketDisplay
   side: OrderSide
   status: OrderStatus
-  /** Venue text for a REJECTED or CANCELLED order, when the venue gives one. */
+  /**
+   * Short display text for why a REJECTED or CANCELLED order ended, when the
+   * venue gives a reason. Never the raw venue code.
+   */
   statusReason?: string
   originalSize: DecimalString
   remainingSize: DecimalString

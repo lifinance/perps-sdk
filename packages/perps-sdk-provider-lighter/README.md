@@ -126,7 +126,7 @@ Lighter order rows contain no transaction hash, so `explorerLink` stays absent.
 | `canceled` and documented cancellation variants | `CANCELLED` |
 | `canceled-expired` | `EXPIRED` |
 
-Cancelled rows retain the venue status text in `statusReason`.
+Cancelled rows give a short display text for the venue status in `statusReason`, not the venue status code.
 Unknown statuses, including `pending` and `in-progress`, throw `PerpsError`.
 
 ```ts

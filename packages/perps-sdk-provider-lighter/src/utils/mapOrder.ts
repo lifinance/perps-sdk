@@ -68,23 +68,51 @@ const mapTimeInForce = (tif: string): TimeInForce => {
 const hasFill = (order: LtOrder): boolean =>
   safeIsDecimalStringGreaterThan(order.filled_base_amount, '0') === true
 
-const mapOrderStatus = (order: LtOrder): OrderStatus => {
+const CANCELLED_STATUS_REASONS = {
+  canceled: 'Cancelled.',
+  'canceled-post-only':
+    'Cancelled: the post-only order would have filled immediately.',
+  'canceled-reduce-only':
+    'Cancelled: the reduce-only order would have increased the position.',
+  'canceled-position-not-allowed':
+    'Cancelled: the venue does not allow this position.',
+  'canceled-margin-not-allowed': 'Cancelled: not enough margin for this order.',
+  'canceled-too-much-slippage':
+    'Cancelled: the price moved more than the slippage limit.',
+  'canceled-not-enough-liquidity':
+    'Cancelled: not enough liquidity to fill the order.',
+  'canceled-self-trade':
+    'Cancelled: the order would have traded with your own order.',
+  'canceled-oco': 'Cancelled: the other order in the pair executed.',
+  'canceled-child': 'Cancelled: the parent order closed.',
+  'canceled-liquidation': 'Cancelled: the account was liquidated.',
+  'canceled-invalid-balance':
+    'Cancelled: the account balance is not sufficient.',
+} as const
+
+const mapOrderLifecycle = (
+  order: LtOrder
+): Pick<OrderBase, 'status' | 'statusReason'> => {
   switch (order.status) {
     case 'in-progress':
-      return OrderStatus.ACCEPTED
+      return { status: OrderStatus.ACCEPTED }
     case 'pending':
-      return OrderStatus.OPEN
+      return { status: OrderStatus.OPEN }
     case 'open':
       if (order.trigger_status === 'parent-order') {
-        return OrderStatus.PENDING
+        return { status: OrderStatus.PENDING }
       }
-      return hasFill(order) ? OrderStatus.PARTIALLY_FILLED : OrderStatus.OPEN
+      return {
+        status: hasFill(order)
+          ? OrderStatus.PARTIALLY_FILLED
+          : OrderStatus.OPEN,
+      }
     case 'triggered':
-      return OrderStatus.TRIGGERED
+      return { status: OrderStatus.TRIGGERED }
     case 'filled':
-      return OrderStatus.FILLED
+      return { status: OrderStatus.FILLED }
     case 'canceled-expired':
-      return OrderStatus.EXPIRED
+      return { status: OrderStatus.EXPIRED }
     case 'canceled':
     case 'canceled-post-only':
     case 'canceled-reduce-only':
@@ -97,7 +125,10 @@ const mapOrderStatus = (order: LtOrder): OrderStatus => {
     case 'canceled-child':
     case 'canceled-liquidation':
     case 'canceled-invalid-balance':
-      return OrderStatus.CANCELLED
+      return {
+        status: OrderStatus.CANCELLED,
+        statusReason: CANCELLED_STATUS_REASONS[order.status],
+      }
     default:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
@@ -143,7 +174,7 @@ export const mapOrder = (
     order.order_expiry > 0
       ? safeTimestampToIsoString(order.order_expiry)
       : undefined
-  const status = mapOrderStatus(order)
+  const lifecycle = mapOrderLifecycle(order)
   const base: OrderBase = {
     orderId: order.order_id,
     ...(order.client_order_id === NO_CLIENT_ORDER_ID
@@ -151,8 +182,7 @@ export const mapOrder = (
       : { clientOrderId: order.client_order_id }),
     market,
     side: order.is_ask ? OrderSide.SELL : OrderSide.BUY,
-    status,
-    ...(status === OrderStatus.CANCELLED ? { statusReason: order.status } : {}),
+    ...lifecycle,
     originalSize: order.initial_base_amount,
     remainingSize: order.remaining_base_amount,
     filledSize: order.filled_base_amount,
@@ -211,7 +241,7 @@ export const mapOrderUpdates = (
     let status: OrderStatus
     try {
       order = market === undefined ? undefined : mapOrder(raw, market)
-      status = order?.status ?? mapOrderStatus(raw)
+      status = order?.status ?? mapOrderLifecycle(raw).status
     } catch (error) {
       if (!(error instanceof PerpsError)) {
         throw error
