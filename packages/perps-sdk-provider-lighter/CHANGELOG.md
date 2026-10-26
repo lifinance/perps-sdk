@@ -1,5 +1,17 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 41.0.0
+
+### Minor Changes
+
+- [#650](https://github.com/lifinance/perps-sdk/pull/650) [`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter providers set `triggerOrders`: a modify cannot change the order type, and the market TP/SL slippage input goes from 1% to 10% in steps of 0.01%, with a default of 1%. `LIGHTER_MARKET_SLIPPAGE_PERCENT` holds these values. Order reads set `limitPrice` from the venue `price` on all four trigger types.
+
+### Patch Changes
+
+- Updated dependencies [[`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e)]:
+  - @lifi/perps-types@25.0.0
+  - @lifi/perps-sdk@28.0.0
+
 ## 40.2.0
 
 ### Minor Changes

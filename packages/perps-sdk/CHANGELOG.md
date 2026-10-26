@@ -1,5 +1,16 @@
 # @lifi/perps-sdk
 
+## 28.0.0
+
+### Major Changes
+
+- [#650](https://github.com/lifinance/perps-sdk/pull/650) [`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `TriggerOrderInput` has a required `type` (`MARKET` or `LIMIT`), and `ModifyOrderInput` has an optional `type`. `limitPrice` is the price limit of the execution for both types. `slippagePercent` is removed from both inputs. `PerpsProviderPlugin` has an optional `triggerOrders` member with the TP/SL settings of the provider. Calculate the slippage-adjusted limit price of a market trigger leg with `calculateSlippagePrice` and `snapOrderPrice`.
+
+### Patch Changes
+
+- Updated dependencies [[`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e)]:
+  - @lifi/perps-types@25.0.0
+
 ## 27.2.0
 
 ### Minor Changes

@@ -1,5 +1,17 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 30.0.0
+
+### Minor Changes
+
+- [#650](https://github.com/lifinance/perps-sdk/pull/650) [`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Hyperliquid and Ondo providers set `triggerOrders`. A Hyperliquid modify can change the type of a trigger order. An Ondo modify cannot.
+
+### Patch Changes
+
+- Updated dependencies [[`56d5805`](https://github.com/lifinance/perps-sdk/commit/56d5805658edbf666c941160b749a78f6d8d622e)]:
+  - @lifi/perps-types@25.0.0
+  - @lifi/perps-sdk@28.0.0
+
 ## 29.0.1
 
 ### Patch Changes
