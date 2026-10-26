@@ -282,6 +282,19 @@ rules to another venue's market. `safeSnapOrderPrice(sdk, market, price)`
 gives the same result for a display, or `undefined` where `snapOrderPrice`
 throws. It writes one warning per market, not one per call.
 
+A TP/SL leg (`TriggerOrderInput`) has an explicit `type`: `MARKET` or `LIMIT`.
+Its `takeProfit` or `stopLoss` key gives the TP or SL kind. `limitPrice` is
+the resting limit price of a `LIMIT` leg, and the slippage-adjusted limit
+price of a `MARKET` leg on a provider that takes one. A provider gives its
+TP/SL settings in `triggerOrders`. `modifyCanChangeType` tells if a modify can
+change the `type` of a trigger order. `marketSlippage` is present when the
+provider takes a slippage-adjusted limit price, and gives the `min`, `max`,
+`step` and `default` of the slippage input as percents (`'1'` is 1%).
+`calculateSlippageAdjustedLimitPrice(sdk, market, { triggerPrice, side, slippagePercent })`
+gives that price through the market's own provider. `side` is the side of the
+trigger order: `SELL` closes a long position. The call throws a
+`ValidationError` when the provider has no `triggerOrders.marketSlippage`.
+
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. Every venue places an order by size alone, so the size is
 the only amount that snaps onto a grid: the venue lot grid. Margin and notional

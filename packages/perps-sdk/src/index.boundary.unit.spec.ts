@@ -16,7 +16,12 @@ import {
 } from '@lifi/perps-types'
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as sdk from './index.js'
-import { venueClient, venueMarket } from './wire/venueProvider.mock.js'
+import {
+  venueClient,
+  venueMarket,
+  venueProviderPlugin,
+  venueSnapPrice,
+} from './wire/venueProvider.mock.js'
 
 /** Internals that must never reach the public entry point. */
 const NEVER_EXPORTED: readonly string[] = [
@@ -479,6 +484,22 @@ const CONVERT_SAMPLES: Record<string, readonly unknown[]> = {
 
 const WIRE_MARKET = venueMarket({ szDecimals: 4 })
 const WIRE_CLIENT = venueClient()
+const SLIPPAGE_CLIENT = venueClient([
+  {
+    ...venueProviderPlugin(),
+    triggerOrders: {
+      modifyCanChangeType: false,
+      marketSlippage: {
+        min: '1',
+        max: '10',
+        step: '0.01',
+        default: '1',
+        slippageAdjustedLimitPrice: (market, { triggerPrice }) =>
+          venueSnapPrice(market, triggerPrice),
+      },
+    },
+  },
+])
 
 /**
  * One sample call per `wire/` function: the order-entry and account surface
@@ -505,6 +526,11 @@ const WIRE_SAMPLES: Record<string, readonly unknown[]> = {
       leverage: 5,
       price: '1000',
     },
+  ],
+  calculateSlippageAdjustedLimitPrice: [
+    SLIPPAGE_CLIENT,
+    WIRE_MARKET,
+    { triggerPrice: '2412.37', side: OrderSide.SELL, slippagePercent: '3' },
   ],
   calculateRefuelAmount: [
     {

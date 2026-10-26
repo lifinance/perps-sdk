@@ -154,6 +154,7 @@ import { isAssetMarginEnabled } from './utils/assetCollateral.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   fetchDetailedAccount,
+  LIGHTER_MARKET_SLIPPAGE_PERCENT,
   type LighterFastWithdrawal,
   leverageFromImf,
   lighterAsset,
@@ -165,6 +166,7 @@ import {
   mapOrder,
   mapPortfolioHistory,
   positionRemovableMargin,
+  slippageAdjustedLimitPrice,
   snapOrderPrice,
   snapOrderSize,
   toIsoFromMs,
@@ -1967,6 +1969,15 @@ export const createLighterProvider = (
     snapOrderPrice,
 
     snapOrderSize,
+
+    // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.
+    triggerOrders: {
+      modifyCanChangeType: false,
+      marketSlippage: {
+        ...LIGHTER_MARKET_SLIPPAGE_PERCENT,
+        slippageAdjustedLimitPrice,
+      },
+    },
 
     estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 

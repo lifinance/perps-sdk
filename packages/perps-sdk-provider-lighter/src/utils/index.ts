@@ -19,7 +19,12 @@ export { mapPortfolioHistory } from './mapPortfolioHistory.js'
 export { leverageFromImf, mapPosition } from './mapPosition.js'
 export { mapMarketOrderLimits } from './marketLimits.js'
 export { mapInterval } from './ohlcvInterval.js'
-export { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
+export {
+  LIGHTER_MARKET_SLIPPAGE_PERCENT,
+  slippageAdjustedLimitPrice,
+  snapOrderPrice,
+  snapOrderSize,
+} from './orderFormatting.js'
 export { toIsoFromMs, toIsoFromSeconds } from './time.js'
 export { positionRemovableMargin } from './transferMargin.js'
 export {

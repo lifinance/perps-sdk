@@ -1,17 +1,23 @@
 import {
   calculateOrderAmounts,
+  calculateSlippageAdjustedLimitPrice,
   createPerpsClient,
   isDecimalString,
   PerpsError,
 } from '@lifi/perps-sdk'
 import {
+  OrderSide,
   PerpsErrorCode,
   type PerpsMarket,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { lighterProvider } from '../LighterProvider.js'
-import { snapOrderPrice, snapOrderSize } from './orderFormatting.js'
+import { lighterProvider, lighterRhProvider } from '../LighterProvider.js'
+import {
+  slippageAdjustedLimitPrice,
+  snapOrderPrice,
+  snapOrderSize,
+} from './orderFormatting.js'
 
 // Decimal budgets mirror live Lighter orderBookDetails:
 // BTC: supported_price_decimals 1, supported_size_decimals 5
@@ -195,5 +201,108 @@ describe('calculateOrderAmounts over the Lighter plugin', () => {
         price: '61729.6',
       })
     ).toEqual({ margin: '9.25944', size: '0.0015', notional: '92.5944' })
+  })
+})
+
+describe('slippageAdjustedLimitPrice (Lighter)', () => {
+  const eth = market({ id: '0', szDecimals: 4, priceDecimals: 2 })
+  const params = (
+    side: OrderSide,
+    slippagePercent: string,
+    triggerPrice = '2412.37'
+  ) => ({ triggerPrice, side, slippagePercent })
+
+  it('moves a sell trigger down by the percent and truncates onto the tick grid', () => {
+    // 2412.37 × 0.97 = 2339.9989
+    expect(slippageAdjustedLimitPrice(eth, params(OrderSide.SELL, '3'))).toBe(
+      '2339.99'
+    )
+  })
+
+  it('moves a buy trigger up by the percent and rounds up onto the tick grid', () => {
+    // 2412.37 × 1.03 = 2484.7411
+    expect(slippageAdjustedLimitPrice(eth, params(OrderSide.BUY, '3'))).toBe(
+      '2484.75'
+    )
+  })
+
+  it.each([
+    // 2412.37 × 0.99 = 2388.2463, × 1.01 = 2436.4937
+    ['1', '2388.24', '2436.5'],
+    // 2412.37 × 0.9 = 2171.133, × 1.1 = 2653.607
+    ['10', '2171.13', '2653.61'],
+  ])('accepts the range bound %s%%', (percent, sell, buy) => {
+    expect(
+      slippageAdjustedLimitPrice(eth, params(OrderSide.SELL, percent))
+    ).toBe(sell)
+    expect(
+      slippageAdjustedLimitPrice(eth, params(OrderSide.BUY, percent))
+    ).toBe(buy)
+  })
+
+  it('keeps a result that is already on the tick grid', () => {
+    expect(
+      slippageAdjustedLimitPrice(eth, params(OrderSide.SELL, '2.5', '2000'))
+    ).toBe('1950')
+    expect(
+      slippageAdjustedLimitPrice(eth, params(OrderSide.BUY, '2.5', '2000'))
+    ).toBe('2050')
+  })
+
+  it.each([
+    '0',
+    '0.99',
+    '10.01',
+    '-3',
+    '3%',
+  ])('throws ValidationError for the slippagePercent %j', (percent) => {
+    expect(() =>
+      slippageAdjustedLimitPrice(eth, params(OrderSide.SELL, percent))
+    ).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('throws ValidationError when the market carries no priceDecimals', () => {
+    const bare = market({ priceDecimals: undefined })
+    expect(() =>
+      slippageAdjustedLimitPrice(bare, params(OrderSide.BUY, '3'))
+    ).toThrowError(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+})
+
+describe('triggerOrders on the Lighter plugins', () => {
+  it.each([
+    ['lighter', lighterProvider],
+    ['lighter-rh', lighterRhProvider],
+  ])('sets the %s TP/SL settings', (_key, factory) => {
+    expect(factory().triggerOrders).toEqual({
+      modifyCanChangeType: false,
+      marketSlippage: {
+        min: '1',
+        max: '10',
+        step: '0.01',
+        default: '1',
+        slippageAdjustedLimitPrice,
+      },
+    })
+  })
+
+  it('gives the price through calculateSlippageAdjustedLimitPrice', () => {
+    const sdk = createPerpsClient({
+      integrator: 'test-app',
+      apiKey: 'test-key',
+      providers: [lighterProvider()],
+    })
+
+    expect(
+      calculateSlippageAdjustedLimitPrice(
+        sdk,
+        market({ id: '0', priceDecimals: 2 }),
+        { triggerPrice: '2412.37', side: OrderSide.SELL, slippagePercent: '3' }
+      )
+    ).toBe('2339.99')
   })
 })

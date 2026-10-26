@@ -288,6 +288,7 @@ export type {
   SignActionProgress,
   SignActionsContext,
   SignActionsResult,
+  SlippageAdjustedLimitPriceParams,
 } from './types/provider.js'
 export type {
   ProviderWithdrawableBalance,
@@ -377,6 +378,7 @@ export {
   REFUEL_FEE_MARGIN_PERCENT,
 } from './wire/refuel.js'
 export {
+  calculateSlippageAdjustedLimitPrice,
   safeSnapOrderPrice,
   snapOrderPrice,
   snapOrderSize,
