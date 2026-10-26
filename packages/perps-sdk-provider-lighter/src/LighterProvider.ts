@@ -166,7 +166,6 @@ import {
   mapOrder,
   mapPortfolioHistory,
   positionRemovableMargin,
-  slippageAdjustedLimitPrice,
   snapOrderPrice,
   snapOrderSize,
   toIsoFromMs,
@@ -1973,10 +1972,7 @@ export const createLighterProvider = (
     // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.
     triggerOrders: {
       modifyCanChangeType: false,
-      marketSlippage: {
-        ...LIGHTER_MARKET_SLIPPAGE_PERCENT,
-        slippageAdjustedLimitPrice,
-      },
+      marketSlippage: LIGHTER_MARKET_SLIPPAGE_PERCENT,
     },
 
     estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,

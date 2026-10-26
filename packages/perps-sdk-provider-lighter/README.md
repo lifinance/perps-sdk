@@ -149,11 +149,11 @@ WebSocket order updates contain `{ orders, terminated }`, including terminal ord
 ## Market TP/SL slippage
 
 A Lighter market TP/SL order needs a slippage-adjusted limit price: the lowest fill for a sell, or the highest fill for a buy.
-The provider sets `triggerOrders.marketSlippage`. Its `min`, `max`, `step`, and `default` are `'1'`, `'10'`, `'0.01'`, and `'1'`, in percent.
-`calculateSlippageAdjustedLimitPrice(sdk, market, { triggerPrice, side, slippagePercent })` from `@lifi/perps-sdk` gives the price.
-It calculates `triggerPrice × (1 − slippagePercent / 100)` for a sell and `triggerPrice × (1 + slippagePercent / 100)` for a buy.
-It snaps the result to `priceDecimals`, down for a sell and up for a buy, so the bound is never tighter than the percent.
-A percent outside `min` to `max`, or a market without `priceDecimals`, gives a `ValidationError`.
+The provider sets `triggerOrders.marketSlippage` from `LIGHTER_MARKET_SLIPPAGE_PERCENT`. Its `min`, `max`, `step`, and `default` are `'1'`, `'10'`, `'0.01'`, and `'1'`, in percent.
+Keep the slippage percent from `min` to `max`.
+Calculate the price with `snapOrderPrice(sdk, market, calculateSlippagePrice(triggerPrice, slippagePercent, isBuy))` from `@lifi/perps-sdk`, where `isBuy` is `true` for a buy trigger order.
+`calculateSlippagePrice` multiplies `triggerPrice` by `1 + slippagePercent / 100` for a buy and divides it by that value for a sell.
+`snapOrderPrice` rounds the result half-up to the market `priceDecimals`, and throws a `ValidationError` for a market without `priceDecimals`.
 Send the result as the `limitPrice` of a `MARKET` trigger leg.
 
 A Lighter modify cannot change the order type, so `triggerOrders.modifyCanChangeType` is `false`.

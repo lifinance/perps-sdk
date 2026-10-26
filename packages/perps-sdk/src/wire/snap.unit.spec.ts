@@ -1,12 +1,7 @@
-import { DECIMAL_PATTERN, OrderSide, PerpsErrorCode } from '@lifi/perps-types'
+import { DECIMAL_PATTERN, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PerpsError } from '../errors/PerpsError.js'
-import {
-  calculateSlippageAdjustedLimitPrice,
-  safeSnapOrderPrice,
-  snapOrderPrice,
-  snapOrderSize,
-} from './snap.js'
+import { safeSnapOrderPrice, snapOrderPrice, snapOrderSize } from './snap.js'
 import {
   VENUE_PROVIDER_ID,
   venueClient,
@@ -134,57 +129,6 @@ describe('safeSnapOrderPrice', () => {
         '1'
       )
     ).toBeUndefined()
-  })
-})
-
-describe('calculateSlippageAdjustedLimitPrice', () => {
-  const PARAMS = {
-    triggerPrice: '2412.37',
-    side: OrderSide.SELL,
-    slippagePercent: '3',
-  }
-
-  it("delegates to the market's own provider", () => {
-    const slippageAdjustedLimitPrice = vi.fn(() => '2339.99')
-    const sdk = venueClient([
-      {
-        ...venueProviderPlugin(),
-        triggerOrders: {
-          modifyCanChangeType: false,
-          marketSlippage: {
-            min: '1',
-            max: '10',
-            step: '0.01',
-            default: '1',
-            slippageAdjustedLimitPrice,
-          },
-        },
-      },
-    ])
-
-    expect(calculateSlippageAdjustedLimitPrice(sdk, MARKET, PARAMS)).toBe(
-      '2339.99'
-    )
-    expect(slippageAdjustedLimitPrice).toHaveBeenCalledWith(MARKET, PARAMS)
-  })
-
-  it.each([
-    ['no triggerOrders', undefined],
-    ['no marketSlippage', { modifyCanChangeType: true }],
-  ])('throws a ValidationError when the provider has %s', (_case, triggerOrders) => {
-    const sdk = venueClient([{ ...venueProviderPlugin(), triggerOrders }])
-
-    expect(() =>
-      calculateSlippageAdjustedLimitPrice(sdk, MARKET, PARAMS)
-    ).toThrowError(
-      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
-    )
-  })
-
-  it('throws an SDKError when the market has no registered provider', () => {
-    expect(() =>
-      calculateSlippageAdjustedLimitPrice(venueClient([]), MARKET, PARAMS)
-    ).toThrowError(expect.objectContaining({ code: PerpsErrorCode.SDKError }))
   })
 })
 

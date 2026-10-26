@@ -287,13 +287,12 @@ Its `takeProfit` or `stopLoss` key gives the TP or SL kind. `limitPrice` is
 the resting limit price of a `LIMIT` leg, and the slippage-adjusted limit
 price of a `MARKET` leg on a provider that takes one. A provider gives its
 TP/SL settings in `triggerOrders`. `modifyCanChangeType` tells if a modify can
-change the `type` of a trigger order. `marketSlippage` is present when the
-provider takes a slippage-adjusted limit price, and gives the `min`, `max`,
-`step` and `default` of the slippage input as percents (`'1'` is 1%).
-`calculateSlippageAdjustedLimitPrice(sdk, market, { triggerPrice, side, slippagePercent })`
-gives that price through the market's own provider. `side` is the side of the
-trigger order: `SELL` closes a long position. The call throws a
-`ValidationError` when the provider has no `triggerOrders.marketSlippage`.
+change the `type` of a trigger order. `marketSlippage` is present when a
+`MARKET` leg on the provider takes a slippage-adjusted `limitPrice`. It gives
+the `min`, `max`, `step` and `default` of the slippage input as percents
+(`'1'` is 1%). Calculate that price with the same pair as a market order:
+`snapOrderPrice(sdk, market, calculateSlippagePrice(triggerPrice, slippagePercent, isBuy))`,
+where `isBuy` is `true` for a buy trigger order.
 
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. Every venue places an order by size alone, so the size is

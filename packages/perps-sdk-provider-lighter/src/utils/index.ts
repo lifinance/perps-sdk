@@ -21,7 +21,6 @@ export { mapMarketOrderLimits } from './marketLimits.js'
 export { mapInterval } from './ohlcvInterval.js'
 export {
   LIGHTER_MARKET_SLIPPAGE_PERCENT,
-  slippageAdjustedLimitPrice,
   snapOrderPrice,
   snapOrderSize,
 } from './orderFormatting.js'

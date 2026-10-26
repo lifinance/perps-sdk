@@ -1,14 +1,6 @@
-import {
-  type DecimalString,
-  type Market,
-  PerpsErrorCode,
-} from '@lifi/perps-types'
+import type { DecimalString, Market } from '@lifi/perps-types'
 import { requireProvider } from '../client/requireProvider.js'
-import { PerpsError } from '../errors/PerpsError.js'
-import type {
-  PerpsSDKClient,
-  SlippageAdjustedLimitPriceParams,
-} from '../types/provider.js'
+import type { PerpsSDKClient } from '../types/provider.js'
 import { createWarnOnce } from '../utils/warnOnce.js'
 
 const warnSnapOrderPriceFailureOnce = createWarnOnce()
@@ -68,32 +60,4 @@ export function safeSnapOrderPrice(
     )
     return undefined
   }
-}
-
-/**
- * The slippage-adjusted limit price of a market trigger order on `market`,
- * through the market's own provider: the worst fill that
- * `params.slippagePercent` from `params.triggerPrice` allows, on the venue
- * tick grid.
- *
- * @throws {PerpsError} `SDKError` when `market.providerId` names no registered
- *   provider plugin, or `ValidationError` when the provider takes no
- *   slippage-adjusted limit price or rejects the inputs.
- * @public
- */
-export function calculateSlippageAdjustedLimitPrice(
-  sdk: PerpsSDKClient,
-  market: Market,
-  params: SlippageAdjustedLimitPriceParams
-): DecimalString {
-  const marketSlippage = requireProvider(sdk, market.providerId).triggerOrders
-    ?.marketSlippage
-  if (marketSlippage === undefined) {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Provider '${market.providerId}' takes no slippage-adjusted limit price ` +
-        `for a market trigger order.`
-    )
-  }
-  return marketSlippage.slippageAdjustedLimitPrice(market, params)
 }

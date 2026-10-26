@@ -7,19 +7,10 @@
  * the tick grid; sizes truncate onto the lot grid.
  */
 
-import {
-  addDecimalString,
-  compareDecimalStrings,
-  multiplyDecimalString,
-  PerpsError,
-  roundDecimalString,
-  type SlippageAdjustedLimitPriceParams,
-  subtractDecimalString,
-} from '@lifi/perps-sdk'
+import { PerpsError } from '@lifi/perps-sdk'
 import {
   type DecimalString,
   type Market,
-  OrderSide,
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import Big from 'big.js'
@@ -37,52 +28,6 @@ export const LIGHTER_MARKET_SLIPPAGE_PERCENT = {
   step: '0.01',
   default: '1',
 } as const
-
-/**
- * The limit price of a Lighter market trigger order (Lighter's `price`):
- * `triggerPrice` moved `slippagePercent` against the order, then snapped to
- * `priceDecimals` down for a sell and up for a buy, so the bound is never
- * tighter than the percent.
- *
- * @throws {PerpsError} `ValidationError` when `market.priceDecimals` is
- *   absent, `slippagePercent` is outside {@link LIGHTER_MARKET_SLIPPAGE_PERCENT},
- *   or an input does not match the decimal pattern.
- * @public
- */
-export function slippageAdjustedLimitPrice(
-  market: Market,
-  { triggerPrice, side, slippagePercent }: SlippageAdjustedLimitPriceParams
-): DecimalString {
-  if (market.priceDecimals === undefined) {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Market '${market.id}' carries no priceDecimals; the Lighter ` +
-        `slippage-adjusted limit price cannot be snapped without the ` +
-        `market's tick grid.`
-    )
-  }
-  const { min, max } = LIGHTER_MARKET_SLIPPAGE_PERCENT
-  if (
-    compareDecimalStrings(slippagePercent, min) < 0 ||
-    compareDecimalStrings(slippagePercent, max) > 0
-  ) {
-    throw new PerpsError(
-      PerpsErrorCode.ValidationError,
-      `Invalid \`slippagePercent\`: ${slippagePercent}. Lighter takes ` +
-        `${min} to ${max}.`
-    )
-  }
-  const slippage = multiplyDecimalString(slippagePercent, '0.01')
-  const isSell = side === OrderSide.SELL
-  const factor = isSell
-    ? subtractDecimalString('1', slippage)
-    : addDecimalString('1', slippage)
-  return roundDecimalString(
-    multiplyDecimalString(triggerPrice, factor),
-    market.priceDecimals,
-    isSell ? 'truncate' : 'up'
-  )
-}
 
 /**
  * Snap a price onto a Lighter market's tick grid: rounded half-up to the

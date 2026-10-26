@@ -15,7 +15,6 @@ import type {
   MarketRef,
   MarketSettings,
   Order,
-  OrderSide,
   OrderStatus,
   OrdersResponse,
   PerpsMarket,
@@ -173,20 +172,6 @@ export interface LiquidationEstimateParams {
   leverage: string
   /** `true` for long, `false` for short. */
   isLong: boolean
-}
-
-/**
- * Inputs for the `slippageAdjustedLimitPrice` of
- * {@link PerpsProviderPlugin.triggerOrders}.
- *
- * @public
- */
-export interface SlippageAdjustedLimitPriceParams {
-  triggerPrice: DecimalString
-  /** Side of the trigger order: `SELL` closes a long position. */
-  side: OrderSide
-  /** Decimal string percent: `'1'` is 1%. */
-  slippagePercent: DecimalString
 }
 
 /**
@@ -626,17 +611,16 @@ export interface PerpsProviderPlugin {
   snapOrderSize(market: Market, size: DecimalString): DecimalString
 
   /**
-   * TP/SL order settings of the venue. Each percent value in
-   * `marketSlippage` is a decimal string, where `'1'` is 1%.
+   * TP/SL order settings of the venue.
    *
    * - `modifyCanChangeType`: a modify can change a trigger order between
    *   `MARKET` and `LIMIT`.
-   * - `marketSlippage`: present when the venue takes a slippage-adjusted
-   *   limit price for a market trigger order. `min`, `max`, `step` and
-   *   `default` bound the slippage input.
-   * - `slippageAdjustedLimitPrice`: the worst fill that `slippagePercent`
-   *   from `triggerPrice` allows, snapped onto the tick grid so it is never
-   *   tighter than the percent. Pure — does no I/O.
+   * - `marketSlippage`: present when a market trigger leg on the venue takes a
+   *   slippage-adjusted `limitPrice`. `min`, `max`, `step` and `default` bound
+   *   the slippage input, as decimal string percents where `'1'` is 1%. The
+   *   consumer calculates that price with `calculateSlippagePrice(triggerPrice,
+   *   slippagePercent, isBuy)` and `snapOrderPrice`, where `isBuy` is `true`
+   *   for a buy trigger order.
    */
   triggerOrders?: {
     modifyCanChangeType: boolean
@@ -645,10 +629,6 @@ export interface PerpsProviderPlugin {
       max: DecimalString
       step: DecimalString
       default: DecimalString
-      slippageAdjustedLimitPrice(
-        market: Market,
-        params: SlippageAdjustedLimitPriceParams
-      ): DecimalString
     }
   }
 
