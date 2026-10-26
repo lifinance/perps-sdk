@@ -143,11 +143,27 @@ const mapOrderLifecycle = (
     case 'triggered':
       return { status: OrderStatus.TRIGGERED }
     default:
+      // Documented cancel and reject reasons use these suffixes; an undocumented one keeps the row.
+      if (status.endsWith('Canceled')) {
+        return {
+          status: OrderStatus.CANCELLED,
+          statusReason: 'Cancelled by the venue.',
+        }
+      }
+      if (status.endsWith('Rejected')) {
+        return {
+          status: OrderStatus.REJECTED,
+          statusReason: 'Rejected by the venue.',
+        }
+      }
       throw venueError(`Unknown Hyperliquid order status: ${status}`)
   }
 }
 
-/** Translate venue lifecycle statuses; unknown statuses are errors. */
+/**
+ * Translate venue lifecycle statuses. An unknown `...Canceled` or `...Rejected`
+ * status maps by its suffix; any other unknown status is an error.
+ */
 export const mapOrderStatus = (status: string): OrderStatus =>
   mapOrderLifecycle(status).status
 

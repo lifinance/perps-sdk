@@ -325,9 +325,18 @@ describe('mapOrder', () => {
     expect(mapOrder(detail(status), MARKET)?.statusReason).toBe(statusReason)
   })
   it.each([
+    ['unrecognizedCanceled', OrderStatus.CANCELLED, 'Cancelled by the venue.'],
+    ['unrecognizedRejected', OrderStatus.REJECTED, 'Rejected by the venue.'],
+  ])('maps unknown status %s by its suffix with the generic text', (status, expected, statusReason) => {
+    expect(mapOrder(detail(status), MARKET)).toMatchObject({
+      status: expected,
+      statusReason,
+    })
+  })
+  it.each([
     'unrecognized',
-    'unrecognizedCanceled',
-    'unrecognizedRejected',
+    'unrecognizedcanceled',
+    'unrecognizedCancel',
   ])('rejects unknown status %s', (status) => {
     expect(() => mapOrder(detail(status), MARKET)).toThrow(PerpsError)
   })
