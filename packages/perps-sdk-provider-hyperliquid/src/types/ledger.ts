@@ -18,7 +18,7 @@ export type HlSpotTransferDelta = {
   destination: Address
   fee?: string
   nativeTokenFee?: string
-  nonce?: number
+  nonce?: number | null
 }
 
 /**

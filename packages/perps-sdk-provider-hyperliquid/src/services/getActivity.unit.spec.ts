@@ -13,6 +13,7 @@ import {
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import type {
+  HlSpotTransferDelta,
   HlUserFill,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
@@ -747,5 +748,152 @@ describe('getActivity — transfer registry identity', () => {
     expect(result.items[0]).toMatchObject({
       asset: { id: '0', displaySymbol: 'USDC' },
     })
+  })
+})
+
+describe('getActivity — spot transfers with a null nonce', () => {
+  const USER = '0x2ba553d9f990a3b66b03b2dc0d030dfc1c061036' as const
+  const hype: Asset = {
+    providerId: 'hyperliquid',
+    id: '150',
+    displaySymbol: 'HYPE',
+    logoURI: 'hype.svg',
+  }
+  const nullNonceTransfer: HlSpotTransferDelta = {
+    type: 'spotTransfer',
+    token: 'USDC',
+    amount: '10.5',
+    usdcValue: '10.5',
+    user: USER,
+    destination: '0xaaa0c2769cb990f4f37db951a9e48de2385c2733',
+    fee: '1.0',
+    nativeTokenFee: '0.0',
+    nonce: null,
+  }
+  const numericNonceTransfer: HlSpotTransferDelta = {
+    type: 'spotTransfer',
+    token: 'HYPE',
+    amount: '50.0',
+    usdcValue: '595.15',
+    user: '0xa822a9ceb6d6cb5b565bd10098abcfa9cf18d748',
+    destination: USER,
+    fee: '0.0',
+    nativeTokenFee: '0.0',
+    nonce: 1750729846540,
+  }
+  const ledger: HlUserNonFundingLedgerUpdates = [
+    {
+      time: 1731999196516,
+      hash: '0x09ddd9f712b5df0945af34b055bbb3329c88ca001aff41bbfd4341d80bc760ce',
+      delta: { type: 'deposit', usdc: '2703997.4500000002' },
+    },
+    {
+      time: 1732834825313,
+      hash: '0x2ceac78e94d15a1af8660417f418400175003b84f5f2d86615b352360e4d48ac',
+      delta: nullNonceTransfer,
+    },
+    {
+      time: 1733253446493,
+      hash: '0xe77c597eb3ab16d686280fce5db229345cfdccfb212f0136175b686a5e274e57',
+      delta: {
+        type: 'withdraw',
+        usdc: '199999.0',
+        nonce: 1733253198679000,
+        fee: '1.0',
+      },
+    },
+    {
+      time: 1750729853592,
+      hash: '0x1d13f782f36d768b26f004261de22202010a0061195d0cad64e0bf275603f542',
+      delta: numericNonceTransfer,
+    },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+
+  it('returns every transfer, deposit, and withdrawal of a mixed history', async () => {
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: ledger },
+      [],
+      [],
+      [USDC_ASSET, hype]
+    )
+
+    const result = await getActivity(
+      {
+        ...ctx,
+        client: createPerpsClient({
+          integrator: 'test',
+          apiKey: 'k',
+          retry: false,
+        }),
+      },
+      {
+        address: USER,
+        type: [
+          ActivityType.TRANSFER,
+          ActivityType.DEPOSIT,
+          ActivityType.WITHDRAWAL,
+        ],
+      }
+    )
+
+    const explorerTx = 'https://app.hyperliquid.xyz/explorer/tx/'
+    expect(result.items).toStrictEqual([
+      {
+        id: '0x1d13f782f36d768b26f004261de22202010a0061195d0cad64e0bf275603f542',
+        provider: 'hyperliquid',
+        timestamp: '2025-06-24T01:50:53.592Z',
+        type: ActivityType.TRANSFER,
+        direction: 'IN',
+        counterpartyAddress: '0xa822a9ceb6d6cb5b565bd10098abcfa9cf18d748',
+        asset: hype,
+        amount: '50.0',
+        fees: [
+          { amount: '0.0', asset: 'USDC' },
+          { amount: '0.0', asset: 'HYPE' },
+        ],
+        meta: {
+          transferType: 'spotTransfer',
+          usdcValue: '595.15',
+          nonce: 1750729846540,
+        },
+        explorerLink: `${explorerTx}0x1d13f782f36d768b26f004261de22202010a0061195d0cad64e0bf275603f542`,
+      },
+      {
+        id: '0xe77c597eb3ab16d686280fce5db229345cfdccfb212f0136175b686a5e274e57',
+        provider: 'hyperliquid',
+        timestamp: '2024-12-03T19:17:26.493Z',
+        type: ActivityType.WITHDRAWAL,
+        asset: USDC_ASSET,
+        amount: '199999.0',
+        fee: { amount: '1.0', asset: 'USDC' },
+        explorerLink: `${explorerTx}0xe77c597eb3ab16d686280fce5db229345cfdccfb212f0136175b686a5e274e57`,
+      },
+      {
+        id: '0x2ceac78e94d15a1af8660417f418400175003b84f5f2d86615b352360e4d48ac',
+        provider: 'hyperliquid',
+        timestamp: '2024-11-28T23:00:25.313Z',
+        type: ActivityType.TRANSFER,
+        direction: 'OUT',
+        counterpartyAddress: '0xaaa0c2769cb990f4f37db951a9e48de2385c2733',
+        asset: USDC_ASSET,
+        amount: '10.5',
+        fees: [
+          { amount: '1.0', asset: 'USDC' },
+          { amount: '0.0', asset: 'HYPE' },
+        ],
+        meta: { transferType: 'spotTransfer', usdcValue: '10.5', nonce: null },
+        explorerLink: `${explorerTx}0x2ceac78e94d15a1af8660417f418400175003b84f5f2d86615b352360e4d48ac`,
+      },
+      {
+        id: '0x09ddd9f712b5df0945af34b055bbb3329c88ca001aff41bbfd4341d80bc760ce',
+        provider: 'hyperliquid',
+        timestamp: '2024-11-19T06:53:16.516Z',
+        type: ActivityType.DEPOSIT,
+        asset: USDC_ASSET,
+        amount: '2703997.4500000002',
+        explorerLink: `${explorerTx}0x09ddd9f712b5df0945af34b055bbb3329c88ca001aff41bbfd4341d80bc760ce`,
+      },
+    ])
   })
 })
