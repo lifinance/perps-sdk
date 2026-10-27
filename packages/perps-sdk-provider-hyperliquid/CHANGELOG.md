@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 30.0.1
+
+### Patch Changes
+
+- [#654](https://github.com/lifinance/perps-sdk/pull/654) [`7cbf713`](https://github.com/lifinance/perps-sdk/commit/7cbf7135e8cc81569eb5ac5aab7bd350d9913688) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getOrders` and `getOrder` map each Hyperliquid TWAP from its newest `twapHistory` row, so a finished TWAP does not show as open.
+
+- [#652](https://github.com/lifinance/perps-sdk/pull/652) [`edc4cf5`](https://github.com/lifinance/perps-sdk/commit/edc4cf5f6c587569d9117aa13aa955a51d3ed0f5) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - An unknown Hyperliquid order status that ends with `Canceled` or `Rejected` maps to `CANCELLED` or `REJECTED` with a generic `statusReason`. The provider keeps the order row and does not drop it.
+
+- [#652](https://github.com/lifinance/perps-sdk/pull/652) [`beb8cb9`](https://github.com/lifinance/perps-sdk/commit/beb8cb977dd07d8ae968176e7d3166acbc82387c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Order.statusReason` gives a short display text for a cancelled or rejected order, not the raw venue code.
+
+- Updated dependencies [[`beb8cb9`](https://github.com/lifinance/perps-sdk/commit/beb8cb977dd07d8ae968176e7d3166acbc82387c)]:
+  - @lifi/perps-types@25.0.1
+
 ## 30.0.0
 
 ### Minor Changes
