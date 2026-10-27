@@ -27,6 +27,21 @@ export interface FormatOptions {
 }
 
 /**
+ * Options for {@link formatCompactUsd}.
+ *
+ * @public
+ */
+export interface CompactUsdOptions extends FormatOptions {
+  /**
+   * Significant digits of the compact mantissa, with trailing zeros dropped
+   * (`$84.5K`, `$1M`). Replaces `decimals` when set.
+   */
+  significantDigits?: number
+  /** Magnitudes below this value render as {@link formatUsd}, with no suffix. */
+  compactFrom?: number | DecimalString
+}
+
+/**
  * Rounding mode for {@link FormatOptions.rounding}.
  *
  * @public
@@ -275,20 +290,42 @@ export function formatPrice(
   return `${sign}$${body}`
 }
 
+function compactMantissa(
+  scaled: Big,
+  decimals: number,
+  significantDigits: number | undefined,
+  rm: Big.RoundingMode
+): string {
+  if (significantDigits === undefined) {
+    return scaled.toFixed(decimals, rm)
+  }
+  const integerDigits = scaled.round(0, Big.roundDown).toFixed().length
+  return scaled
+    .round(Math.max(0, significantDigits - integerDigits), rm)
+    .toFixed()
+}
+
 /**
  * Format a USD value compactly with a `B`/`M`/`K` suffix: `$1.23B`, `$45.6M`,
  * `$789.0K`, `$12.34`.
  *
- * Negatives place the `-` before the `$`. Null/undefined/non-finite input
- * renders the placeholder.
+ * Negatives place the `-` before the `$`. `rounding: 'floor'` truncates the
+ * mantissa toward zero, so a compact balance is never overstated.
+ * Null/undefined/non-finite input renders the placeholder.
  *
  * @public
  */
 export function formatCompactUsd(
   value: FormatInput,
-  options: FormatOptions = {}
+  options: CompactUsdOptions = {}
 ): string {
-  const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER } = options
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    rounding = 'halfUp',
+    significantDigits,
+    compactFrom,
+  } = options
   const n = toBig(value)
   if (n === null) {
     return placeholder
@@ -298,14 +335,18 @@ export function formatCompactUsd(
   }
   const sign = n.lt(0) ? '-' : ''
   const abs = n.abs()
+  if (compactFrom !== undefined && abs.lt(compactFrom)) {
+    return formatUsd(value, options)
+  }
+  const rm = rounding === 'floor' ? Big.roundDown : Big.roundHalfUp
   if (abs.gte(1_000_000_000)) {
-    return `${sign}$${abs.div(1_000_000_000).toFixed(decimals)}B`
+    return `${sign}$${compactMantissa(abs.div(1_000_000_000), decimals, significantDigits, rm)}B`
   }
   if (abs.gte(1_000_000)) {
-    return `${sign}$${abs.div(1_000_000).toFixed(decimals)}M`
+    return `${sign}$${compactMantissa(abs.div(1_000_000), decimals, significantDigits, rm)}M`
   }
   if (abs.gte(1_000)) {
-    return `${sign}$${abs.div(1_000).toFixed(decimals)}K`
+    return `${sign}$${compactMantissa(abs.div(1_000), decimals, significantDigits, rm)}K`
   }
   return `${sign}$${abs.toFixed(decimals)}`
 }

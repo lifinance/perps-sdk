@@ -281,4 +281,29 @@ describe('formatCompactUsd', () => {
   it('renders the placeholder for null', () => {
     expect(formatCompactUsd(null)).toBe('—')
   })
+
+  it('truncates the mantissa with floor rounding', () => {
+    expect(formatCompactUsd(84_559.55, { rounding: 'floor' })).toBe('$84.55K')
+  })
+
+  it.each([
+    [84_559.55, '$84.5K'],
+    [845_999, '$845K'],
+    [1_259_000, '$1.25M'],
+    [84_000, '$84K'],
+    [10_000, '$10K'],
+    [999_999.99, '$999K'],
+    [1_000_000, '$1M'],
+    [9_999.999, '$9,999.99'],
+    [-84_559.55, '-$84.5K'],
+  ])('formats %s as %s with floor, 3 significant digits and compactFrom 10000', (value, expected) => {
+    expect(
+      formatCompactUsd(value, {
+        locale: 'en-US',
+        rounding: 'floor',
+        significantDigits: 3,
+        compactFrom: 10_000,
+      })
+    ).toBe(expected)
+  })
 })

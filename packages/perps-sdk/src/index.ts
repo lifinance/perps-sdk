@@ -52,7 +52,11 @@ export {
   safeScaledIntegerToDecimalString,
   scaledIntegerToDecimalString,
 } from './decimal/convert.js'
-export type { FormatOptions, RoundingMode } from './decimal/format.js'
+export type {
+  CompactUsdOptions,
+  FormatOptions,
+  RoundingMode,
+} from './decimal/format.js'
 export {
   formatCompactUsd,
   formatNumber,
