@@ -1,6 +1,17 @@
 import type { DecimalString } from '@lifi/perps-types'
 import Big from 'big.js'
-import { decimalStringToBig } from './decimalStringToBig.js'
+import {
+  absDecimalString,
+  divideDecimalStringRoundDown,
+  multiplyDecimalString,
+} from './arithmetic.js'
+import { compareDecimalStrings } from './compare.js'
+import {
+  type DecimalRounding,
+  numberToDecimalString,
+  roundDecimalString,
+} from './convert.js'
+import { bigToDecimalString, decimalStringToBig } from './decimalStringToBig.js'
 
 /**
  * Options shared by the human-facing display formatters.
@@ -24,6 +35,21 @@ export interface FormatOptions {
    * validated against a ceiling (available balance, removable margin).
    */
   rounding?: RoundingMode
+}
+
+/**
+ * Options for {@link formatCompactUsd}.
+ *
+ * @public
+ */
+export interface CompactUsdOptions extends FormatOptions {
+  /**
+   * Significant digits of the compact mantissa, with trailing zeros dropped
+   * (`$84.5K`, `$1M`). Replaces `decimals` when set.
+   */
+  significantDigits?: number
+  /** Magnitudes below this value render as {@link formatUsd}, with no suffix. */
+  compactFrom?: DecimalString
 }
 
 /**
@@ -275,20 +301,76 @@ export function formatPrice(
   return `${sign}$${body}`
 }
 
+const COMPACT_TIER_SIZE = 1_000
+
+const COMPACT_TIERS = [
+  [1_000, 'K'],
+  [1_000_000, 'M'],
+] as const
+
+const COMPACT_DECIMAL_ROUNDING: Record<RoundingMode, DecimalRounding> = {
+  halfUp: 'round',
+  floor: 'truncate',
+}
+
+/** Significant digits span the whole number: one digit truncates `84.559` to `80`. */
+function roundToSignificantDigits(
+  value: string,
+  significantDigits: number,
+  rounding: DecimalRounding
+): string {
+  const integerPart = roundDecimalString(absDecimalString(value), 0, 'truncate')
+  const integerDigits = integerPart === '0' ? 0 : integerPart.length
+  const decimals = significantDigits - integerDigits
+  if (decimals >= 0) {
+    return roundDecimalString(value, decimals, rounding)
+  }
+  const scale = `1${'0'.repeat(-decimals)}`
+  return multiplyDecimalString(
+    roundDecimalString(divideDecimalStringRoundDown(value, scale), 0, rounding),
+    scale
+  )
+}
+
+function compactMantissa(
+  value: string,
+  divisor: number,
+  decimals: number,
+  significantDigits: number | undefined,
+  rounding: DecimalRounding
+): string {
+  const scaled = divideDecimalStringRoundDown(
+    value,
+    numberToDecimalString(divisor)
+  )
+  return significantDigits === undefined
+    ? roundDecimalString(scaled, decimals, rounding)
+    : roundToSignificantDigits(scaled, significantDigits, rounding)
+}
+
 /**
  * Format a USD value compactly with a `B`/`M`/`K` suffix: `$1.23B`, `$45.6M`,
  * `$789.0K`, `$12.34`.
  *
- * Negatives place the `-` before the `$`. Null/undefined/non-finite input
+ * Values below 1000 (or `compactFrom`) render as {@link formatUsd}. Negatives
+ * place the `-` before the `$`. `rounding: 'floor'` truncates toward zero, so
+ * a compact balance is never overstated. Null/undefined/non-finite input
  * renders the placeholder.
  *
  * @public
  */
 export function formatCompactUsd(
   value: FormatInput,
-  options: FormatOptions = {}
+  options: CompactUsdOptions = {}
 ): string {
-  const { decimals = 2, placeholder = DEFAULT_PLACEHOLDER } = options
+  const {
+    decimals = 2,
+    placeholder = DEFAULT_PLACEHOLDER,
+    locale,
+    rounding = 'halfUp',
+    significantDigits,
+    compactFrom,
+  } = options
   const n = toBig(value)
   if (n === null) {
     return placeholder
@@ -296,16 +378,48 @@ export function formatCompactUsd(
   if (typeof n === 'string') {
     return n
   }
-  const sign = n.lt(0) ? '-' : ''
-  const abs = n.abs()
-  if (abs.gte(1_000_000_000)) {
-    return `${sign}$${abs.div(1_000_000_000).toFixed(decimals)}B`
+  const decimal = bigToDecimalString(n)
+  const abs = absDecimalString(decimal)
+  if (
+    compareDecimalStrings(abs, numberToDecimalString(COMPACT_TIER_SIZE)) < 0 ||
+    (compactFrom !== undefined && compareDecimalStrings(abs, compactFrom) < 0)
+  ) {
+    return formatUsd(value, options)
   }
-  if (abs.gte(1_000_000)) {
-    return `${sign}$${abs.div(1_000_000).toFixed(decimals)}M`
+  const decimalRounding = COMPACT_DECIMAL_ROUNDING[rounding]
+  const render = (mantissa: string, suffix: string): string => {
+    const mantissaDecimals =
+      significantDigits === undefined
+        ? decimals
+        : (mantissa.split('.')[1]?.length ?? 0)
+    return `${formatUsd(mantissa, { locale, decimals: mantissaDecimals })}${suffix}`
   }
-  if (abs.gte(1_000)) {
-    return `${sign}$${abs.div(1_000).toFixed(decimals)}K`
+  // The tier is picked after rounding, so 999,999.99 promotes to M, not 1000K.
+  for (const [divisor, suffix] of COMPACT_TIERS) {
+    const mantissa = compactMantissa(
+      decimal,
+      divisor,
+      decimals,
+      significantDigits,
+      decimalRounding
+    )
+    if (
+      compareDecimalStrings(
+        absDecimalString(mantissa),
+        numberToDecimalString(COMPACT_TIER_SIZE)
+      ) < 0
+    ) {
+      return render(mantissa, suffix)
+    }
   }
-  return `${sign}$${abs.toFixed(decimals)}`
+  return render(
+    compactMantissa(
+      decimal,
+      1_000_000_000,
+      decimals,
+      significantDigits,
+      decimalRounding
+    ),
+    'B'
+  )
 }
