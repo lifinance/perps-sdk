@@ -287,6 +287,53 @@ describe('formatCompactUsd', () => {
   })
 
   it.each([
+    [999.999, '$999.99'],
+    [12.349, '$12.34'],
+    [-0.004, '$0.00'],
+    [0, '$0.00'],
+  ])('formats %s below 1000 as %s with floor rounding', (value, expected) => {
+    expect(
+      formatCompactUsd(value, { locale: 'en-US', rounding: 'floor' })
+    ).toBe(expected)
+  })
+
+  it('uses the locale decimal separator below 1000', () => {
+    expect(formatCompactUsd(12.34, { locale: 'de-DE' })).toBe('$12,34')
+  })
+
+  it('rounds half up with significant digits by default', () => {
+    expect(formatCompactUsd(84_559.55, { significantDigits: 3 })).toBe('$84.6K')
+  })
+
+  it.each([
+    [999_999.999, {}, '$1.00M'],
+    [999_999.99, { significantDigits: 3 }, '$1M'],
+    [999_999_999.999, {}, '$1.00B'],
+    [999_999.99, { rounding: 'floor', significantDigits: 3 }, '$999K'],
+  ] as const)('promotes %s to the next tier when rounding reaches 1000 (%o)', (value, options, expected) => {
+    expect(formatCompactUsd(value, options)).toBe(expected)
+  })
+
+  it('uses significant digits in the billions tier', () => {
+    expect(
+      formatCompactUsd(1_259_000_000, {
+        rounding: 'floor',
+        significantDigits: 3,
+      })
+    ).toBe('$1.25B')
+  })
+
+  it('reads a DecimalString value and compactFrom', () => {
+    expect(
+      formatCompactUsd('84559.55', {
+        rounding: 'floor',
+        significantDigits: 3,
+        compactFrom: '10000',
+      })
+    ).toBe('$84.5K')
+  })
+
+  it.each([
     [84_559.55, '$84.5K'],
     [845_999, '$845K'],
     [1_259_000, '$1.25M'],
@@ -295,6 +342,7 @@ describe('formatCompactUsd', () => {
     [999_999.99, '$999K'],
     [1_000_000, '$1M'],
     [9_999.999, '$9,999.99'],
+    [-9_999.999, '-$9,999.99'],
     [-84_559.55, '-$84.5K'],
   ])('formats %s as %s with floor, 3 significant digits and compactFrom 10000', (value, expected) => {
     expect(

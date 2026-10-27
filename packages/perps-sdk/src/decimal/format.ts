@@ -290,6 +290,11 @@ export function formatPrice(
   return `${sign}$${body}`
 }
 
+const COMPACT_TIERS = [
+  [1_000, 'K'],
+  [1_000_000, 'M'],
+] as const
+
 function compactMantissa(
   scaled: Big,
   decimals: number,
@@ -309,9 +314,10 @@ function compactMantissa(
  * Format a USD value compactly with a `B`/`M`/`K` suffix: `$1.23B`, `$45.6M`,
  * `$789.0K`, `$12.34`.
  *
- * Negatives place the `-` before the `$`. `rounding: 'floor'` truncates the
- * mantissa toward zero, so a compact balance is never overstated.
- * Null/undefined/non-finite input renders the placeholder.
+ * Values below 1000 (or `compactFrom`) render as {@link formatUsd}. Negatives
+ * place the `-` before the `$`. `rounding: 'floor'` truncates toward zero, so
+ * a compact balance is never overstated. Null/undefined/non-finite input
+ * renders the placeholder.
  *
  * @public
  */
@@ -335,18 +341,21 @@ export function formatCompactUsd(
   }
   const sign = n.lt(0) ? '-' : ''
   const abs = n.abs()
-  if (compactFrom !== undefined && abs.lt(compactFrom)) {
+  if (abs.lt(1_000) || (compactFrom !== undefined && abs.lt(compactFrom))) {
     return formatUsd(value, options)
   }
   const rm = rounding === 'floor' ? Big.roundDown : Big.roundHalfUp
-  if (abs.gte(1_000_000_000)) {
-    return `${sign}$${compactMantissa(abs.div(1_000_000_000), decimals, significantDigits, rm)}B`
+  // The tier is picked after rounding, so 999,999.99 promotes to M, not 1000K.
+  for (const [divisor, suffix] of COMPACT_TIERS) {
+    const mantissa = compactMantissa(
+      abs.div(divisor),
+      decimals,
+      significantDigits,
+      rm
+    )
+    if (new Big(mantissa).lt(1_000)) {
+      return `${sign}$${mantissa}${suffix}`
+    }
   }
-  if (abs.gte(1_000_000)) {
-    return `${sign}$${compactMantissa(abs.div(1_000_000), decimals, significantDigits, rm)}M`
-  }
-  if (abs.gte(1_000)) {
-    return `${sign}$${compactMantissa(abs.div(1_000), decimals, significantDigits, rm)}K`
-  }
-  return `${sign}$${abs.toFixed(decimals)}`
+  return `${sign}$${compactMantissa(abs.div(1_000_000_000), decimals, significantDigits, rm)}B`
 }
