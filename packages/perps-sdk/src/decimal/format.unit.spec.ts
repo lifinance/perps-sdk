@@ -282,6 +282,10 @@ describe('formatCompactUsd', () => {
     expect(formatCompactUsd(null)).toBe('—')
   })
 
+  it('shows a string that does not match the decimal pattern unchanged', () => {
+    expect(formatCompactUsd('$84.5K', { significantDigits: 3 })).toBe('$84.5K')
+  })
+
   it('truncates the mantissa with floor rounding', () => {
     expect(formatCompactUsd(84_559.55, { rounding: 'floor' })).toBe('$84.55K')
   })
@@ -323,6 +327,35 @@ describe('formatCompactUsd', () => {
     ).toBe('$1.25B')
   })
 
+  it.each([
+    [84_559, 1, '$80K'],
+    [845_999, 2, '$840K'],
+    [845_999, 3, '$845K'],
+    [1_259_000_000_000, 2, '$1,200B'],
+  ])('applies significant digits to the integer part: %s with %s digits is %s', (value, significantDigits, expected) => {
+    expect(
+      formatCompactUsd(value, {
+        locale: 'en-US',
+        rounding: 'floor',
+        significantDigits,
+      })
+    ).toBe(expected)
+  })
+
+  it('keeps fixed decimals without significant digits', () => {
+    expect(formatCompactUsd(84_000, { rounding: 'floor' })).toBe('$84.00K')
+  })
+
+  it('uses the locale decimal separator for the compact number', () => {
+    expect(formatCompactUsd(84_559.55, { locale: 'de-DE' })).toBe('$84,56K')
+  })
+
+  it('groups a compact number of 1000 or more in the billions tier', () => {
+    expect(formatCompactUsd(1_234_000_000_000, { locale: 'en-US' })).toBe(
+      '$1,234.00B'
+    )
+  })
+
   it('reads a DecimalString value and compactFrom', () => {
     expect(
       formatCompactUsd('84559.55', {
@@ -344,13 +377,14 @@ describe('formatCompactUsd', () => {
     [9_999.999, '$9,999.99'],
     [-9_999.999, '-$9,999.99'],
     [-84_559.55, '-$84.5K'],
+    ['84599.999999999999999999999999', '$84.5K'],
   ])('formats %s as %s with floor, 3 significant digits and compactFrom 10000', (value, expected) => {
     expect(
       formatCompactUsd(value, {
         locale: 'en-US',
         rounding: 'floor',
         significantDigits: 3,
-        compactFrom: 10_000,
+        compactFrom: '10000',
       })
     ).toBe(expected)
   })
