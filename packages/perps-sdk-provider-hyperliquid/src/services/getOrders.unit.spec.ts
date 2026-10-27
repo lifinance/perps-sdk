@@ -1,7 +1,11 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import { OrderStatus, OrderType, TimeInForce } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { HL_FRONTEND_OPEN_ORDERS, HL_MARKETS } from '../../test/fixtures.js'
+import {
+  HL_FRONTEND_OPEN_ORDERS,
+  HL_MARKETS,
+  HL_TWAP_HISTORY_FINISHED,
+} from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import { getOrders } from './getOrders.js'
@@ -142,6 +146,74 @@ describe('getOrders', () => {
     expect(orders.map((order) => [order.orderId, order.status])).toEqual([
       ['88', OrderStatus.FILLED],
       ['3155', OrderStatus.FILLED],
+    ])
+  })
+
+  it('maps a TWAP from its newest twapHistory row', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        historicalOrders: [],
+        twapHistory: HL_TWAP_HISTORY_FINISHED,
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [
+        OrderStatus.OPEN,
+        OrderStatus.PARTIALLY_FILLED,
+        OrderStatus.FILLED,
+      ],
+    })
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '2329352',
+        type: OrderType.TWAP,
+        status: OrderStatus.FILLED,
+        filledSize: '0.042',
+        remainingSize: '0',
+      }),
+    ])
+  })
+
+  it('drops a finished TWAP from the default active filter', async () => {
+    const installed = installInfoFetchMock(
+      { frontendOpenOrders: [], twapHistory: HL_TWAP_HISTORY_FINISHED },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    expect((await getOrders(ctx, { address: ADDRESS })).orders).toEqual([])
+  })
+
+  it.each([
+    ['terminated', OrderStatus.CANCELLED],
+    ['error', OrderStatus.REJECTED],
+  ])('maps a TWAP whose newest row is %s as %s', async (venueStatus, expected) => {
+    const [newest, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        historicalOrders: [],
+        twapHistory: [
+          {
+            ...newest,
+            status: { status: venueStatus },
+            state: { ...newest.state, executedSz: '0.021' },
+          },
+          activated,
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.OPEN, expected],
+    })
+    expect(orders.map((order) => [order.orderId, order.status])).toEqual([
+      ['2329352', expected],
     ])
   })
 

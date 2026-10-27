@@ -17,6 +17,7 @@ import { withExplorerLinks } from '../utils/explorer.js'
 import { mapOrder, perpsDexNames } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapOrderRow } from '../utils/mapOrder.js'
+import { resolveLatestTwapEntries } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
@@ -116,7 +117,7 @@ export const getOrders = async (
     }
   }
   // TWAP ids and regular order ids occupy separate venue namespaces.
-  for (const twap of twaps) {
+  for (const twap of resolveLatestTwapEntries(twaps)) {
     keep(
       `twap:${twap.twapId}`,
       mapOrderRow(twap.state.coin, registry, (market) => mapOrder(twap, market))
