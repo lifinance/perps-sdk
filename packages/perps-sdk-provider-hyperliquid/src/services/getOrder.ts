@@ -15,6 +15,7 @@ import type {
 import { withExplorerLinks } from '../utils/explorer.js'
 import { assetIsOutcome, mapOrder } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { resolveLatestTwapEntries } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
 
 /**
@@ -72,7 +73,7 @@ export const getOrder = async (
       { type: 'twapHistory', user: params.address },
       infoOpts
     )
-    const twap = history.find(
+    const twap = resolveLatestTwapEntries(history).find(
       (entry) =>
         String(entry.twapId) === params.id && !assetIsOutcome(entry.state.coin)
     )

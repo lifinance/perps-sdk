@@ -8,6 +8,7 @@ import {
   HL_ORDER_STATUS_FOUND_WITH_CLOID,
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
+  HL_TWAP_HISTORY_FINISHED,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -180,6 +181,24 @@ describe('getOrder', () => {
       type: OrderType.TWAP,
       status: OrderStatus.OPEN,
       durationSeconds: 300,
+    })
+  })
+
+  it('reads a TWAP from its newest twapHistory row', async () => {
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [...HL_TWAP_HISTORY_FINISHED].reverse(),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).toMatchObject({
+      orderId: '2329352',
+      status: OrderStatus.FILLED,
+      filledSize: '0.042',
     })
   })
 

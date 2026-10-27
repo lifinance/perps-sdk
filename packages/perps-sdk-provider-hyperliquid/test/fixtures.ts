@@ -13,6 +13,7 @@ import type {
   HlOrderStatusResponse,
   HlPerpDexs,
   HlSpotClearinghouseState,
+  HlTwapHistoryEntry,
   HlUserFees,
   HlUserFills,
   HlUserFunding,
@@ -327,6 +328,40 @@ export const HL_ORDER_STATUS_OUTCOME: HlOrderStatusResponse = {
 export const HL_ORDER_STATUS_UNKNOWN: HlOrderStatusResponse = {
   status: 'unknownOid',
 }
+
+/** `twapHistory` of one finished ETH TWAP, newest row first as the venue sends it. */
+export const HL_TWAP_HISTORY_FINISHED: HlTwapHistoryEntry[] = [
+  {
+    twapId: 2329352,
+    time: 1_792_155_172,
+    status: { status: 'finished' },
+    state: {
+      coin: 'ETH',
+      executedNtl: '167.58',
+      executedSz: '0.042',
+      minutes: 5,
+      side: 'B',
+      sz: '0.042',
+      timestamp: 1_792_154_930_000,
+      reduceOnly: false,
+    },
+  },
+  {
+    twapId: 2329352,
+    time: 1_792_154_930,
+    status: { status: 'activated' },
+    state: {
+      coin: 'ETH',
+      executedNtl: '0.0',
+      executedSz: '0.0',
+      minutes: 5,
+      side: 'B',
+      sz: '0.042',
+      timestamp: 1_792_154_930_000,
+      reduceOnly: false,
+    },
+  },
+]
 
 export const HL_USER_FILLS: HlUserFills = [
   {
