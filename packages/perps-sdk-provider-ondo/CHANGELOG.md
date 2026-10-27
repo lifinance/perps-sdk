@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 31.0.1
+
+### Patch Changes
+
+- [#652](https://github.com/lifinance/perps-sdk/pull/652) [`beb8cb9`](https://github.com/lifinance/perps-sdk/commit/beb8cb977dd07d8ae968176e7d3166acbc82387c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Order.statusReason` gives a short display text for a cancelled or rejected order, not the raw venue code.
+
+- Updated dependencies [[`beb8cb9`](https://github.com/lifinance/perps-sdk/commit/beb8cb977dd07d8ae968176e7d3166acbc82387c)]:
+  - @lifi/perps-types@25.0.1
+
 ## 31.0.0
 
 ### Minor Changes
