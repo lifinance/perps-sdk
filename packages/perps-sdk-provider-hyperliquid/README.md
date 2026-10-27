@@ -188,17 +188,19 @@ explorer failure leaves the rows unlinked instead of failing the order read.
 | `open`, positive filled size | PARTIALLY_FILLED |
 | `triggered` | TRIGGERED |
 | `filled` | FILLED |
-| `canceled`, `scheduledCancel`, documented cancellation reasons | CANCELLED |
-| `rejected`, documented rejection reasons | REJECTED |
+| `canceled`, `scheduledCancel`, documented cancellation reasons, unknown `...Canceled` statuses | CANCELLED |
+| `rejected`, documented rejection reasons, unknown `...Rejected` statuses | REJECTED |
 | TWAP `activated` | OPEN or PARTIALLY_FILLED |
 | TWAP `waitingForTrigger` | OPEN |
 | TWAP `finished` | FILLED |
 | TWAP `terminated`, `stopped` | CANCELLED |
 | TWAP `error` | REJECTED |
 
-Hyperliquid does not document an EXPIRED order status. Unknown status strings
-throw `PerpsError`. Cancel and rejection rows keep the venue reason in
-`statusReason`.
+Hyperliquid does not document an EXPIRED order status. Cancel and rejection
+rows give a short display text for the venue reason in `statusReason`, not the
+venue status code. An unknown status that ends with `Canceled` gives
+`Cancelled by the venue.`. An unknown status that ends with `Rejected` gives
+`Rejected by the venue.`. All other unknown status strings throw `PerpsError`.
 
 ```ts
 import { getOrders } from '@lifi/perps-sdk'

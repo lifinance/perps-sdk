@@ -72,10 +72,10 @@ separate fields. The mapper omits `explorerLink` because these venue rows carry 
 | --- | --- |
 | `open`, `untriggered` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
 | `fullyfilled` | `FILLED` |
-| `canceled` | `CANCELLED`; `statusReason` preserves the venue cancellation reason |
+| `canceled` | `CANCELLED`; `statusReason` gives a short display text for the venue `cancelReason` |
 | TWAP `running` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |
 | TWAP `completed` | `FILLED` |
-| TWAP `cancelled` | `CANCELLED`; `statusReason` preserves the venue cancellation code |
+| TWAP `cancelled` | `CANCELLED`; `statusReason` gives a short display text for the venue `twapCancelReason` |
 | `pending` | `PENDING` |
 | An unknown status | The mapper throws `PerpsError` |
 

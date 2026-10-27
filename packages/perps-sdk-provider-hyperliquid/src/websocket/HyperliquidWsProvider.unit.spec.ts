@@ -2809,7 +2809,7 @@ describe('HyperliquidWsProvider', () => {
           {
             orderId: '200',
             status: OrderStatus.CANCELLED,
-            statusReason: 'siblingFilledCanceled',
+            statusReason: 'Cancelled: the linked TP/SL order filled.',
           },
         ],
         terminated: ['200'],

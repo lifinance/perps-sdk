@@ -58,13 +58,54 @@ export const mapOrderType = (
   }
 }
 
-/** Translate venue lifecycle statuses; unknown statuses are errors. */
-export const mapOrderStatus = (status: string): OrderStatus => {
+const STATUS_REASONS = {
+  canceled: 'Cancelled.',
+  scheduledCancel: 'Cancelled: the scheduled cancel deadline passed.',
+  marginCanceled: 'Cancelled: not enough margin to fill the order.',
+  vaultWithdrawalCanceled: 'Cancelled: a user withdrew from the vault.',
+  openInterestCapCanceled:
+    'Cancelled: the price was too aggressive at the open interest cap.',
+  selfTradeCanceled:
+    'Cancelled: the order would have traded with your own order.',
+  reduceOnlyCanceled:
+    'Cancelled: the reduce-only order would not reduce the position.',
+  siblingFilledCanceled: 'Cancelled: the linked TP/SL order filled.',
+  delistedCanceled: 'Cancelled: the market was delisted.',
+  liquidatedCanceled: 'Cancelled: the account was liquidated.',
+  rejected: 'Rejected.',
+  tickRejected: 'Rejected: the price does not match the tick size.',
+  minTradeNtlRejected: 'Rejected: the order value is below the minimum.',
+  perpMarginRejected: 'Rejected: not enough margin for this order.',
+  reduceOnlyRejected:
+    'Rejected: the reduce-only order would not reduce the position.',
+  badAloPxRejected:
+    'Rejected: the post-only order would have filled immediately.',
+  iocCancelRejected: 'Rejected: the immediate-or-cancel order could not fill.',
+  badTriggerPxRejected: 'Rejected: the TP/SL trigger price is not valid.',
+  marketOrderNoLiquidityRejected:
+    'Rejected: not enough liquidity for the market order.',
+  positionIncreaseAtOpenInterestCapRejected:
+    'Rejected: the market is at its open interest cap.',
+  positionFlipAtOpenInterestCapRejected:
+    'Rejected: the market is at its open interest cap.',
+  tooAggressiveAtOpenInterestCapRejected:
+    'Rejected: the price was too aggressive at the open interest cap.',
+  openInterestIncreaseRejected:
+    'Rejected: the market is at its open interest cap.',
+  insufficientSpotBalanceRejected: 'Rejected: not enough spot balance.',
+  oracleRejected: 'Rejected: the price is too far from the oracle price.',
+  perpMaxPositionRejected:
+    'Rejected: the position is larger than the limit for the current leverage.',
+} as const
+
+const mapOrderLifecycle = (
+  status: string
+): Pick<OrderBase, 'status' | 'statusReason'> => {
   switch (status) {
     case 'open':
-      return OrderStatus.OPEN
+      return { status: OrderStatus.OPEN }
     case 'filled':
-      return OrderStatus.FILLED
+      return { status: OrderStatus.FILLED }
     case 'canceled':
     case 'scheduledCancel':
     case 'marginCanceled':
@@ -75,7 +116,10 @@ export const mapOrderStatus = (status: string): OrderStatus => {
     case 'siblingFilledCanceled':
     case 'delistedCanceled':
     case 'liquidatedCanceled':
-      return OrderStatus.CANCELLED
+      return {
+        status: OrderStatus.CANCELLED,
+        statusReason: STATUS_REASONS[status],
+      }
     case 'rejected':
     case 'tickRejected':
     case 'minTradeNtlRejected':
@@ -92,13 +136,36 @@ export const mapOrderStatus = (status: string): OrderStatus => {
     case 'insufficientSpotBalanceRejected':
     case 'oracleRejected':
     case 'perpMaxPositionRejected':
-      return OrderStatus.REJECTED
+      return {
+        status: OrderStatus.REJECTED,
+        statusReason: STATUS_REASONS[status],
+      }
     case 'triggered':
-      return OrderStatus.TRIGGERED
+      return { status: OrderStatus.TRIGGERED }
     default:
+      // Documented cancel and reject reasons use these suffixes; an undocumented one keeps the row.
+      if (status.endsWith('Canceled')) {
+        return {
+          status: OrderStatus.CANCELLED,
+          statusReason: 'Cancelled by the venue.',
+        }
+      }
+      if (status.endsWith('Rejected')) {
+        return {
+          status: OrderStatus.REJECTED,
+          statusReason: 'Rejected by the venue.',
+        }
+      }
       throw venueError(`Unknown Hyperliquid order status: ${status}`)
   }
 }
+
+/**
+ * Translate venue lifecycle statuses. An unknown `...Canceled` or `...Rejected`
+ * status maps by its suffix; any other unknown status is an error.
+ */
+export const mapOrderStatus = (status: string): OrderStatus =>
+  mapOrderLifecycle(status).status
 
 const skipOrder = (
   marketId: string,
@@ -173,6 +240,7 @@ export const mapOrder = (
       return skipOrder(market.id, 'time', raw.time)
     }
     let status: OrderStatus
+    let statusReason: string | undefined
     switch (raw.status.status) {
       case 'activated':
         status =
@@ -189,9 +257,11 @@ export const mapOrder = (
       case 'terminated':
       case 'stopped':
         status = OrderStatus.CANCELLED
+        statusReason = STATUS_REASONS.canceled
         break
       case 'error':
         status = OrderStatus.REJECTED
+        statusReason = STATUS_REASONS.rejected
         break
       default:
         throw venueError(
@@ -213,9 +283,7 @@ export const mapOrder = (
       ...(averagePrice === undefined ? {} : { averagePrice }),
       reduceOnly: state.reduceOnly,
       status,
-      ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
-        ? { statusReason: raw.status.description ?? raw.status.status }
-        : {}),
+      ...(statusReason === undefined ? {} : { statusReason }),
       createdAt,
       updatedAt,
       startedAt: createdAt,
@@ -239,7 +307,8 @@ export const mapOrder = (
   if (updatedAt === undefined) {
     return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
-  let status = mapOrderStatus(venueStatus)
+  const lifecycle = mapOrderLifecycle(venueStatus)
+  let status = lifecycle.status
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING
   } else if (
@@ -254,9 +323,9 @@ export const mapOrder = (
     ...(typeof o.cloid === 'string' ? { clientOrderId: o.cloid } : {}),
     side: o.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
     status,
-    ...(status === OrderStatus.CANCELLED || status === OrderStatus.REJECTED
-      ? { statusReason: venueStatus }
-      : {}),
+    ...(lifecycle.statusReason === undefined
+      ? {}
+      : { statusReason: lifecycle.statusReason }),
     originalSize: o.origSz,
     remainingSize: o.sz,
     filledSize,

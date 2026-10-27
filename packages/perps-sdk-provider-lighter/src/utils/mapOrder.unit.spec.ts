@@ -175,9 +175,53 @@ describe('mapOrder (Lighter)', () => {
   ])('maps the %s lifecycle', (status, expected) => {
     const order = mapOrder(baseOrder({ status }), MARKET)
     expect(order?.status).toBe(expected)
-    expect(order?.statusReason).toBe(
-      expected === OrderStatus.CANCELLED ? status : undefined
-    )
+    if (expected !== OrderStatus.CANCELLED) {
+      expect(order).not.toHaveProperty('statusReason')
+    }
+  })
+
+  it.each([
+    ['canceled', 'Cancelled.'],
+    [
+      'canceled-post-only',
+      'Cancelled: the post-only order would have filled immediately.',
+    ],
+    [
+      'canceled-reduce-only',
+      'Cancelled: the reduce-only order would have increased the position.',
+    ],
+    [
+      'canceled-position-not-allowed',
+      'Cancelled: the venue does not allow this position.',
+    ],
+    [
+      'canceled-margin-not-allowed',
+      'Cancelled: not enough margin for this order.',
+    ],
+    [
+      'canceled-too-much-slippage',
+      'Cancelled: the price moved more than the slippage limit.',
+    ],
+    [
+      'canceled-not-enough-liquidity',
+      'Cancelled: not enough liquidity to fill the order.',
+    ],
+    [
+      'canceled-self-trade',
+      'Cancelled: the order would have traded with your own order.',
+    ],
+    ['canceled-oco', 'Cancelled: the other order in the pair executed.'],
+    ['canceled-child', 'Cancelled: the parent order closed.'],
+    ['canceled-liquidation', 'Cancelled: the account was liquidated.'],
+    [
+      'canceled-invalid-balance',
+      'Cancelled: the account balance is not sufficient.',
+    ],
+  ])('gives display text for the %s status reason', (status, statusReason) => {
+    expect(mapOrder(baseOrder({ status }), MARKET)).toMatchObject({
+      status: OrderStatus.CANCELLED,
+      statusReason,
+    })
   })
 
   it.each([
