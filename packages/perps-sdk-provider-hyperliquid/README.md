@@ -217,7 +217,11 @@ The default filter is `ACTIVE_ORDER_STATUSES`: PENDING, OPEN,
 PARTIALLY_FILLED, and TRIGGERED. Active filters read `frontendOpenOrders`.
 Terminal filters read `historicalOrders`. Mixed filters read both.
 `twapHistory` supplies both running and finished TWAP parents.
-`getOrder` reads `orderStatus` and uses the same mapper.
+Hyperliquid writes the `activated` row of a TWAP one time, at activation.
+Thus, active filters also read `userTwapSliceFills`. A running TWAP takes its
+filled size and average price from the slice fills of its `twapId`.
+`getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
+`getOrder` also reads `userTwapSliceFills`.
 
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.

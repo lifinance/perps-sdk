@@ -9,6 +9,7 @@ import {
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
   HL_TWAP_HISTORY_FINISHED,
+  HL_TWAP_SLICE_FILLS,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -172,6 +173,7 @@ describe('getOrder', () => {
             },
           },
         ],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -199,6 +201,39 @@ describe('getOrder', () => {
       orderId: '2329352',
       status: OrderStatus.FILLED,
       filledSize: '0.042',
+    })
+    expect(installed.requests.map(({ body }) => body.type)).toEqual([
+      'preTransferCheck',
+      'orderStatus',
+      'twapHistory',
+    ])
+  })
+
+  it('reads a running TWAP from the slice fills of its twapId', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: HL_TWAP_SLICE_FILLS,
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).toMatchObject({
+      orderId: '2329352',
+      type: OrderType.TWAP,
+      status: OrderStatus.PARTIALLY_FILLED,
+      originalSize: '0.042',
+      filledSize: '0.0094',
+      remainingSize: '0.0326',
+      averagePrice: '3991',
+    })
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userTwapSliceFills',
+      user: ADDRESS,
     })
   })
 

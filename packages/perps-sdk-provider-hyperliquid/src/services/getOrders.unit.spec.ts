@@ -5,6 +5,7 @@ import {
   HL_FRONTEND_OPEN_ORDERS,
   HL_MARKETS,
   HL_TWAP_HISTORY_FINISHED,
+  HL_TWAP_SLICE_FILLS,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -61,6 +62,7 @@ describe('getOrders', () => {
       {
         frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
         twapHistory: [activeTwap],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -70,6 +72,7 @@ describe('getOrders', () => {
       'preTransferCheck',
       'frontendOpenOrders',
       'twapHistory',
+      'userTwapSliceFills',
     ])
     expect(result.orders.map((order) => order.orderId)).toEqual([
       '1',
@@ -97,7 +100,11 @@ describe('getOrders', () => {
     const tp = { ...sl, oid: 100, orderType: 'Take Profit Market' }
     const parent = { ...HL_FRONTEND_OPEN_ORDERS[0], children: [sl, tp] }
     const installed = installInfoFetchMock(
-      { frontendOpenOrders: [parent, sl], twapHistory: [] },
+      {
+        frontendOpenOrders: [parent, sl],
+        twapHistory: [],
+        userTwapSliceFills: [],
+      },
       HL_MARKETS
     )
     restore = installed.restore
@@ -149,12 +156,42 @@ describe('getOrders', () => {
     ])
   })
 
+  it('maps a running TWAP from the slice fills of its twapId', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        twapHistory: [activated],
+        userTwapSliceFills: HL_TWAP_SLICE_FILLS,
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+    expect(installed.requests.map((request) => request.body)).toContainEqual({
+      type: 'userTwapSliceFills',
+      user: ADDRESS,
+    })
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '2329352',
+        type: OrderType.TWAP,
+        status: OrderStatus.PARTIALLY_FILLED,
+        originalSize: '0.042',
+        filledSize: '0.0094',
+        remainingSize: '0.0326',
+        averagePrice: '3991',
+      }),
+    ])
+  })
+
   it('maps a TWAP from its newest twapHistory row', async () => {
     const installed = installInfoFetchMock(
       {
         frontendOpenOrders: [],
         historicalOrders: [],
         twapHistory: HL_TWAP_HISTORY_FINISHED,
+        userTwapSliceFills: HL_TWAP_SLICE_FILLS,
       },
       HL_MARKETS
     )
@@ -174,13 +211,18 @@ describe('getOrders', () => {
         status: OrderStatus.FILLED,
         filledSize: '0.042',
         remainingSize: '0',
+        averagePrice: '3990',
       }),
     ])
   })
 
   it('drops a finished TWAP from the default active filter', async () => {
     const installed = installInfoFetchMock(
-      { frontendOpenOrders: [], twapHistory: HL_TWAP_HISTORY_FINISHED },
+      {
+        frontendOpenOrders: [],
+        twapHistory: HL_TWAP_HISTORY_FINISHED,
+        userTwapSliceFills: HL_TWAP_SLICE_FILLS,
+      },
       HL_MARKETS
     )
     restore = installed.restore
@@ -196,6 +238,7 @@ describe('getOrders', () => {
       {
         frontendOpenOrders: [],
         historicalOrders: [],
+        userTwapSliceFills: [],
         twapHistory: [
           {
             ...newest,
@@ -224,6 +267,7 @@ describe('getOrders', () => {
           ...HL_FRONTEND_OPEN_ORDERS,
           { ...HL_FRONTEND_OPEN_ORDERS[0], oid: 3, coin: '#26140' },
         ],
+        userTwapSliceFills: [],
         twapHistory: [
           activeTwap,
           {
@@ -268,6 +312,7 @@ describe('getOrders', () => {
         ],
         frontendOpenOrders: [],
         twapHistory: [],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -290,6 +335,7 @@ describe('getOrders', () => {
         frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
         historicalOrders: [historical],
         twapHistory: [activeTwap],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -303,6 +349,7 @@ describe('getOrders', () => {
       'frontendOpenOrders',
       'historicalOrders',
       'twapHistory',
+      'userTwapSliceFills',
     ])
     expect(orders.some((order) => order.orderId === '88')).toBe(true)
     expect(
@@ -320,6 +367,7 @@ describe('getOrders', () => {
       {
         frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
         twapHistory: [activeTwap],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -382,6 +430,7 @@ describe('getOrders', () => {
           { ...HL_FRONTEND_OPEN_ORDERS[1], coin: 'GHOST' },
         ],
         twapHistory: [],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -434,6 +483,7 @@ describe('getOrders', () => {
           HL_FRONTEND_OPEN_ORDERS[1],
         ],
         twapHistory: [],
+        userTwapSliceFills: [],
         userDetails: {
           txs: [
             explorerTx('0xunrelated', [CLOID_B]),
@@ -461,6 +511,7 @@ describe('getOrders', () => {
           { ...HL_FRONTEND_OPEN_ORDERS[1], cloid: CLOID_B },
         ],
         twapHistory: [],
+        userTwapSliceFills: [],
         userDetails: { txs: [explorerTx('0xbatch', [CLOID_A, CLOID_B])] },
       },
       HL_MARKETS
@@ -480,7 +531,11 @@ describe('getOrders', () => {
 
   it('skips the explorer read when no row carries a client order id', async () => {
     const installed = installInfoFetchMock(
-      { frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS, twapHistory: [] },
+      {
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        twapHistory: [],
+        userTwapSliceFills: [],
+      },
       HL_MARKETS
     )
     restore = installed.restore
@@ -489,6 +544,7 @@ describe('getOrders', () => {
       'preTransferCheck',
       'frontendOpenOrders',
       'twapHistory',
+      'userTwapSliceFills',
     ])
     expect(orders.every((order) => order.explorerLink === undefined)).toBe(true)
   })
@@ -499,6 +555,7 @@ describe('getOrders', () => {
       {
         frontendOpenOrders: [{ ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A }],
         twapHistory: [],
+        userTwapSliceFills: [],
         userDetails: new Response('{}', { status: 503 }),
       },
       HL_MARKETS
@@ -519,6 +576,7 @@ describe('getOrders', () => {
       {
         frontendOpenOrders: [{ ...HL_FRONTEND_OPEN_ORDERS[0], cloid: CLOID_A }],
         twapHistory: [],
+        userTwapSliceFills: [],
         userDetails: new Response('<html>blocked</html>', { status: 200 }),
       },
       HL_MARKETS

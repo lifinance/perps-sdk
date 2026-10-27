@@ -12,12 +12,16 @@ import type {
   HlFrontendOpenOrders,
   HlHistoricalOrders,
   HlTwapHistoryEntry,
+  HlTwapSliceFill,
 } from '../types/index.js'
 import { withExplorerLinks } from '../utils/explorer.js'
 import { mapOrder, perpsDexNames } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { mapOrderRow } from '../utils/mapOrder.js'
-import { resolveLatestTwapEntries } from '../utils/twapHistory.js'
+import {
+  resolveLatestTwapEntries,
+  resolveTwapExecution,
+} from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
@@ -43,7 +47,7 @@ export const getOrders = async (
   const markets = await registry.sync()
   const active = statuses.some(isActiveOrderStatus)
   const terminal = statuses.some((status) => !isActiveOrderStatus(status))
-  const [open, historical, twaps] = await Promise.all([
+  const [open, historical, twaps, sliceFills] = await Promise.all([
     active
       ? Promise.all(
           perpsDexNames(markets).map((name) =>
@@ -71,6 +75,13 @@ export const getOrders = async (
       { type: 'twapHistory', user: params.address },
       infoOpts
     ),
+    active
+      ? infoRequest<HlTwapSliceFill[]>(
+          apiUrl,
+          { type: 'userTwapSliceFills', user: params.address },
+          infoOpts
+        )
+      : [],
   ])
   const rows = new Map<string, Order>()
   const keep = (key: string, order: Order | undefined): void => {
@@ -117,7 +128,10 @@ export const getOrders = async (
     }
   }
   // TWAP ids and regular order ids occupy separate venue namespaces.
-  for (const twap of resolveLatestTwapEntries(twaps)) {
+  for (const twap of resolveTwapExecution(
+    resolveLatestTwapEntries(twaps),
+    sliceFills
+  )) {
     keep(
       `twap:${twap.twapId}`,
       mapOrderRow(twap.state.coin, registry, (market) => mapOrder(twap, market))
