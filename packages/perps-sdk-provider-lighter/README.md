@@ -154,6 +154,18 @@ Active reads return the complete snapshot and do not apply `limit` or `cursor`.
 History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
 WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
 
+## Fill prices
+
+`Fill.price` shows the venue `price` of the trade, with one exception.
+Lighter reports a `price` of zero on a `deleverage` trade, on mainnet and on Robinhood chain.
+The `usd_amount` of that trade holds the execution notional.
+Thus the provider sets `Fill.price` to `usd_amount` divided by `size`.
+The division rounds half-up to 40 decimal places.
+`Fill.realizedPnl` uses the same price.
+
+A `deleverage` trade with a non-zero `price` keeps the venue value.
+If the provider cannot divide `usd_amount` by `size`, `Fill.price` shows the venue `price`.
+
 ## Market TP/SL slippage
 
 A Lighter market TP/SL order needs a slippage-adjusted limit price: the lowest fill for a sell, or the highest fill for a buy.

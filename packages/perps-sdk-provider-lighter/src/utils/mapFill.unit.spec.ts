@@ -1115,3 +1115,135 @@ describe('mapFill (Lighter)', () => {
     })
   })
 })
+
+const LLP_ACCOUNT_INDEX = 281474976710654
+
+// Live `/api/v1/trades?type=deleverage` rows. Lighter reports a zero `price`
+// on a deleverage row; `usd_amount` carries the execution notional.
+const MAINNET_DELEVERAGE: LtTrade = {
+  trade_id: 36907412776,
+  trade_id_str: '36907412776',
+  tx_hash:
+    '00000020b3ee1c24000001a18376f25a000000000000000000000000000000000000000000000000',
+  type: 'deleverage',
+  market_id: 182,
+  size: '445.00',
+  price: '0.0000',
+  usd_amount: '1315.774894',
+  ask_id: 0,
+  bid_id: 0,
+  ask_id_str: '0',
+  bid_id_str: '0',
+  ask_client_id_str: '0',
+  bid_client_id_str: '0',
+  ask_account_id: LLP_ACCOUNT_INDEX,
+  bid_account_id: 742436,
+  is_maker_ask: true,
+  block_height: 367909102,
+  timestamp: 1793206973018,
+  transaction_time: 1793206973026121,
+  taker_position_size_before: '-445.00',
+  maker_position_size_before: '1670.81',
+  taker_entry_quote_before: '1315.776612',
+  maker_entry_quote_before: '5385.265222',
+  taker_initial_margin_fraction_before: 1000,
+  maker_initial_margin_fraction_before: 1000,
+  ask_order_version: 0,
+  bid_order_version: 0,
+}
+
+const RH_DELEVERAGE: LtTrade = {
+  trade_id: 2016301647,
+  trade_id_str: '2016301647',
+  tx_hash:
+    '00000001c165cfdb000001a16afaeeb8000000000000000000000000000000000000000000000000',
+  type: 'deleverage',
+  market_id: 45,
+  size: '3935.5',
+  price: '0.00000',
+  usd_amount: '214.494313',
+  ask_id: 0,
+  bid_id: 0,
+  ask_id_str: '0',
+  bid_id_str: '0',
+  ask_client_id_str: '0',
+  bid_client_id_str: '0',
+  ask_account_id: 3366,
+  bid_account_id: LLP_ACCOUNT_INDEX,
+  is_maker_ask: false,
+  block_height: 45012294,
+  timestamp: 1792796192440,
+  transaction_time: 1792796192448617,
+  taker_position_size_before: '3935.5',
+  maker_position_size_before: '-430775.7',
+  taker_entry_quote_before: '427.700017',
+  maker_entry_quote_before: '34081.349005',
+  taker_initial_margin_fraction_before: 5000,
+  maker_initial_margin_fraction_before: 5000,
+  ask_order_version: 0,
+  bid_order_version: 0,
+}
+
+// usd_amount / size, at 40 places half-up.
+const MAINNET_DELEVERAGE_PRICE = '2.9567975146067415730337078651685393258427'
+const RH_DELEVERAGE_PRICE = '0.0545024299326642103925803582772201753272'
+
+describe('mapFill (Lighter) deleverage price', () => {
+  it.each([
+    ['mainnet taker', MAINNET_DELEVERAGE, 742436, MAINNET_DELEVERAGE_PRICE],
+    [
+      'mainnet maker',
+      MAINNET_DELEVERAGE,
+      LLP_ACCOUNT_INDEX,
+      MAINNET_DELEVERAGE_PRICE,
+    ],
+    ['Robinhood chain taker', RH_DELEVERAGE, 3366, RH_DELEVERAGE_PRICE],
+    [
+      'Robinhood chain maker',
+      RH_DELEVERAGE,
+      LLP_ACCOUNT_INDEX,
+      RH_DELEVERAGE_PRICE,
+    ],
+  ] as const)('prices the %s fill at usd_amount / size', (_label, trade, accountIndex, price) => {
+    expect(mapValidFill(trade, accountIndex, MARKET).price).toBe(price)
+  })
+
+  it.each([
+    // Short 445 with entry quote 1315.776612, bought back for 1315.774894.
+    [
+      'mainnet',
+      MAINNET_DELEVERAGE,
+      742436,
+      '0.0017180000000000000000000000000000000165',
+    ],
+    // Long 3935.5 with entry quote 427.700017, sold for 214.494313.
+    [
+      'Robinhood chain',
+      RH_DELEVERAGE,
+      3366,
+      '-213.2057039999999999999999999999999999997841',
+    ],
+  ] as const)('realizes the %s taker PnL against the execution price', (_label, trade, accountIndex, pnl) => {
+    expect(mapValidFill(trade, accountIndex, MARKET).realizedPnl).toBe(pnl)
+  })
+
+  it('keeps a non-zero venue price on a deleverage row', () => {
+    const fill = mapValidFill(
+      baseTrade({ type: 'deleverage', price: '1999.5' }),
+      ACCOUNT_INDEX,
+      MARKET
+    )
+    expect(fill.price).toBe('1999.5')
+  })
+
+  it('shows the venue price when usd_amount is malformed', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const fill = mapValidFill(
+      { ...MAINNET_DELEVERAGE, usd_amount: '1,315.774894' },
+      742436,
+      MARKET
+    )
+    expect(fill.price).toBe('0.0000')
+    warn.mockRestore()
+  })
+})
