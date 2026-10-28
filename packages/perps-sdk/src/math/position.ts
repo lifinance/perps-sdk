@@ -15,6 +15,7 @@ import {
   type PerpsMarket,
   type Position,
   PositionMarginAdjustment,
+  PositionSide,
 } from '@lifi/perps-types'
 import { DivBig } from '../decimal/big.js'
 import {
@@ -261,12 +262,16 @@ export const safeEstimateLiquidationPrice = createSafeFunction(
 )
 
 /**
- * Estimate the liquidation price of a new isolated position from the flat
- * `market.maintenanceMarginRate`.
+ * Estimate the liquidation price of the isolated position that an order
+ * leaves, from the flat `market.maintenanceMarginRate`: a new position, or
+ * the blend of the order into `params.position`. The collateral of the
+ * position is `position.marginUsed`, so the venue `marginUsed` must exclude
+ * the unrealized PnL, as Lighter `allocated_margin` does.
  *
  * @returns The estimate, or `undefined` when the market carries no
- *   `maintenanceMarginRate` or {@link estimateLiquidationPrice} gives
- *   `undefined`.
+ *   `maintenanceMarginRate`, when the order or the position is cross (the
+ *   liquidation depends on the whole account), when the order reduces the
+ *   position, or when {@link estimateLiquidationPrice} gives `undefined`.
  * @throws {PerpsError} `ValidationError` on an input that
  *   {@link estimateLiquidationPrice} rejects.
  * @public
@@ -275,7 +280,14 @@ export function estimateLiquidationPriceAtMarketRate(
   market: PerpsMarket,
   params: LiquidationEstimateParams
 ): string | undefined {
-  if (market.maintenanceMarginRate === undefined) {
+  const { position } = params
+  if (
+    market.maintenanceMarginRate === undefined ||
+    params.marginMode === MarginMode.CROSS ||
+    position?.marginMode === MarginMode.CROSS ||
+    (position !== undefined &&
+      (position.side === PositionSide.LONG) !== params.isLong)
+  ) {
     return undefined
   }
   return estimateLiquidationPrice({
@@ -283,6 +295,16 @@ export function estimateLiquidationPriceAtMarketRate(
     leverage: params.leverage,
     isLong: params.isLong,
     maintenanceMarginRate: market.maintenanceMarginRate,
+    size: params.size,
+    ...(position === undefined
+      ? {}
+      : {
+          current: {
+            size: position.size,
+            entryPrice: position.entryPrice,
+            margin: position.marginUsed,
+          },
+        }),
   })
 }
 

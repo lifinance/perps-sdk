@@ -61,6 +61,7 @@ import {
 import { seedReadOnlyToken as seedStoredReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type {
   LtAccountPnL,
+  LtAccountPosition,
   LtLiqTrade,
   LtLiquidationInfo,
   LtPnLEntry,
@@ -70,6 +71,7 @@ import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from './types/index.js'
+import { mapPosition } from './utils/mapPosition.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
@@ -708,6 +710,71 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
       marginMode: MarginMode.ISOLATED,
     })
     expect(liq).toBe('45546.5587044534412955465587044534412955465587')
+  })
+
+  it('gives no liquidation estimate for a cross order', () => {
+    expect(
+      lighterProvider().estimateLiquidationPrice(btcMarket, {
+        entryPrice: '50000',
+        leverage: '10',
+        isLong: true,
+        marginMode: MarginMode.CROSS,
+      })
+    ).toBeUndefined()
+  })
+
+  describe('with an open position', () => {
+    const row = (overrides: Partial<LtAccountPosition>): LtAccountPosition => ({
+      market_id: 1,
+      symbol: 'BTC',
+      initial_margin_fraction: '10.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.00000',
+      avg_entry_price: '90000.0',
+      position_value: '100000.000000',
+      unrealized_pnl: '10000.000000',
+      realized_pnl: '0.000000',
+      liquidation_price: '81970.0',
+      total_funding_paid_out: '0',
+      margin_mode: LT_MARGIN_MODE_ISOLATED,
+      allocated_margin: '9000.000000',
+      total_discount: '0',
+      ...overrides,
+    })
+    const estimate = (position: LtAccountPosition, isLong = true) =>
+      lighterProvider().estimateLiquidationPrice(btcMarket, {
+        entryPrice: '100000',
+        leverage: '10',
+        isLong,
+        marginMode: MarginMode.ISOLATED,
+        size: '1',
+        position: mapPosition(position, btcMarket),
+      })
+
+    it('blends an isolated add with allocated_margin as the collateral', () => {
+      // allocated_margin excludes the unrealized PnL
+      // equity at 100000 = 9000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 29000
+      // margin available = 29000 − 0.012 × 2 × 100000 = 26600, per unit 13300
+      // liq = 100000 − 13300 / 0.988
+      expect(estimate(row({}))).toBe(
+        '86538.4615384615384615384615384615384615384615'
+      )
+    })
+
+    it('gives no estimate for a cross position', () => {
+      expect(
+        estimate(
+          row({ margin_mode: LT_MARGIN_MODE_CROSS, allocated_margin: '0' })
+        )
+      ).toBeUndefined()
+    })
+
+    it('gives no estimate for an order against the side of the position', () => {
+      expect(estimate(row({}), false)).toBeUndefined()
+    })
   })
 })
 
