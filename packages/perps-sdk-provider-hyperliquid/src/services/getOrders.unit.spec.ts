@@ -10,6 +10,8 @@ import {
   HL_FRONTEND_OPEN_ORDERS,
   HL_MARKETS,
   HL_TWAP_HISTORY_FINISHED,
+  HL_TWAP_LONG_ACTIVATED,
+  HL_TWAP_LONG_SLICE_FILLS,
   HL_TWAP_SLICE_FILLS,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -372,6 +374,71 @@ describe('getOrders', () => {
         remainingSize: '0.0326',
         averagePrice: '3991',
       }),
+    ])
+  })
+
+  it('maps a running TWAP from all of its slice fills when the slice-fill window is full', async () => {
+    const window = HL_TWAP_LONG_SLICE_FILLS.slice(-2000).reverse()
+    const oldest = window[window.length - 1].fill.time
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        twapHistory: [HL_TWAP_LONG_ACTIVATED],
+        userTwapSliceFills: window,
+        userTwapSliceFillsByTime: HL_TWAP_LONG_SLICE_FILLS.slice(0, 1001),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '2329400',
+        status: OrderStatus.PARTIALLY_FILLED,
+        filledSize: '30',
+        remainingSize: '10',
+        averagePrice: '120',
+      }),
+    ])
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userTwapSliceFillsByTime',
+      user: ADDRESS,
+      startTime: HL_TWAP_LONG_ACTIVATED.state.timestamp,
+      endTime: oldest,
+    })
+  })
+
+  it('reads one slice-fill window when a full window reaches back to every running TWAP start', async () => {
+    const window = HL_TWAP_LONG_SLICE_FILLS.slice(-2000).reverse()
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        twapHistory: [
+          {
+            ...HL_TWAP_LONG_ACTIVATED,
+            twapId: 2329401,
+            state: {
+              ...HL_TWAP_LONG_ACTIVATED.state,
+              timestamp: window[0].fill.time,
+            },
+          },
+        ],
+        userTwapSliceFills: window,
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders.map((order) => order.orderId)).toEqual(['2329401'])
+    expect(installed.requests.map(({ body }) => body.type)).toEqual([
+      'preTransferCheck',
+      'frontendOpenOrders',
+      'twapHistory',
+      'userTwapSliceFills',
     ])
   })
 

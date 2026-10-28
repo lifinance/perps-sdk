@@ -11,7 +11,6 @@ import type { HyperliquidContext } from '../context.js'
 import type {
   HlOrderStatusResponse,
   HlTwapHistoryEntry,
-  HlTwapSliceFill,
 } from '../types/index.js'
 import { withExplorerLinks } from '../utils/explorer.js'
 import { assetIsOutcome, mapOrder } from '../utils/index.js'
@@ -21,6 +20,7 @@ import {
   resolveTwapExecution,
 } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { fetchTwapSliceFills } from './twapSliceFills.js'
 
 /**
  * Parameters for {@link getOrder}.
@@ -82,14 +82,12 @@ export const getOrder = async (
         String(entry.twapId) === params.id && !assetIsOutcome(entry.state.coin)
     )
     if (twap !== undefined) {
-      const sliceFills =
-        twap.status.status === 'activated'
-          ? await infoRequest<HlTwapSliceFill[]>(
-              apiUrl,
-              { type: 'userTwapSliceFills', user: params.address },
-              infoOpts
-            )
-          : []
+      const sliceFills = await fetchTwapSliceFills(
+        apiUrl,
+        params.address,
+        [twap],
+        infoOpts
+      )
       const [resolved] = resolveTwapExecution([twap], sliceFills)
       const registry = getMarketRegistry(client, PROVIDER_KEY)
       await registry.sync()

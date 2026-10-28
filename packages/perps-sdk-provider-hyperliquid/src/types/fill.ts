@@ -55,8 +55,10 @@ export type HlUserFills = HlUserFill[]
 export type HlUserFillsByTime = HlUserFill[]
 
 /**
- * One row of the `userTwapSliceFills` query: a fill that a TWAP slice made.
- * The venue returns at most 2,000 recent rows, newest first.
+ * One row of the `userTwapSliceFills` or `userTwapSliceFillsByTime` query: a
+ * fill that a TWAP slice made. Each query returns at most 2,000 rows:
+ * `userTwapSliceFills` the newest, newest first, and `userTwapSliceFillsByTime`
+ * the oldest of its inclusive range, oldest first.
  * @public
  */
 export type HlTwapSliceFill = {
