@@ -321,6 +321,39 @@ describe('mapPosition (Lighter)', () => {
     })
   })
 
+  // Lighter sends `liquidation_price: '0'` on a cross row that no price
+  // liquidates, as in the `accountSummary.venue.unit.spec.ts` captures.
+  describe('liquidationPrice', () => {
+    it.each([
+      '0',
+      '0.000000',
+      '',
+    ])('leaves liquidationPrice absent for liquidation_price %o', (liquidationPrice) => {
+      const result = map(
+        basePosition({ liquidation_price: liquidationPrice }),
+        MARKET
+      )
+
+      expect(result).not.toHaveProperty('liquidationPrice')
+      expect(result.marginMode).toBe(MarginMode.CROSS)
+    })
+
+    it.each([
+      [LT_MARGIN_MODE_CROSS, '0.26218876697561394'],
+      [LT_MARGIN_MODE_ISOLATED, '147.10989686467767'],
+    ])('passes a non-zero liquidation_price through (margin_mode %i)', (marginMode, liquidationPrice) => {
+      expect(
+        map(
+          basePosition({
+            margin_mode: marginMode,
+            liquidation_price: liquidationPrice,
+          }),
+          MARKET
+        ).liquidationPrice
+      ).toBe(liquidationPrice)
+    })
+  })
+
   // Lighter marks `total_funding_paid_out` and `total_discount` `omitempty` on
   // the Position object, so a row carrying the zero value drops the key.
   // `mapPosition` reads only `total_funding_paid_out`; `total_discount`
@@ -339,7 +372,9 @@ describe('mapPosition (Lighter)', () => {
     ] as const
 
     it('emits no undefined when total_funding_paid_out is absent', () => {
-      const { total_funding_paid_out, ...withoutFunding } = basePosition()
+      const { total_funding_paid_out, ...withoutFunding } = basePosition({
+        liquidation_price: '40000',
+      })
 
       const result = map(withoutFunding, MARKET)
 

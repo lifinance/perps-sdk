@@ -1285,6 +1285,28 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('leaves liquidationPrice absent when the frame sends liquidation_price "0"', async () => {
+      const p = makeProvider()
+      await seedAccountAndMarkets(p)
+      const listener = vi.fn()
+      inject(p, `positions:${TEST_ADDR}`, listener)
+
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': { ...RAW_POSITION, liquidation_price: '0' } },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).not.toHaveProperty('liquidationPrice')
+      p.close()
+    })
+
     it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)
