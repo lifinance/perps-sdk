@@ -312,6 +312,7 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { positionValueUsd: '10000', marginUsd: '1000' },
   ],
   calculateExpectedPnl: ['0.77', '0.7', '3', true, '10'],
+  calculateInitialMarginRoe: ['50', '1', '100', '5'],
   calculateLiquidationDistance: [
     { liquidationPrice: '45000', currentPrice: '50000' },
   ],

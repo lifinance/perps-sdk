@@ -16,12 +16,19 @@ import {
   type Position,
   PositionMarginAdjustment,
 } from '@lifi/perps-types'
+import {
+  absDecimalString,
+  divideDecimalString,
+  multiplyDecimalString,
+} from '../decimal/arithmetic.js'
 import { DivBig } from '../decimal/big.js'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import {
   bigToDecimalString,
   decimalStringToBig,
   decimalStringToDivBig,
 } from '../decimal/decimalStringToBig.js'
+import { isDecimalString } from '../decimal/parse.js'
 import { invalidInput } from '../errors/invalidInput.js'
 import type { LiquidationEstimateParams } from '../types/provider.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
@@ -87,6 +94,52 @@ export function calculateRoe(pnl: string, margin: string): string {
 
 /** @public */
 export const safeCalculateRoe = createSafeFunction('calculateRoe', calculateRoe)
+
+/**
+ * Calculate ROE as `pnl × leverage ÷ (|size| × entryPrice) × 100`.
+ * @throws {PerpsError} `ValidationError` for malformed inputs, zero `size`,
+ *   or non-positive `entryPrice` and `leverage`.
+ * @public
+ */
+export function calculateInitialMarginRoe(
+  pnl: string,
+  size: string,
+  entryPrice: string,
+  leverage: string
+): string {
+  for (const [parameter, value] of [
+    ['pnl', pnl],
+    ['size', size],
+    ['entryPrice', entryPrice],
+    ['leverage', leverage],
+  ] as const) {
+    if (!isDecimalString(value)) {
+      throw invalidInput(parameter, 'must be a decimal string')
+    }
+  }
+  const absoluteSize = absDecimalString(size)
+  if (!isDecimalStringGreaterThan(absoluteSize, '0')) {
+    throw invalidInput('size', 'must not be zero')
+  }
+  if (!isDecimalStringGreaterThan(entryPrice, '0')) {
+    throw invalidInput('entryPrice', 'must be positive')
+  }
+  if (!isDecimalStringGreaterThan(leverage, '0')) {
+    throw invalidInput('leverage', 'must be positive')
+  }
+  const numerator = multiplyDecimalString(pnl, leverage)
+  const denominator = multiplyDecimalString(absoluteSize, entryPrice)
+  return multiplyDecimalString(
+    divideDecimalString(numerator, denominator),
+    '100'
+  )
+}
+
+/** @public */
+export const safeCalculateInitialMarginRoe = createSafeFunction(
+  'calculateInitialMarginRoe',
+  calculateInitialMarginRoe
+)
 
 /**
  * Required margin: `notionalValue ÷ leverage`.
