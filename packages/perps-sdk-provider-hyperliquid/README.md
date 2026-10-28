@@ -190,7 +190,7 @@ explorer failure leaves the rows unlinked instead of failing the order read.
 | `filled` | FILLED |
 | `canceled`, `scheduledCancel`, documented cancellation reasons, unknown `...Canceled` statuses | CANCELLED |
 | `rejected`, documented rejection reasons, unknown `...Rejected` statuses | REJECTED |
-| TWAP `activated` | OPEN or PARTIALLY_FILLED |
+| TWAP `activated` | OPEN, PARTIALLY_FILLED, or FILLED according to executed size |
 | TWAP `waitingForTrigger` | OPEN |
 | TWAP `finished` | FILLED |
 | TWAP `terminated`, `stopped` | CANCELLED |
@@ -217,7 +217,20 @@ The default filter is `ACTIVE_ORDER_STATUSES`: PENDING, OPEN,
 PARTIALLY_FILLED, and TRIGGERED. Active filters read `frontendOpenOrders`.
 Terminal filters read `historicalOrders`. Mixed filters read both.
 `twapHistory` supplies both running and finished TWAP parents.
-`getOrder` reads `orderStatus` and uses the same mapper.
+Hyperliquid writes the `activated` row of a TWAP one time, at activation.
+When the filter includes an active status or FILLED, `getOrders` reads
+`userTwapSliceFills` only when the newest row of at least one TWAP is
+`activated`. A running TWAP takes its filled size and average price from the
+slice fills of its `twapId`.
+`getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
+`getOrder` also reads `userTwapSliceFills`.
+Both reads reject a failed required slice-fill request instead of reporting
+activation-time totals as current execution. Caller cancellation also rejects
+the read.
+
+An `activated` TWAP maps to FILLED when its filled size reaches its original
+size. The remaining size never falls below zero. The filled size preserves the
+actual execution, even when it exceeds the original size.
 
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.

@@ -175,12 +175,15 @@ const STOP_LIMIT_ORDER = {
   cloid: null,
 }
 
-/** A part-executed TWAP, the only shape that carries `averagePrice`. */
+/**
+ * A running TWAP, the only shape that carries `averagePrice`. Its slice fill,
+ * not its `activated` row, gives the executed size.
+ */
 const TWAP_ENTRY = {
   state: {
     coin: 'BTC',
-    executedNtl: '0.0094',
-    executedSz: '0.0000001',
+    executedNtl: '0.0',
+    executedSz: '0.0',
     minutes: 30,
     side: 'B',
     sz: '0.0000005',
@@ -191,6 +194,10 @@ const TWAP_ENTRY = {
   time: 1704067200,
   twapId: 7,
 }
+
+const TWAP_SLICE_FILLS = [
+  { twapId: 7, fill: { ...HL_USER_FILLS[0], sz: '0.0000001', px: '94000' } },
+]
 
 /** A closing fill with a builder fee, so `realizedPnl` is not null. */
 const CLOSING_FILL = {
@@ -220,6 +227,7 @@ const RESPONSES = {
   frontendOpenOrders: [...HL_FRONTEND_OPEN_ORDERS, STOP_LIMIT_ORDER],
   historicalOrders: [],
   twapHistory: [TWAP_ENTRY],
+  userTwapSliceFills: TWAP_SLICE_FILLS,
   userFills: FILLS,
   userFillsByTime: FILLS,
   activeAssetData: {

@@ -663,6 +663,7 @@ describe('hyperliquidProvider — per-user reads without setup', () => {
         frontendOpenOrders: [],
         historicalOrders: [],
         twapHistory: [],
+        userTwapSliceFills: [],
         userFills: [],
         userFillsByTime: [],
         userFunding: [],

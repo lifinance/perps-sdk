@@ -404,4 +404,38 @@ describe('mapOrder', () => {
     })
     expect(order?.statusReason).toBe(statusReason)
   })
+
+  it.each([
+    [
+      '0.041999999999999999999',
+      OrderStatus.PARTIALLY_FILLED,
+      '0.000000000000000000001',
+    ],
+    ['0.042', OrderStatus.FILLED, '0'],
+    ['0.042000000000000000001', OrderStatus.FILLED, '0'],
+  ])('maps activated execution %s at the target boundary', (executedSz, status, remainingSize) => {
+    const entry: HlTwapHistoryEntry = {
+      twapId: 5,
+      time: 1_700_000_002,
+      state: {
+        coin: 'ETH',
+        side: 'B',
+        sz: '0.042',
+        executedSz,
+        executedNtl: '168',
+        minutes: 10,
+        reduceOnly: false,
+        timestamp: 1_700_000_000_000,
+      },
+      status: { status: 'activated' },
+    }
+
+    expect(mapOrder(entry, MARKET)).toMatchObject({
+      orderId: '5',
+      originalSize: '0.042',
+      filledSize: executedSz,
+      remainingSize,
+      status,
+    })
+  })
 })

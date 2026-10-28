@@ -239,14 +239,20 @@ export const mapOrder = (
     if (updatedAt === undefined) {
       return skipOrder(market.id, 'time', raw.time)
     }
+    const hasRemaining =
+      safeIsDecimalStringGreaterThan(remainingSize, '0') === true
     let status: OrderStatus
     let statusReason: string | undefined
     switch (raw.status.status) {
       case 'activated':
-        status =
-          safeIsDecimalStringGreaterThan(state.executedSz, '0') === true
-            ? OrderStatus.PARTIALLY_FILLED
-            : OrderStatus.OPEN
+        if (!hasRemaining) {
+          status = OrderStatus.FILLED
+        } else {
+          status =
+            safeIsDecimalStringGreaterThan(state.executedSz, '0') === true
+              ? OrderStatus.PARTIALLY_FILLED
+              : OrderStatus.OPEN
+        }
         break
       case 'waitingForTrigger':
         status = OrderStatus.OPEN
@@ -278,7 +284,7 @@ export const mapOrder = (
       type: OrderType.TWAP,
       side: state.side === 'B' ? OrderSide.BUY : OrderSide.SELL,
       originalSize: state.sz,
-      remainingSize,
+      remainingSize: hasRemaining ? remainingSize : '0',
       filledSize: state.executedSz,
       ...(averagePrice === undefined ? {} : { averagePrice }),
       reduceOnly: state.reduceOnly,
