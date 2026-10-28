@@ -5,12 +5,7 @@ import {
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  LiquidityRole,
-  OrderSide,
-  OrderType,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
@@ -21,7 +16,8 @@ export { classifyFillFromPosition }
 /**
  * Spot-ness comes from the resolved market's category, not the coin string —
  * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`. A fill with
- * an invalid time gives `undefined`.
+ * an invalid time gives `undefined`. Leaves `type` absent: a fill row does not
+ * name the originating order type.
  * @public
  */
 export const mapFill = (
@@ -50,11 +46,6 @@ export const mapFill = (
     clientOrderId: fill.cloid,
     market,
     side,
-    // HL fills don't carry the originating order type. A maker fill (crossed:
-    // false) can only come from a resting order, so it's necessarily a limit;
-    // a taker fill (crossed: true) may be a market OR an aggressive limit order,
-    // which the payload can't distinguish, so the type is left undefined.
-    type: fill.crossed ? undefined : OrderType.LIMIT,
     size,
     price: fill.px,
     liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,

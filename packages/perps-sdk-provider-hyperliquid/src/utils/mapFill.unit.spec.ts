@@ -1,10 +1,5 @@
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  LiquidityRole,
-  OrderSide,
-  OrderType,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './mapFill.js'
@@ -154,24 +149,15 @@ describe('mapFill (Hyperliquid)', () => {
     expect(map(baseFill({ side: 'A' })).side).toBe(OrderSide.SELL)
   })
 
-  describe('order type from liquidity (crossed)', () => {
-    it('classifies a maker fill (crossed: false) as LIMIT — a maker fill can only come from a resting limit order', () => {
-      expect(map(baseFill({ crossed: false, dir: 'Open Long' })).type).toBe(
-        OrderType.LIMIT
-      )
-    })
-
-    it('classifies a maker fill as LIMIT regardless of the dir descriptor', () => {
-      expect(map(baseFill({ crossed: false, dir: 'Close Short' })).type).toBe(
-        OrderType.LIMIT
-      )
-    })
-
-    it('leaves the order type undefined for taker fills (crossed: true) — market vs aggressive-limit is not derivable from the fill payload', () => {
-      expect(
-        map(baseFill({ crossed: true, dir: 'Open Long' })).type
-      ).toBeUndefined()
-    })
+  // A fill row names no originating order type: a maker fill can come from a
+  // limit or a triggered limit order, a taker fill from a market or a limit.
+  it.each([
+    [false, LiquidityRole.MAKER],
+    [true, LiquidityRole.TAKER],
+  ] as const)('reports no order type on a crossed: %s (%s) fill', (crossed, liquidity) => {
+    const fill = map(baseFill({ crossed }))
+    expect(fill.liquidity).toBe(liquidity)
+    expect(fill).not.toHaveProperty('type')
   })
 
   it('preserves size, price, and fee as raw strings', () => {

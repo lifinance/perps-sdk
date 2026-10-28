@@ -282,7 +282,8 @@ export interface Fill {
   /**
    * The originating order type, when derivable from the fill. Absent when a
    * provider's fill payload doesn't carry it and it can't be inferred (e.g. a
-   * Hyperliquid taker fill, which may be a market or an aggressive limit order).
+   * Hyperliquid fill: a maker fill may come from a limit or a triggered limit
+   * order, and a taker fill from a market or an aggressive limit order).
    */
   type?: OrderType
   size: DecimalString
