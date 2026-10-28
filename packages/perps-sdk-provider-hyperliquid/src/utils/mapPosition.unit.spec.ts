@@ -215,10 +215,16 @@ describe('mapPosition (Hyperliquid)', () => {
     })
   })
 
-  it('defaults entryPrice to "0" when null', () => {
-    expect(map(makeAp({ entryPx: null as unknown as string })).entryPrice).toBe(
-      '0'
+  it('defaults entryPrice to "0" and leaves liquidationPrice absent when null', () => {
+    const result = map(
+      makeAp({
+        entryPx: null as unknown as string,
+        liquidationPx: null,
+      })
     )
+
+    expect(result.entryPrice).toBe('0')
+    expect(result).not.toHaveProperty('liquidationPrice')
   })
 
   it('leaves liquidationPrice absent for a cross position with a null liquidationPx', () => {
