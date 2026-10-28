@@ -13,6 +13,7 @@ import type {
 } from '@lifi/perps-types'
 import {
   ActionType,
+  MarginMode,
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
@@ -171,6 +172,7 @@ describe('hyperliquidProvider', () => {
         entryPrice: '50000',
         leverage: '10',
         isLong: true,
+        marginMode: MarginMode.ISOLATED,
       })
       expect(liq).toBe('45454.5454545454545454545454545454545454545455')
     })
@@ -182,6 +184,7 @@ describe('hyperliquidProvider', () => {
           entryPrice: '50000',
           leverage: '0',
           isLong: true,
+          marginMode: MarginMode.ISOLATED,
         })
       ).toThrow('`leverage` must not be zero.')
     })
