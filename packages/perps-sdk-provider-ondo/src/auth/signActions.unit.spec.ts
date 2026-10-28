@@ -1,5 +1,6 @@
 import {
   createMemoryStorage,
+  DISABLED_RETRY,
   PerpsError,
   PerpsExecutionError,
 } from '@lifi/perps-sdk'
@@ -31,6 +32,7 @@ import {
 } from '../utils/apiClient.js'
 import { hmacSignRequest } from './hmac.js'
 import { OndoApiKeyStore } from './OndoApiKeyStore.js'
+import { OndoServerClock } from './OndoServerClock.js'
 import { OndoTokenStore } from './OndoTokenStore.js'
 import { ondoSignActions } from './signActions.js'
 
@@ -172,10 +174,32 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-const makeDeps = (fetchImpl: typeof fetch) => ({
+// A `GET /v1/perps/depth` snapshot whose `time` is the client clock moved by
+// `offsetMs`: the venue clock the HMAC timestamp must follow.
+const depthResponse = (offsetMs: number): Response =>
+  jsonResponse({
+    success: true,
+    result: {
+      market: 'BTC-USD.P',
+      time: new Date(Date.now() + offsetMs).toISOString(),
+      asks: [['80958', '0.0293']],
+      bids: [['80931', '0.0123']],
+    },
+  })
+
+const serverClockAt = (offsetMs: number) =>
+  new OndoServerClock(
+    () =>
+      new OndoApiClient(BASE_URL, {
+        fetchImpl: async () => depthResponse(offsetMs),
+      })
+  )
+
+const makeDeps = (fetchImpl: typeof fetch, serverClock = serverClockAt(0)) => ({
   client: new OndoApiClient(BASE_URL, { fetchImpl }),
   tokenStore: new OndoTokenStore(createMemoryStorage(), BASE_URL),
   apiKeyStore: new OndoApiKeyStore(createMemoryStorage(), BASE_URL),
+  serverClock,
 })
 
 describe('ondoSignActions — SIWE', () => {
@@ -374,6 +398,56 @@ describe('ondoSignActions — HMAC', () => {
       body: PLACE_ORDER_STEP.request.body,
     })
     expect(step.hmac.signature).toBe(expected)
+  })
+
+  it('stamps the Ondo clock, not the client clock, when the client clock runs 10s ahead', async () => {
+    const deps = makeDeps(vi.fn<typeof fetch>(), serverClockAt(-10_000))
+    await deps.apiKeyStore.set(account.address, apiKeyFixture())
+
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
+    const serverNowMs = Date.now() - 10_000
+
+    const { timestampMs } = signed[0].hmac
+    expect(timestampMs).toBeLessThanOrEqual(serverNowMs)
+    expect(serverNowMs - timestampMs).toBeLessThan(1_000)
+  })
+
+  it('signs with the client clock when the clock sync fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const serverClock = new OndoServerClock(
+      () =>
+        new OndoApiClient(BASE_URL, {
+          fetchImpl: async () =>
+            jsonResponse({ success: false, error_code: 'unknown' }, 500),
+          policy: DISABLED_RETRY,
+        })
+    )
+    const deps = makeDeps(vi.fn<typeof fetch>(), serverClock)
+    await deps.apiKeyStore.set(account.address, apiKeyFixture())
+
+    const before = Date.now()
+    const signed = (
+      await ondoSignActions(
+        deps,
+        SigningMethod.HMAC,
+        [PLACE_ORDER_STEP],
+        account.address
+      )
+    ).signed as HmacSignedActionStep[]
+    const after = Date.now()
+
+    const { timestampMs } = signed[0].hmac
+    expect(timestampMs).toBeGreaterThanOrEqual(before)
+    expect(timestampMs).toBeLessThanOrEqual(after)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 
   it('lists an empty registry before it creates and stores a JWT-authorized API key', async () => {
