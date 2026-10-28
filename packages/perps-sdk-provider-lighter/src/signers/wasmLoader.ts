@@ -271,6 +271,12 @@ const UNUSED_WASM_FUNCTION_NAMES = [
   '_getAirdropAllocationMessage',
   '_signStakeAssets',
   '_signUnstakeAssets',
+  '_signBinaryOptionsOperatorCreateMarket',
+  '_signBinaryOptionsOperatorUpdateMarket',
+  '_signBinaryOptionsOperatorSettleMarket',
+  '_resetClients',
+  '_selectClient',
+  '_lighterTest',
 ] as const
 
 /**

@@ -7,6 +7,7 @@
 //
 // Usage: node scripts/verify-package-assets.mjs   (run after the build)
 
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -37,6 +38,7 @@ const read = (path) => {
   }
 }
 
+const manifestPath = join(dist, 'wasm', 'lighter-signer.manifest.json')
 const binary = join(dist, 'wasm', 'lighter-signer.wasm')
 try {
   const bytes = readFileSync(binary)
@@ -48,8 +50,19 @@ try {
     bytes.subarray(0, 4).toString('binary') === WASM_MAGIC,
     'dist/wasm/lighter-signer.wasm is not a WebAssembly module'
   )
-} catch {
-  failures.push('missing dist/wasm/lighter-signer.wasm')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  check(
+    createHash('sha256').update(bytes).digest('hex') === manifest.sha256,
+    'dist/wasm/lighter-signer.wasm differs from its upstream manifest'
+  )
+  check(
+    createHash('sha256')
+      .update(readFileSync(join(packageRoot, 'wasm', 'wasm_exec.js')))
+      .digest('hex') === manifest.runtimeSha256,
+    'wasm/wasm_exec.js differs from the runtime in the upstream manifest'
+  )
+} catch (error) {
+  failures.push(`cannot verify signer assets: ${error.message}`)
 }
 
 // The ESM resolver must stay a literal `new URL('<relative>', import.meta.url)`:
