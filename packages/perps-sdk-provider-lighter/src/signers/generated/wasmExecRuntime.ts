@@ -585,3 +585,41 @@ export function createGoRuntime(): {
 
   return new globalThis.Go()
 }
+
+export const lighterWasmGlobalNames = [
+  "_lighterTest",
+  "_createClient",
+  "_createClientByPrv",
+  "_signChangePubKey",
+  "_signRevokePubKey",
+  "_signCreateSubAccount",
+  "_signCreatePublicPool",
+  "_signUpdatePublicPool",
+  "_signCreateOrder",
+  "_signCancelOrder",
+  "_signWithdraw",
+  "_signCancelAllOrders",
+  "_signModifyOrder",
+  "_signTransfer",
+  "_signMintShares",
+  "_signBurnShares",
+  "_signUpdateLeverage",
+  "_signUpdateMargin",
+  "_signUpdateAccountConfig",
+  "_signUpdateAccountAssetConfig",
+  "_signCreateGroupedOrders",
+  "_signApproveIntegrator",
+  "_getApproveIntegratorTransaction",
+  "_getChangePubKeyTransaction",
+  "_getRevokePubKeyTransaction",
+  "_getTransferTransaction",
+  "_getAirdropAllocationMessage",
+  "_createAuthToken",
+  "_signStakeAssets",
+  "_signUnstakeAssets",
+  "_signBinaryOptionsOperatorCreateMarket",
+  "_signBinaryOptionsOperatorUpdateMarket",
+  "_signBinaryOptionsOperatorSettleMarket",
+  "_resetClients",
+  "_selectClient"
+] as const

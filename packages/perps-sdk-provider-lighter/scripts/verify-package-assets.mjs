@@ -7,9 +7,12 @@
 //
 // Usage: node scripts/verify-package-assets.mjs   (run after the build)
 
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { probeLighterSigner } from '../test/consumer/probe.js'
 import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -37,6 +40,7 @@ const read = (path) => {
   }
 }
 
+const manifestPath = join(dist, 'wasm', 'lighter-signer.manifest.json')
 const binary = join(dist, 'wasm', 'lighter-signer.wasm')
 try {
   const bytes = readFileSync(binary)
@@ -48,8 +52,19 @@ try {
     bytes.subarray(0, 4).toString('binary') === WASM_MAGIC,
     'dist/wasm/lighter-signer.wasm is not a WebAssembly module'
   )
-} catch {
-  failures.push('missing dist/wasm/lighter-signer.wasm')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  check(
+    createHash('sha256').update(bytes).digest('hex') === manifest.sha256,
+    'dist/wasm/lighter-signer.wasm differs from its upstream manifest'
+  )
+  check(
+    createHash('sha256')
+      .update(readFileSync(join(packageRoot, 'wasm', 'wasm_exec.js')))
+      .digest('hex') === manifest.runtimeSha256,
+    'wasm/wasm_exec.js differs from the runtime in the upstream manifest'
+  )
+} catch (error) {
+  failures.push(`cannot verify signer assets: ${error.message}`)
 }
 
 // The ESM resolver must stay a literal `new URL('<relative>', import.meta.url)`:
@@ -109,6 +124,19 @@ for (const format of ['esm', 'cjs']) {
   )
 }
 
+for (const format of ['esm', 'cjs']) {
+  const entry = join(dist, format, 'index.js')
+  const provider =
+    format === 'cjs'
+      ? createRequire(import.meta.url)(entry)
+      : await import(pathToFileURL(entry).href)
+  const probe = await probeLighterSigner(provider)
+  check(
+    probe.ok,
+    `dist/${format} signer probe failed: ${JSON.stringify(probe)}`
+  )
+}
+
 const oversizedJs = []
 const evaluatingJs = []
 const walk = (dir) => {
@@ -148,3 +176,4 @@ if (failures.length > 0) {
 console.error(
   'verify-package-assets: binary asset, generated Go runtime module and both asset-URL resolvers verified'
 )
+process.exit(0)

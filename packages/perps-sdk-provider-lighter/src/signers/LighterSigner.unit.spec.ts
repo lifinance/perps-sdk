@@ -81,7 +81,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         client_order_index: 0,
         base_amount: 1000,
-        price: 50_000_000_000,
+        price: 500_000_000,
         is_ask: 0,
         order_type: 0,
         time_in_force: 1,
@@ -164,6 +164,47 @@ describe('LighterSigner', () => {
       ctx()
     )
     expect(signed.txInfo).toContain('"Index":1152921504606846975,')
+  })
+
+  it.each([
+    [
+      ActionType.PLACE_ORDER,
+      {
+        client_order_index: 1,
+        base_amount: '1000',
+        price: '10000',
+        is_ask: 0,
+        order_type: 0,
+        time_in_force: 1,
+        reduce_only: false,
+        trigger_price: '0',
+        order_expiry: -1,
+      },
+    ],
+    [ActionType.CANCEL_ORDER, { order_index: '1152921504606846975' }],
+    [
+      ActionType.MODIFY_ORDER,
+      {
+        order_index: '1152921504606846975',
+        base_amount: 1000,
+        price: 10000,
+        trigger_price: 0,
+      },
+    ],
+    [ActionType.UPDATE_LEVERAGE, { fraction: 1000, margin_mode: 0 }],
+    [ActionType.UPDATE_POSITION_MARGIN, { usdc_amount: 1000000, direction: 1 }],
+  ])('preserves a wide market ID when signing %s', async (action, params) => {
+    for (const marketId of [65537, 281474976710655]) {
+      const signed = await signer.sign(
+        action,
+        { ...params, market_index: marketId, nonce: 7 },
+        ctx()
+      )
+      expect(JSON.parse(signed.txInfo).MarketIndex).toBe(marketId)
+      if ('order_index' in params) {
+        expect(signed.txInfo).toContain('"Index":1152921504606846975,')
+      }
+    }
   })
 
   it.each([
@@ -478,7 +519,7 @@ describe('LighterSigner', () => {
     market_index: 0,
     client_order_index: 0,
     base_amount: 1000,
-    price: 50_000_000_000,
+    price: 500_000_000,
     is_ask: 0,
     order_type: 0,
     time_in_force: 1,
@@ -487,6 +528,46 @@ describe('LighterSigner', () => {
     order_expiry: -1,
     nonce: 42,
   }
+
+  it('rejects a price overflow without corrupting subsequent signatures', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'))
+    const entropy = vi
+      .spyOn(globalThis.crypto, 'getRandomValues')
+      .mockImplementation((bytes) => {
+        if (bytes) {
+          new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).fill(
+            1
+          )
+        }
+        return bytes
+      })
+    try {
+      const params = {
+        ...ORDER_PARAMS,
+        price: '4294967295',
+        order_expiry: 1893456000000,
+      }
+      const baseline = await signer.sign(ActionType.PLACE_ORDER, params, ctx())
+      await expect(
+        signer.sign(
+          ActionType.PLACE_ORDER,
+          { ...params, price: '4294967297' },
+          ctx()
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SignatureInvalid })
+
+      const signed = await signer.sign(ActionType.PLACE_ORDER, params, ctx())
+      expect(JSON.parse(signed.txInfo).Price).toBe(4294967295)
+      expect(signed.txHash).toBe(baseline.txHash)
+      expect(JSON.parse(signed.txInfo).Sig).toBe(
+        JSON.parse(baseline.txInfo).Sig
+      )
+    } finally {
+      entropy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
   const INTEGRATOR_PARAMS = {
     integrator_account_index: 5,
     max_perps_taker_fee: 250,
@@ -519,7 +600,7 @@ describe('LighterSigner', () => {
         order_type: 2,
         time_in_force: 0,
         reduce_only: true,
-        trigger_price: 49_000_000_000,
+        trigger_price: 490_000_000,
       },
     ],
     [
@@ -544,7 +625,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         order_index: 1,
         base_amount: 100,
-        price: 50_000_000_000,
+        price: 500_000_000,
         trigger_price: 0,
         nonce: 11,
       },
@@ -640,7 +721,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         order_index: 1,
         base_amount: 100,
-        price: 50_000_000_000,
+        price: 500_000_000,
         trigger_price: 0,
         nonce: 11,
       },
@@ -658,7 +739,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         client_order_index: 0,
         base_amount: 1000,
-        price: 50_000_000_000,
+        price: 500_000_000,
         is_ask: 0,
         order_type: 0,
         time_in_force: 1,
@@ -691,7 +772,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         client_order_index: 0,
         base_amount: 1000,
-        price: 50_000_000_000,
+        price: 500_000_000,
         is_ask: 0,
         order_type: 0,
         time_in_force: 1,
@@ -715,7 +796,7 @@ describe('LighterSigner', () => {
         market_index: 0,
         order_index: 1,
         base_amount: 100,
-        price: 50_000_000_000,
+        price: 500_000_000,
         trigger_price: 0,
         integrator_account_index: 5,
         integrator_taker_fee: 250,
