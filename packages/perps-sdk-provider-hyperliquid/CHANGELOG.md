@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 30.0.2
+
+### Patch Changes
+
+- [#658](https://github.com/lifinance/perps-sdk/pull/658) [`499c686`](https://github.com/lifinance/perps-sdk/commit/499c686253d282fdd04611f71b01504b28e4cb2a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read running Hyperliquid TWAP progress from slice fills in `getOrders` and `getOrder`.
+  Request `userTwapSliceFills` only for running TWAPs, and preserve required-feed failures.
+  Map completed execution to `FILLED` and keep the remaining size nonnegative.
+  Export `HlTwapSliceFill` for the venue response.
+
+- [#659](https://github.com/lifinance/perps-sdk/pull/659) [`302546e`](https://github.com/lifinance/perps-sdk/commit/302546e3eed2c6c0e8004a25ec7715351090ff09) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `HlSpotTransferDelta.nonce` accepts `null`, because Hyperliquid sends `nonce: null` on some `spotTransfer` ledger rows.
+
 ## 30.0.1
 
 ### Patch Changes
