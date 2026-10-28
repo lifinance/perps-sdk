@@ -1286,12 +1286,20 @@ describe('LighterWsProvider', () => {
     })
 
     it('leaves liquidationPrice absent when the frame sends liquidation_price "0"', async () => {
-      const p = makeProvider()
-      await seedAccountAndMarkets(p)
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          { resolveAuthToken: async () => 'token' },
+          freshClient()
+        )
+      )
       const listener = vi.fn()
-      inject(p, `positions:${TEST_ADDR}`, listener)
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        listener
+      )
 
-      const internals = p as unknown as LighterWsProviderInternals
       internals.handleMessage(
         JSON.stringify({
           type: 'subscribed/account_all_positions',
