@@ -9,8 +9,10 @@
 
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { probeLighterSigner } from '../test/consumer/probe.js'
 import { SCRIPT_TEXT_EVALUATION } from './lib/script-text-evaluation.js'
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -122,6 +124,19 @@ for (const format of ['esm', 'cjs']) {
   )
 }
 
+for (const format of ['esm', 'cjs']) {
+  const entry = join(dist, format, 'index.js')
+  const provider =
+    format === 'cjs'
+      ? createRequire(import.meta.url)(entry)
+      : await import(pathToFileURL(entry).href)
+  const probe = await probeLighterSigner(provider)
+  check(
+    probe.ok,
+    `dist/${format} signer probe failed: ${JSON.stringify(probe)}`
+  )
+}
+
 const oversizedJs = []
 const evaluatingJs = []
 const walk = (dir) => {
@@ -161,3 +176,4 @@ if (failures.length > 0) {
 console.error(
   'verify-package-assets: binary asset, generated Go runtime module and both asset-URL resolvers verified'
 )
+process.exit(0)

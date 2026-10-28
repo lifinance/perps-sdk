@@ -19,6 +19,12 @@ const outputPath = join(
 )
 
 const source = readFileSync(sourcePath, 'utf8')
+const manifest = JSON.parse(
+  readFileSync(
+    join(packageRoot, 'wasm', 'lighter-signer.manifest.json'),
+    'utf8'
+  )
+)
 
 // The source ships verbatim, so a Go toolchain that reintroduces script-text
 // evaluation must stop here rather than reach the emitted module.
@@ -46,6 +52,8 @@ export function createGoRuntime(): {
 const footer = `
   return new globalThis.Go()
 }
+
+export const lighterWasmGlobalNames = ${JSON.stringify(manifest.exports, null, 2)} as const
 `
 
 mkdirSync(dirname(outputPath), { recursive: true })

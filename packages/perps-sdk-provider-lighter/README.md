@@ -77,6 +77,8 @@ The package vendors Lighter's `web-wasm/main.wasm`, not the separate `wasm/` bui
 
 `wasm/lighter-signer.manifest.json` preserves the upstream build manifest. It records the source commit, source-tree hash, Go version, binary hash, runtime hash, and exports. The package build checks the binary and runtime hashes against that manifest.
 
+Signer-global cleanup uses the manifest's export names. The package build also signs through the built ESM and CommonJS packages. Negative checks reject an altered binary or runtime with an unchanged manifest.
+
 The Go signer binary ships as a separate asset that the package resolves itself. The ESM build uses `new URL('../../wasm/lighter-signer.wasm', import.meta.url)`. Webpack, Turbopack, and Vite production builds rewrite this expression into an emitted asset URL. Node reads the installed binary from disk. The loader checks the WASM preamble of the response. Vite's dependency optimizer can relocate the package into `.vite/deps`, which invalidates the static URL. The loader then resolves the asset through the bundler's own asset pipeline.
 
 Go's `wasm_exec.js` ships inside a generated initializer that compiles into both CommonJS and ESM. Package imports do not initialize Go or install its globals. `loadLighterWasm()` initializes the runtime after reading the binary, so callers can install required polyfills after import. The package evaluates no script text.

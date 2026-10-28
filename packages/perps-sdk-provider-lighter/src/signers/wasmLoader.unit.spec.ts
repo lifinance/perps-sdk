@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { PerpsErrorCode } from '@lifi/perps-types'
@@ -25,25 +26,16 @@ const WASM_FUNCTION_NAMES = [
   '_signUpdateAccountAssetConfig',
 ] as const
 
-const UNUSED_WASM_FUNCTION_NAMES = [
-  '_signRevokePubKey',
-  '_getRevokePubKeyTransaction',
-  '_signCreateSubAccount',
-  '_signCreatePublicPool',
-  '_signUpdatePublicPool',
-  '_signMintShares',
-  '_signBurnShares',
-  '_signCreateGroupedOrders',
-  '_getAirdropAllocationMessage',
-  '_signStakeAssets',
-  '_signUnstakeAssets',
-  '_signBinaryOptionsOperatorCreateMarket',
-  '_signBinaryOptionsOperatorUpdateMarket',
-  '_signBinaryOptionsOperatorSettleMarket',
-  '_resetClients',
-  '_selectClient',
-  '_lighterTest',
-] as const
+const packageRoot = join(import.meta.dirname, '..', '..')
+const manifest: { exports: string[] } = JSON.parse(
+  readFileSync(
+    join(packageRoot, 'wasm', 'lighter-signer.manifest.json'),
+    'utf8'
+  )
+)
+const UNUSED_WASM_FUNCTION_NAMES = manifest.exports.filter(
+  (name) => !WASM_FUNCTION_NAMES.some((used) => used === name)
+)
 
 const SEED = `0x${'11'.repeat(32)}`
 
@@ -86,8 +78,6 @@ const fakeGoRuntime = (installNames: readonly string[]) =>
 const RECOVERED_BINARY_URL =
   'http://stub.invalid/assets/lighter-signer-hash.wasm'
 
-const packageRoot = join(import.meta.dirname, '..', '..')
-
 /**
  * Re-import the loader with the packaged Go runtime module and asset resolver
  * replaced. The loader takes no injection options, so the module graph is the
@@ -104,6 +94,7 @@ const importLoaderWithFakes = async (
   vi.resetModules()
   vi.doMock('./generated/wasmExecRuntime.js', () => ({
     createGoRuntime: () => new (fakeGoRuntime(installNames))(),
+    lighterWasmGlobalNames: manifest.exports,
   }))
   vi.doMock('./wasmBinaryUrl.js', () => ({
     lighterWasmBinaryUrl: binaryUrl,
@@ -456,6 +447,7 @@ describe('loadLighterWasm — packaged Go runtime', () => {
     ]) {
       expect((globalThis as Record<string, unknown>)[name]).toBeUndefined()
     }
+    expect(Reflect.get(globalThis, '_signerVersion')).toBeUndefined()
     const authToken = await signAuthTokenThroughExports(exports)
     expect(authToken.token).toMatch(/^\d+:7:3:[0-9a-f]+$/)
   })

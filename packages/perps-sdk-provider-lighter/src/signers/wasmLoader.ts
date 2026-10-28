@@ -3,7 +3,10 @@
 
 import { PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { createGoRuntime } from './generated/wasmExecRuntime.js'
+import {
+  createGoRuntime,
+  lighterWasmGlobalNames,
+} from './generated/wasmExecRuntime.js'
 import {
   lighterWasmBinaryUrl,
   resolveEmittedBinaryUrl,
@@ -257,28 +260,6 @@ const WASM_FUNCTION_NAMES = [
   '_signUpdateAccountAssetConfig',
 ] as const satisfies readonly (keyof LighterWasmExports)[]
 
-// Installed by the binary but never called. They are removed from globalThis
-// with the used exports, because each one signs with the account's API key.
-const UNUSED_WASM_FUNCTION_NAMES = [
-  '_signRevokePubKey',
-  '_getRevokePubKeyTransaction',
-  '_signCreateSubAccount',
-  '_signCreatePublicPool',
-  '_signUpdatePublicPool',
-  '_signMintShares',
-  '_signBurnShares',
-  '_signCreateGroupedOrders',
-  '_getAirdropAllocationMessage',
-  '_signStakeAssets',
-  '_signUnstakeAssets',
-  '_signBinaryOptionsOperatorCreateMarket',
-  '_signBinaryOptionsOperatorUpdateMarket',
-  '_signBinaryOptionsOperatorSettleMarket',
-  '_resetClients',
-  '_selectClient',
-  '_lighterTest',
-] as const
-
 /**
  * Call one signer export and wait for its result. A `{error}` result becomes a
  * {@link PerpsError} with code `SignatureInvalid`.
@@ -457,9 +438,11 @@ async function loadWasmUncached(): Promise<LighterWasmExports> {
     ;(exports as Record<string, unknown>)[name] = fn
     delete globals[name]
   }
-  for (const name of UNUSED_WASM_FUNCTION_NAMES) {
+  for (const name of lighterWasmGlobalNames) {
     delete globals[name]
   }
+  // The protocol version is metadata, not a manifest export.
+  delete globals._signerVersion
 
   return exports as LighterWasmExports
 }

@@ -194,26 +194,17 @@ describe('LighterSigner', () => {
     [ActionType.UPDATE_LEVERAGE, { fraction: 1000, margin_mode: 0 }],
     [ActionType.UPDATE_POSITION_MARGIN, { usdc_amount: 1000000, direction: 1 }],
   ])('preserves a wide market ID when signing %s', async (action, params) => {
-    const signed = await signer.sign(
-      action,
-      { ...params, market_index: 65537, nonce: 7 },
-      ctx()
-    )
-    expect(JSON.parse(signed.txInfo).MarketIndex).toBe(65537)
-  })
-
-  it('preserves the largest supported market ID', async () => {
-    const signed = await signer.sign(
-      ActionType.CANCEL_ORDER,
-      {
-        market_index: 281474976710655,
-        order_index: '1152921504606846975',
-        nonce: 7,
-      },
-      ctx()
-    )
-    expect(signed.txInfo).toContain('"MarketIndex":281474976710655,')
-    expect(signed.txInfo).toContain('"Index":1152921504606846975,')
+    for (const marketId of [65537, 281474976710655]) {
+      const signed = await signer.sign(
+        action,
+        { ...params, market_index: marketId, nonce: 7 },
+        ctx()
+      )
+      expect(JSON.parse(signed.txInfo).MarketIndex).toBe(marketId)
+      if ('order_index' in params) {
+        expect(signed.txInfo).toContain('"Index":1152921504606846975,')
+      }
+    }
   })
 
   it.each([
@@ -539,20 +530,43 @@ describe('LighterSigner', () => {
   }
 
   it('rejects a price overflow without corrupting subsequent signatures', async () => {
-    await expect(
-      signer.sign(
-        ActionType.PLACE_ORDER,
-        { ...ORDER_PARAMS, price: '4294967297' },
-        ctx()
-      )
-    ).rejects.toMatchObject({ code: PerpsErrorCode.SignatureInvalid })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'))
+    const entropy = vi
+      .spyOn(globalThis.crypto, 'getRandomValues')
+      .mockImplementation((bytes) => {
+        if (bytes) {
+          new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).fill(
+            1
+          )
+        }
+        return bytes
+      })
+    try {
+      const params = {
+        ...ORDER_PARAMS,
+        price: '4294967295',
+        order_expiry: 1893456000000,
+      }
+      const baseline = await signer.sign(ActionType.PLACE_ORDER, params, ctx())
+      await expect(
+        signer.sign(
+          ActionType.PLACE_ORDER,
+          { ...params, price: '4294967297' },
+          ctx()
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SignatureInvalid })
 
-    const signed = await signer.sign(
-      ActionType.PLACE_ORDER,
-      { ...ORDER_PARAMS, price: '4294967295' },
-      ctx()
-    )
-    expect(JSON.parse(signed.txInfo).Price).toBe(4294967295)
+      const signed = await signer.sign(ActionType.PLACE_ORDER, params, ctx())
+      expect(JSON.parse(signed.txInfo).Price).toBe(4294967295)
+      expect(signed.txHash).toBe(baseline.txHash)
+      expect(JSON.parse(signed.txInfo).Sig).toBe(
+        JSON.parse(baseline.txInfo).Sig
+      )
+    } finally {
+      entropy.mockRestore()
+      vi.useRealTimers()
+    }
   })
   const INTEGRATOR_PARAMS = {
     integrator_account_index: 5,

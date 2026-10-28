@@ -36,11 +36,26 @@ export const probeLighterSigner = async ({
       (name) => typeof wasm[name] !== 'function'
     )
     const client = await wasm._createClient(SEED, 304, 1, 0, 3, false)()
+    const cancel = await wasm._signCancelOrder(
+      1,
+      65537,
+      '1152921504606846975',
+      7
+    )()
+    const marketIndex = cancel.txInfo?.match(/"MarketIndex"\s*:\s*(\d+)/)?.[1]
+    const orderIndex = cancel.txInfo?.match(/"Index"\s*:\s*(\d+)/)?.[1]
     return {
-      ok: missing.length === 0 && Boolean(client.pk && client.prv),
+      ok:
+        missing.length === 0 &&
+        Boolean(client.pk && client.prv) &&
+        marketIndex === '65537' &&
+        orderIndex === '1152921504606846975',
       missing,
       createClientError: client.error,
       publicKeyPrefix: client.pk?.slice(0, 6),
+      cancelError: cancel.error,
+      marketIndex,
+      orderIndex,
     }
   } catch (error) {
     return { ok: false, error: String(error?.message ?? error) }
