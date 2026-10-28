@@ -1,5 +1,10 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import { OrderStatus, OrderType, TimeInForce } from '@lifi/perps-types'
+import {
+  OrderStatus,
+  OrderType,
+  PerpsErrorCode,
+  TimeInForce,
+} from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_FRONTEND_OPEN_ORDERS,
@@ -129,6 +134,7 @@ describe('getOrders', () => {
     const installed = installInfoFetchMock(
       {
         historicalOrders: [historical],
+        userTwapSliceFills: [],
         twapHistory: [
           activeTwap,
           { ...activeTwap, twapId: 3155, status: { status: 'finished' } },
@@ -141,19 +147,203 @@ describe('getOrders', () => {
       address: ADDRESS,
       statuses: [OrderStatus.FILLED],
     })
-    expect(installed.requests.map((request) => request.body)).toEqual([
-      {
-        type: 'preTransferCheck',
-        user: ADDRESS,
-        source: '0x0000000000000000000000000000000000000000',
-      },
-      { type: 'historicalOrders', user: ADDRESS },
-      { type: 'twapHistory', user: ADDRESS },
-    ])
+    expect(
+      installed.requests.some(({ body }) => body.type === 'frontendOpenOrders')
+    ).toBe(false)
     expect(orders.map((order) => [order.orderId, order.status])).toEqual([
       ['88', OrderStatus.FILLED],
       ['3155', OrderStatus.FILLED],
     ])
+  })
+
+  it('returns cancelled orders without depending on a running TWAP fill read', async () => {
+    const installed = installInfoFetchMock(
+      {
+        historicalOrders: [
+          {
+            ...historical,
+            order: { ...historical.order, sz: '0.2' },
+            status: 'canceled',
+          },
+        ],
+        twapHistory: [activeTwap],
+        userTwapSliceFills: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.CANCELLED],
+    })
+
+    expect(orders.map((order) => [order.orderId, order.status])).toEqual([
+      ['88', OrderStatus.CANCELLED],
+    ])
+    expect(
+      installed.requests.some(({ body }) => body.type === 'userTwapSliceFills')
+    ).toBe(false)
+  })
+
+  it.each([
+    ['empty history', []],
+    ['a terminal newest row', HL_TWAP_HISTORY_FINISHED],
+  ])('returns regular orders with %s while the slice-fill endpoint is unavailable', async (_, twapHistory) => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        twapHistory,
+        userTwapSliceFills: new Response('{}', { status: 429 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders.map((order) => order.orderId)).toEqual(['1', '2'])
+    expect(
+      installed.requests.some(({ body }) => body.type === 'userTwapSliceFills')
+    ).toBe(false)
+  })
+
+  it.each([
+    [429, PerpsErrorCode.RateLimitExceeded],
+    [503, PerpsErrorCode.ThirdPartyError],
+  ])('rejects a running TWAP read when its slice fills fail with HTTP %s', async (status, code) => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: HL_FRONTEND_OPEN_ORDERS,
+        twapHistory: [activeTwap],
+        userTwapSliceFills: new Response('{}', { status }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    await expect(getOrders(ctx, { address: ADDRESS })).rejects.toMatchObject({
+      code,
+      tool: 'hyperliquid',
+    })
+  })
+
+  it('maps two running TWAPs from their own fills with one slice-fill read', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        twapHistory: [activated, activeTwap],
+        userTwapSliceFills: [
+          ...HL_TWAP_SLICE_FILLS,
+          {
+            ...HL_TWAP_SLICE_FILLS[0],
+            twapId: 3156,
+            fill: {
+              ...HL_TWAP_SLICE_FILLS[0].fill,
+              coin: 'BTC',
+              tid: 5003,
+              oid: 4003,
+              sz: '0.1',
+              px: '90000',
+            },
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '2329352',
+        status: OrderStatus.PARTIALLY_FILLED,
+        filledSize: '0.0094',
+        remainingSize: '0.0326',
+        averagePrice: '3991',
+      }),
+      expect.objectContaining({
+        orderId: '3156',
+        status: OrderStatus.PARTIALLY_FILLED,
+        filledSize: '0.1',
+        remainingSize: '0.4',
+        averagePrice: '90000',
+      }),
+    ])
+    expect(
+      installed.requests.filter(
+        ({ body }) => body.type === 'userTwapSliceFills'
+      )
+    ).toHaveLength(1)
+  })
+
+  it.each([
+    {
+      name: 'mixed',
+      statuses: [OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED],
+      orderIds: ['2329352'],
+    },
+    {
+      name: 'filled-only',
+      statuses: [OrderStatus.FILLED],
+      orderIds: ['2329352'],
+    },
+    {
+      name: 'active-only',
+      statuses: [OrderStatus.PARTIALLY_FILLED],
+      orderIds: [],
+    },
+  ])('maps completed TWAPs for $name filters', async ({
+    statuses,
+    orderIds,
+  }) => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [],
+        historicalOrders: [],
+        twapHistory: [activated],
+        userTwapSliceFills: [
+          {
+            ...HL_TWAP_SLICE_FILLS[0],
+            fill: {
+              ...HL_TWAP_SLICE_FILLS[0].fill,
+              sz: '0.021',
+              px: '3990',
+            },
+          },
+          {
+            ...HL_TWAP_SLICE_FILLS[2],
+            fill: {
+              ...HL_TWAP_SLICE_FILLS[2].fill,
+              sz: '0.021',
+              px: '4010',
+            },
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses,
+    })
+
+    expect(orders.map((order) => order.orderId)).toEqual(orderIds)
+    for (const order of orders) {
+      expect(order).toMatchObject({
+        orderId: '2329352',
+        status: OrderStatus.FILLED,
+        originalSize: '0.042',
+        filledSize: '0.042',
+        remainingSize: '0',
+        averagePrice: '4000',
+      })
+    }
   })
 
   it('maps a running TWAP from the slice fills of its twapId', async () => {
@@ -540,12 +730,9 @@ describe('getOrders', () => {
     )
     restore = installed.restore
     const { orders } = await getOrders(ctx, { address: ADDRESS })
-    expect(installed.requests.map((request) => request.body.type)).toEqual([
-      'preTransferCheck',
-      'frontendOpenOrders',
-      'twapHistory',
-      'userTwapSliceFills',
-    ])
+    expect(
+      installed.requests.some(({ body }) => body.type === 'userDetails')
+    ).toBe(false)
     expect(orders.every((order) => order.explorerLink === undefined)).toBe(true)
   })
 

@@ -237,6 +237,58 @@ describe('getOrder', () => {
     })
   })
 
+  it('rejects a running TWAP read when its slice-fill request fails', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    await expect(
+      getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      tool: 'hyperliquid',
+    })
+  })
+
+  it('reads a fully executed TWAP as filled before its finished history row arrives', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: [
+          {
+            ...HL_TWAP_SLICE_FILLS[0],
+            fill: {
+              ...HL_TWAP_SLICE_FILLS[0].fill,
+              sz: '0.042',
+              px: '4000',
+            },
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).toMatchObject({
+      orderId: '2329352',
+      status: OrderStatus.FILLED,
+      filledSize: '0.042',
+      remainingSize: '0',
+      averagePrice: '4000',
+    })
+  })
+
   it('sets explorerLink from the placement transaction that names the cloid', async () => {
     ;({ restore } = installInfoFetchMock(
       {

@@ -5,7 +5,7 @@ import {
   type ProviderGetOrdersParams,
   type SDKRequestOptions,
 } from '@lifi/perps-sdk'
-import type { Order, OrdersResponse } from '@lifi/perps-types'
+import { type Order, OrderStatus, type OrdersResponse } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type {
@@ -47,7 +47,7 @@ export const getOrders = async (
   const markets = await registry.sync()
   const active = statuses.some(isActiveOrderStatus)
   const terminal = statuses.some((status) => !isActiveOrderStatus(status))
-  const [open, historical, twaps, sliceFills] = await Promise.all([
+  const [open, historical, twaps] = await Promise.all([
     active
       ? Promise.all(
           perpsDexNames(markets).map((name) =>
@@ -75,14 +75,20 @@ export const getOrders = async (
       { type: 'twapHistory', user: params.address },
       infoOpts
     ),
-    active
-      ? infoRequest<HlTwapSliceFill[]>(
+  ])
+  const latestTwaps = resolveLatestTwapEntries(twaps)
+  const sliceFills =
+    (active || statuses.includes(OrderStatus.FILLED)) &&
+    latestTwaps.some(
+      (entry) =>
+        entry.twapId !== undefined && entry.status.status === 'activated'
+    )
+      ? await infoRequest<HlTwapSliceFill[]>(
           apiUrl,
           { type: 'userTwapSliceFills', user: params.address },
           infoOpts
         )
-      : [],
-  ])
+      : []
   const rows = new Map<string, Order>()
   const keep = (key: string, order: Order | undefined): void => {
     if (order !== undefined) {
@@ -128,10 +134,7 @@ export const getOrders = async (
     }
   }
   // TWAP ids and regular order ids occupy separate venue namespaces.
-  for (const twap of resolveTwapExecution(
-    resolveLatestTwapEntries(twaps),
-    sliceFills
-  )) {
+  for (const twap of resolveTwapExecution(latestTwaps, sliceFills)) {
     keep(
       `twap:${twap.twapId}`,
       mapOrderRow(twap.state.coin, registry, (market) => mapOrder(twap, market))
