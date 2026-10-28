@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 41.0.2
+
+### Patch Changes
+
+- [#661](https://github.com/lifinance/perps-sdk/pull/661) [`e49316a`](https://github.com/lifinance/perps-sdk/commit/e49316a5f05ae6456459534c261c32cf5089269c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Update the upstream web-WASM signer with wide market-ID support, callback memory-leak fixes, and verified build provenance. Remove signer globals and version metadata after initialization. Derive cleanup names from the manifest and verify built-package signing and altered-artifact rejection during the package build.
+
 ## 41.0.1
 
 ### Patch Changes
