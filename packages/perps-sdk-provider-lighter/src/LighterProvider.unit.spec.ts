@@ -6229,7 +6229,7 @@ describe('LighterProvider — getDepositFlow', () => {
     await expect(
       provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
-      kind: 'firstDepositPipeline',
+      kind: 'venueDepositPipeline',
       chainId: ETHEREUM_USDC.chainId,
       gasAsset: ETHEREUM_NATIVE_GAS,
       collateral: ETHEREUM_USDC,
