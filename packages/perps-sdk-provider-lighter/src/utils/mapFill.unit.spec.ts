@@ -1,11 +1,6 @@
 import { isDecimalString } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import {
-  FillClassification,
-  LiquidityRole,
-  OrderSide,
-  OrderType,
-} from '@lifi/perps-types'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { LtTrade } from '../types/index.js'
 import { mapFill } from './mapFill.js'
@@ -110,9 +105,21 @@ describe('mapFill (Lighter)', () => {
     )
   })
 
-  it('reports the execution type without an order lifecycle status', () => {
-    const fill = mapValidFill(baseTrade(), ACCOUNT_INDEX, MARKET)
-    expect(fill.type).toBe(OrderType.LIMIT)
+  // A trade row names no originating order type, and a resting maker order can
+  // be a limit or a triggered limit order.
+  it.each([
+    ['trade', LiquidityRole.MAKER, false],
+    ['trade', LiquidityRole.TAKER, true],
+    ['liquidation', LiquidityRole.MAKER, false],
+    ['liquidation', LiquidityRole.TAKER, true],
+  ] as const)('reports no order type or lifecycle status on a %s %s fill', (type, liquidity, isMakerAsk) => {
+    const fill = mapValidFill(
+      baseTrade({ type, is_maker_ask: isMakerAsk }),
+      ACCOUNT_INDEX,
+      MARKET
+    )
+    expect(fill.liquidity).toBe(liquidity)
+    expect(fill).not.toHaveProperty('type')
     expect(fill).not.toHaveProperty('status')
   })
 
