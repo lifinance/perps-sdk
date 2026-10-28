@@ -240,6 +240,23 @@ The `orderUpdates` WebSocket feed omits execution metadata. The provider reads
 The provider emits frames in stream order after these HTTP reads finish.
 Unavailable metadata reports a decode failure instead of inventing an order type.
 
+## Liquidations
+
+Hyperliquid closes a liquidated position with a `LiquidationMarket` order or
+with a backstop takeover.
+
+- A `LiquidationMarket` order maps to a `MARKET` `RegularOrder` with
+  `isLiquidation: true`. Its `price` is the order limit, not the execution price.
+- Hyperliquid attaches a `liquidation` block to the fills of both parties.
+  `getFills` and the `fills` WebSocket stream set `Fill.liquidation` only when
+  `liquidatedUser` is the requested address.
+- `Fill.liquidation.method` is `MARKET` for the venue `market` method and
+  `BACKSTOP` for `backstop`. An unknown method leaves `method` absent.
+- `Fill.liquidation.markPrice` is the venue `markPx`. `Fill.price` stays the
+  execution price.
+- A fill of the liquidated account has no `type`. A backstop takeover fills
+  that account as the maker, but no resting limit order exists.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API

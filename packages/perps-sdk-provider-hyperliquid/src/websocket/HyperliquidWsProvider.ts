@@ -1243,7 +1243,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             return []
           }
           const market = this.registry?.get(f.coin)
-          const mapped = market && mapFill(f as HlUserFill, market)
+          const mapped = market && mapFill(f as HlUserFill, market, data.user)
           return mapped ? [mapped] : []
         })
     this.emit(`userFills:${data.user.toLowerCase()}`, {

@@ -607,6 +607,7 @@ describe('getOrders', () => {
         type: OrderType.MARKET,
         timeInForce: TimeInForce.IOC,
         status: OrderStatus.FILLED,
+        isLiquidation: true,
       }),
     ])
   })
