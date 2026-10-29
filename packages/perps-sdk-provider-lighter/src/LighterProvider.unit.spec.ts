@@ -706,6 +706,7 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
       entryPrice: '50000',
       leverage: '10',
       isLong: true,
+      marginMode: MarginMode.ISOLATED,
     })
     expect(liq).toBe('45546.5587044534412955465587044534412955465587')
   })

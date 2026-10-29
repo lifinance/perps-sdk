@@ -174,16 +174,27 @@ export const safeCalculateEffectiveLeverage = createSafeFunction(
  *   margin_available = entryPrice × (1 / leverage - mmr)
  *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
  *
+ * With `current`, the order of `size` adds to that position on the same side.
+ * The equity of the blended position at `entryPrice` is `current.margin`, the
+ * PnL of `current` at `entryPrice`, and the margin of the order. The margin
+ * available is that equity minus the maintenance margin of the blended size,
+ * and the formula above divides it by the blended size.
+ *
  * For existing positions, prefer `Position.liquidationPrice` from the venue.
  *
  * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
  *   (`'0.01'` = 1%).
- * @returns The estimate, or `undefined` when `1 / leverage` is at or below
- *   `maintenanceMarginRate`: the position opens at or past liquidation, so
- *   the model has no price on the correct side of entry.
+ * @param size - Order size as a non-negative magnitude. Read only with
+ *   `current`.
+ * @param current - Open isolated position on the same side that the order
+ *   adds to. `margin` is its collateral net of unrealized PnL.
+ * @returns The estimate, or `undefined` when the margin above the
+ *   maintenance requirement is not positive: the position opens at or past
+ *   liquidation, so the model has no price on the correct side of entry.
  * @throws {PerpsError} `ValidationError` when an input does not match the
- *   decimal pattern, `leverage` is zero, or `maintenanceMarginRate` gives a
- *   zero denominator (`1` for a long, `-1` for a short).
+ *   decimal pattern, `leverage` is zero, `maintenanceMarginRate` gives a
+ *   zero denominator (`1` for a long, `-1` for a short), `current` comes
+ *   without `size`, or `current.size + size` is not positive.
  * @public
  */
 export function estimateLiquidationPrice(params: {
@@ -191,6 +202,8 @@ export function estimateLiquidationPrice(params: {
   leverage: string
   isLong: boolean
   maintenanceMarginRate: string
+  size?: string
+  current?: { size: string; entryPrice: string; margin: string }
 }): string | undefined {
   const entryPrice = decimalStringToBig(params.entryPrice)
   const leverage = decimalStringToBig(params.leverage)
@@ -206,13 +219,38 @@ export function estimateLiquidationPrice(params: {
       `must not be ${params.isLong ? '1' : '-1'} for this side`
     )
   }
-  const marginFractionAvailable = new DivBig(1).div(leverage).minus(mmr)
-  if (marginFractionAvailable.lte(0)) {
+  if (params.current === undefined) {
+    const marginFractionAvailable = new DivBig(1).div(leverage).minus(mmr)
+    if (marginFractionAvailable.lte(0)) {
+      return undefined
+    }
+    const marginAvailable = marginFractionAvailable.times(entryPrice)
+    return bigToDecimalString(
+      entryPrice.minus(marginAvailable.times(side).div(denominator))
+    )
+  }
+  if (params.size === undefined) {
+    throw invalidInput('size', 'is required with `current`')
+  }
+  const addSize = decimalStringToBig(params.size)
+  const currentSize = decimalStringToBig(params.current.size)
+  const currentEntry = decimalStringToBig(params.current.entryPrice)
+  const currentMargin = decimalStringToBig(params.current.margin)
+  const totalSize = currentSize.plus(addSize)
+  if (totalSize.lte(0)) {
+    throw invalidInput('size + current.size', 'must be positive')
+  }
+  const equity = currentMargin
+    .plus(currentSize.times(entryPrice.minus(currentEntry)).times(side))
+    .plus(new DivBig(entryPrice).times(addSize).div(leverage))
+  const marginAvailablePerUnit = new DivBig(equity)
+    .minus(mmr.times(totalSize).times(entryPrice))
+    .div(totalSize)
+  if (marginAvailablePerUnit.lte(0)) {
     return undefined
   }
-  const marginAvailable = marginFractionAvailable.times(entryPrice)
   return bigToDecimalString(
-    entryPrice.minus(marginAvailable.times(side).div(denominator))
+    entryPrice.minus(marginAvailablePerUnit.times(side).div(denominator))
   )
 }
 

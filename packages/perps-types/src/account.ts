@@ -45,8 +45,12 @@ export interface Position {
   entryPrice: DecimalString
   /** Current provider mark price in quote-asset units. */
   markPrice?: DecimalString
-  /** Estimated liquidation price in quote-asset units. */
-  liquidationPrice: DecimalString
+  /**
+   * Estimated liquidation price in quote-asset units. Absent when the venue
+   * gives no liquidation price, for example a cross position that no price
+   * liquidates.
+   */
+  liquidationPrice?: DecimalString
   /** Unrealized PnL in quote-currency units. */
   unrealizedPnl: DecimalString
   /**
