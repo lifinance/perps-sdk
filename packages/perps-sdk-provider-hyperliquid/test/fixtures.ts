@@ -412,6 +412,39 @@ export const HL_TWAP_SLICE_FILLS: HlTwapSliceFill[] = [
   }),
 ]
 
+/** The `activated` `twapHistory` row of a running ETH TWAP of 40. */
+export const HL_TWAP_LONG_ACTIVATED: HlTwapHistoryEntry = {
+  twapId: 2329400,
+  time: 1_792_154_930,
+  status: { status: 'activated' },
+  state: {
+    coin: 'ETH',
+    executedNtl: '0.0',
+    executedSz: '0.0',
+    minutes: 1_440,
+    side: 'B',
+    sz: '40',
+    timestamp: 1_792_154_930_000,
+    reduceOnly: false,
+  },
+}
+
+/**
+ * 3,000 slice fills of {@link HL_TWAP_LONG_ACTIVATED}, oldest first, one each
+ * 30 s: 1,000 of 0.01 at 100, then 2,000 of 0.01 at 130 (30 at an average of 120).
+ */
+export const HL_TWAP_LONG_SLICE_FILLS: HlTwapSliceFill[] = Array.from(
+  { length: 3_000 },
+  (_, index) =>
+    twapSliceFill(2329400, {
+      tid: 10_000 + index,
+      oid: 20_000 + index,
+      sz: '0.01',
+      px: index < 1_000 ? '100' : '130',
+      time: 1_792_154_930_000 + (index + 1) * 30_000,
+    })
+)
+
 export const HL_USER_FILLS: HlUserFills = [
   {
     tid: 100,
