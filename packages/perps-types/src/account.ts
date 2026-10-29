@@ -4,6 +4,7 @@ import type {
   ActionType,
   ActivityType,
   FillClassification,
+  LiquidationMethod,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -105,6 +106,12 @@ export interface RegularOrder extends OrderBase {
   price?: DecimalString
   timeInForce: TimeInForce
   expiresAt?: string
+  /**
+   * Set when the venue placed the order to liquidate the account. Absent on
+   * an ordinary order. `price` stays the order limit; the fills carry the
+   * execution prices.
+   */
+  isLiquidation?: true
 }
 
 /** Price-activated take-profit or stop-loss order. */
@@ -270,6 +277,22 @@ export interface Fee {
 }
 
 /**
+ * Liquidation detail of a fill that closed the account's own position in a
+ * venue liquidation.
+ *
+ * @public
+ */
+export interface FillLiquidation {
+  /** Absent when the venue reports no method, or one that the SDK does not know. */
+  method?: LiquidationMethod
+  /**
+   * Mark price of the liquidation. Absent when the venue reports none.
+   * `Fill.price` stays the execution price.
+   */
+  markPrice?: DecimalString
+}
+
+/**
  * Normalized execution/fill record for an order.
  *
  * @public
@@ -316,6 +339,11 @@ export interface Fill {
   /** Fully-resolved block-explorer URL for the settling on-chain tx. Absent when
    * the fill has no on-chain settlement tx. */
   explorerLink?: string
+  /**
+   * Present only on a fill of the liquidated account. The counterparty fill
+   * of the same trade never carries it.
+   */
+  liquidation?: FillLiquidation
 }
 
 /**

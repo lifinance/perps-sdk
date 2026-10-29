@@ -154,6 +154,25 @@ Active reads return the complete snapshot and do not apply `limit` or `cursor`.
 History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
 WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
 
+## Liquidations
+
+A Lighter order of type `liquidation` maps to a `MARKET` `RegularOrder` with
+`isLiquidation: true`.
+
+Lighter marks a forced trade with the trade `type`. The liquidation engine
+sends the order of the liquidated account as the taker. Thus `Fill.liquidation`
+is set on the taker fill only, on mainnet and on Robinhood chain:
+
+| Trade `type` | `Fill.liquidation.method` |
+| --- | --- |
+| `liquidation`: a partial liquidation on the order book | `MARKET` |
+| `deleverage`: a takeover by the LLP, or auto-deleveraging | `DELEVERAGE` |
+
+The maker fill of a forced trade carries no `liquidation`. A `trade` row and a
+`market-settlement` row also carry none. Lighter reports no mark price on a
+trade, so `markPrice` stays absent. A `deleverage` row can report a `price` of
+zero. The SDK shows this venue value unchanged.
+
 ## Market TP/SL slippage
 
 A Lighter market TP/SL order needs a slippage-adjusted limit price: the lowest fill for a sell, or the highest fill for a buy.
