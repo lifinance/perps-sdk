@@ -83,6 +83,7 @@ import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
+import { OndoServerClock } from './auth/OndoServerClock.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import {
   ondoSessionRejectedError,
@@ -220,6 +221,8 @@ export const ondoProvider = (
       fetchImpl: client.config.fetch,
     })
   }
+
+  const serverClock = new OndoServerClock(apiClient)
 
   const marketRegistry = () =>
     getMarketRegistry(requireClient(), ONDO_PROVIDER_KEY)
@@ -1200,7 +1203,7 @@ export const ondoProvider = (
     ): Promise<SignActionsResult> {
       try {
         return await ondoSignActions(
-          { client: apiClient(), tokenStore, apiKeyStore },
+          { client: apiClient(), tokenStore, apiKeyStore, serverClock },
           method,
           steps,
           address,

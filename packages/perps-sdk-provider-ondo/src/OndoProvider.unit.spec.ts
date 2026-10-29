@@ -403,6 +403,8 @@ let maxOrderSizeResponse: { body: unknown; status: number }
 let leverageResponse: { body: unknown; status: number }
 /** `GET /v1/perps/mark_prices` response body and HTTP status. */
 let markPricesResponse: { body: unknown; status: number }
+/** How far the `GET /v1/perps/depth` snapshot time sits from the client clock. */
+let depthTimeOffsetMs: number
 
 const PORTFOLIO_GRAPH_RESULT: OndoPortfolioGraphPoint[] = [
   {
@@ -458,6 +460,7 @@ beforeEach(() => {
   maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
   leverageResponse = { body: envelope(LEVERAGE_RESULT), status: 200 }
   markPricesResponse = { body: envelope(MARK_PRICES_RESULT), status: 200 }
+  depthTimeOffsetMs = 0
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -470,6 +473,16 @@ beforeEach(() => {
       return respond({ providers: providersResult })
     }
     recorded.push({ url: u, init })
+    if (u.includes('/v1/perps/depth')) {
+      return respond(
+        envelope({
+          market: 'BTC-USD.P',
+          time: new Date(Date.now() + depthTimeOffsetMs).toISOString(),
+          asks: [['80958', '0.0293']],
+          bids: [['80931', '0.0123']],
+        })
+      )
+    }
     if (u.includes('/v1/perps/balance')) {
       return respond(envelope(balanceResult))
     }
@@ -3112,6 +3125,26 @@ describe('OndoProvider — write-action surface', () => {
     expect(step.hmac.signature).toBe(expected)
     // The API secret never appears in the signed step — only the signature.
     expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
+  })
+
+  it('signActions(HMAC) stamps the Ondo depth-snapshot clock when the client clock runs 10s ahead', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+    depthTimeOffsetMs = -10_000
+
+    const result = await provider.signActions?.(
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      ADDRESS
+    )
+    const serverNowMs = Date.now() - 10_000
+
+    const [step] = (result?.signed ?? []) as HmacSignedActionStep[]
+    expect(step.hmac.timestampMs).toBeLessThanOrEqual(serverNowMs)
+    expect(serverNowMs - step.hmac.timestampMs).toBeLessThan(1_000)
+    expect(recorded.map((r) => r.url)).toContain(
+      `${API_URL}/v1/perps/depth?market=BTC-USD.P&depth=1`
+    )
   })
 
   it('signActions(HMAC) lists keys before it creates a JWT-authorized key', async () => {

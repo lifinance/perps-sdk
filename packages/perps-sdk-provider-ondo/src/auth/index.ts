@@ -6,6 +6,7 @@ export {
 } from './completeSiweLogin.js'
 export { hmacSignRequest, type OndoHmacRequest } from './hmac.js'
 export { OndoApiKeyStore } from './OndoApiKeyStore.js'
+export { OndoServerClock } from './OndoServerClock.js'
 export { OndoTokenStore } from './OndoTokenStore.js'
 export {
   type OndoSignActionsDeps,
