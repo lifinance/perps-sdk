@@ -493,12 +493,7 @@ export function hyperliquidProvider(
       market: PerpsMarket,
       params: LiquidationEstimateParams
     ): string | undefined =>
-      calculateLiquidationPrice(
-        params.entryPrice,
-        params.leverage,
-        params.isLong,
-        market.maxLeverage
-      ),
+      calculateLiquidationPrice(params, market.maxLeverage),
 
     positionRemovableMargin,
 

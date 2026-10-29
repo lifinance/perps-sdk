@@ -283,6 +283,8 @@ export const mapOrder = (
           ? TimeInForce.IOC
           : TimeInForce.GTC
         : mapTimeInForce(order.timeInForce),
+    // The liquidation engine places the account's own orders for a liquidation event.
+    ...(order.liquidationId ? { isLiquidation: true } : {}),
   }
 }
 
