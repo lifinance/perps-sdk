@@ -153,6 +153,16 @@ export enum LiquidityRole {
   TAKER = 'taker',
 }
 
+/** How a venue closed a liquidated position. @public */
+export enum LiquidationMethod {
+  /** A venue liquidation order traded on the order book: Hyperliquid `market`, Lighter partial liquidation. */
+  MARKET = 'MARKET',
+  /** A backstop liquidator took over the position: Hyperliquid `backstop`. */
+  BACKSTOP = 'BACKSTOP',
+  /** The venue took over the position or auto-deleveraged it against an opposite position: Lighter `deleverage`. */
+  DELEVERAGE = 'DELEVERAGE',
+}
+
 /**
  * Action identifiers used in setup, create-action, and execute-action
  * requests. Values are the backend wire strings.

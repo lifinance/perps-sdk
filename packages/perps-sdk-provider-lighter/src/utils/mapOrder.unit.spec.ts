@@ -356,6 +356,39 @@ describe('mapOrder (Lighter)', () => {
     expect(mapped).not.toHaveProperty('expiresAt')
   })
 
+  it('marks a venue liquidation order as a liquidation market order', () => {
+    expect(
+      mapOrder(
+        baseOrder({
+          type: 'liquidation',
+          time_in_force: 'immediate-or-cancel',
+          reduce_only: true,
+          status: 'filled',
+          order_expiry: 0,
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      type: OrderType.MARKET,
+      timeInForce: TimeInForce.IOC,
+      isLiquidation: true,
+    })
+  })
+
+  it.each([
+    ['market', { type: 'market', time_in_force: 'immediate-or-cancel' }],
+    ['limit', {}],
+    ['take-profit', { type: 'take-profit', trigger_price: '2100' }],
+    ['stop-loss', { type: 'stop-loss', trigger_price: '1900' }],
+  ] satisfies [
+    string,
+    Partial<LtOrder>,
+  ][])('does not mark an ordinary %s order as a liquidation', (_label, overrides) => {
+    expect(mapOrder(baseOrder(overrides), MARKET)).not.toHaveProperty(
+      'isLiquidation'
+    )
+  })
+
   it.each([
     ['originalSize', { initial_base_amount: 'abc' }, 'abc'],
     ['remainingSize', { remaining_base_amount: '' }, ''],

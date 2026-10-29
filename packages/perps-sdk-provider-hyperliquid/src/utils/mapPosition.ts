@@ -43,7 +43,7 @@ export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
  * Hyperliquid signs funding paid as positive and `accruedFunding` signs it as
  * negative. A row with an invalid size gives `undefined`; an invalid position
  * value, a non-positive leverage or an invalid funding leaves the derived field
- * absent.
+ * absent, and a `null` or empty `liquidationPx` leaves `liquidationPrice` absent.
  * @public
  */
 export const mapPosition = (
@@ -93,7 +93,7 @@ export const mapPosition = (
     size,
     entryPrice: pos.entryPx ?? '0',
     ...(markPrice === undefined ? {} : { markPrice }),
-    liquidationPrice: pos.liquidationPx || '0',
+    ...(pos.liquidationPx ? { liquidationPrice: pos.liquidationPx } : {}),
     unrealizedPnl: pos.unrealizedPnl,
     ...(accruedFunding === undefined ? {} : { accruedFunding }),
     ...(leverage === undefined ? {} : { leverage }),

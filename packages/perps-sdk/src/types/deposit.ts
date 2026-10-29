@@ -37,10 +37,11 @@ export interface DepositFlowLifiSwap {
 }
 
 /**
- * Fund the account through the venue's {@link ActionType.DEPOSIT} action, for
- * an address with or without a venue account. Collateral and the native gas to
- * broadcast with are both needed on `chainId`, where that action stages the
- * on-chain legs that credit the account and open it when none exists.
+ * Fund an address that has no venue account yet, or an existing account on a
+ * venue whose collateral no LI.FI route credits directly. Collateral and the
+ * native gas to broadcast with are both needed on `chainId`, where the venue's
+ * {@link ActionType.DEPOSIT} action stages the on-chain legs that credit the
+ * account and open it when none exists.
  *
  * @public
  */
