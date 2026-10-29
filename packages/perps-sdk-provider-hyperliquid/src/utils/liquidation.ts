@@ -16,10 +16,17 @@ import {
   createSafeFunction,
   divideDecimalString,
   estimateLiquidationPrice,
+  type LiquidationEstimateParams,
   numberToDecimalString,
   PerpsError,
+  subtractDecimalString,
 } from '@lifi/perps-sdk'
-import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  type DecimalString,
+  MarginMode,
+  PerpsErrorCode,
+  PositionSide,
+} from '@lifi/perps-types'
 
 /**
  * Maintenance margin fraction for a Hyperliquid asset: half of the initial
@@ -50,34 +57,54 @@ export const safeCalculateMaintenanceMarginRate = createSafeFunction(
 )
 
 /**
- * Liquidation price of a new isolated position with the exact Hyperliquid
- * formula. For an existing position, prefer `Position.liquidationPrice` from
- * the API.
+ * Liquidation price of the isolated position that an order leaves, with the
+ * exact Hyperliquid formula: a new position, or the blend of the order into
+ * `params.position`. Hyperliquid isolated `marginUsed` includes the
+ * unrealized PnL, so the collateral of the position is `marginUsed` minus
+ * `unrealizedPnl`. For an existing position, prefer
+ * `Position.liquidationPrice` from the API.
  *
- * Formula derivation (isolated margin, single position):
- *   margin_available = entryPrice × (1 / leverage - mmr)
- *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
- *
- * @param leverage - User-selected leverage (e.g., `'10'`)
  * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Sets
  *   mmr = 1 / (2 × maxLeverage).
- * @returns The estimate, or `undefined` when `leverage` is at or above
- *   `2 × maxLeverage`, as {@link estimateLiquidationPrice} documents.
+ * @returns The estimate, or `undefined` when the order or the position is
+ *   cross (the liquidation depends on the whole account), when the order
+ *   reduces the position, or when `leverage` is at or above `2 × maxLeverage`,
+ *   as {@link estimateLiquidationPrice} documents.
  * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
  *   number above zero, or on an input that `estimateLiquidationPrice` rejects.
  * @public
  */
 export function calculateLiquidationPrice(
-  entryPrice: string,
-  leverage: string,
-  isLong: boolean,
+  params: LiquidationEstimateParams,
   maxLeverage: number
 ): string | undefined {
+  const { position } = params
+  if (
+    params.marginMode === MarginMode.CROSS ||
+    position?.marginMode === MarginMode.CROSS ||
+    (position !== undefined &&
+      (position.side === PositionSide.LONG) !== params.isLong)
+  ) {
+    return undefined
+  }
   return estimateLiquidationPrice({
-    entryPrice,
-    leverage,
-    isLong,
+    entryPrice: params.entryPrice,
+    leverage: params.leverage,
+    isLong: params.isLong,
     maintenanceMarginRate: calculateMaintenanceMarginRate(maxLeverage),
+    size: params.size,
+    ...(position === undefined
+      ? {}
+      : {
+          current: {
+            size: position.size,
+            entryPrice: position.entryPrice,
+            margin: subtractDecimalString(
+              position.marginUsed,
+              position.unrealizedPnl
+            ),
+          },
+        }),
   })
 }
 
