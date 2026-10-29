@@ -21,6 +21,7 @@ import {
   estimateLiquidationPrice,
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
+  estimateOrderLiquidationPrice,
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
@@ -34,6 +35,7 @@ import {
   safeEstimateAverageEntryPrice,
   safeEstimateLiquidationPrice,
   safeEstimateNewLeverage,
+  safeEstimateOrderLiquidationPrice,
   safeEstimateUnrealizedPnl,
   safeWouldImmediatelyLiquidate,
   wouldImmediatelyLiquidate,
@@ -638,8 +640,128 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
           rate,
           order({ entryPrice: '100000', position: position({}) })
         )
-      ).toThrow('`size` is required with `current`.')
+      ).toThrow('`size` is required with `position`.')
     })
+  })
+})
+
+describe('estimateOrderLiquidationPrice', () => {
+  const position: Position = {
+    market: {
+      providerId: 'lighter',
+      id: '1',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '1',
+        displaySymbol: 'BTC',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+    },
+    side: PositionSide.LONG,
+    size: '1',
+    entryPrice: '90000',
+    markPrice: '100000',
+    liquidationPrice: '81000',
+    unrealizedPnl: '10000',
+    marginUsed: '9000',
+    marginMode: MarginMode.ISOLATED,
+  }
+  const add: LiquidationEstimateParams = {
+    entryPrice: '100000',
+    leverage: '10',
+    isLong: true,
+    marginMode: MarginMode.ISOLATED,
+    size: '1',
+    position,
+  }
+  const venue = () => ({
+    maintenanceMarginRate: vi.fn(() => '0.01'),
+    positionCollateral: vi.fn(({ marginUsed }: Position) => marginUsed),
+  })
+
+  it('reads the collateral of the position from the venue', () => {
+    const { maintenanceMarginRate } = venue()
+    const positionCollateral = vi.fn(() => '8000')
+    // equity at 100000 = 8000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 28000
+    // margin available = 28000 − 0.01 × 2 × 100000 = 26000, per unit 13000
+    expect(
+      estimateOrderLiquidationPrice(add, {
+        maintenanceMarginRate,
+        positionCollateral,
+      })
+    ).toBe('86868.6868686868686868686868686868686868686869')
+    expect(positionCollateral).toHaveBeenCalledWith(position)
+  })
+
+  it('estimates a new position without reading the collateral', () => {
+    const { maintenanceMarginRate, positionCollateral } = venue()
+    expect(
+      estimateOrderLiquidationPrice(
+        { ...add, position: undefined },
+        { maintenanceMarginRate, positionCollateral }
+      )
+    ).toBe(
+      estimateLiquidationPrice({
+        entryPrice: '100000',
+        leverage: '10',
+        isLong: true,
+        maintenanceMarginRate: '0.01',
+      })
+    )
+    expect(positionCollateral).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: 'a cross order', params: { ...add, marginMode: MarginMode.CROSS } },
+    {
+      name: 'a cross position',
+      params: {
+        ...add,
+        position: { ...position, marginMode: MarginMode.CROSS },
+      },
+    },
+    {
+      name: 'an order against the side of the position',
+      params: { ...add, isLong: false },
+    },
+  ])('returns undefined for $name without reading the venue', ({ params }) => {
+    const { maintenanceMarginRate, positionCollateral } = venue()
+    expect(
+      estimateOrderLiquidationPrice(params, {
+        maintenanceMarginRate,
+        positionCollateral,
+      })
+    ).toBeUndefined()
+    expect(maintenanceMarginRate).not.toHaveBeenCalled()
+    expect(positionCollateral).not.toHaveBeenCalled()
+  })
+
+  it('throws a ValidationError that names size and position', () => {
+    expect(() =>
+      estimateOrderLiquidationPrice({ ...add, size: undefined }, venue())
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: '`size` is required with `position`.',
+      })
+    )
+  })
+
+  it('safeEstimateOrderLiquidationPrice gives undefined and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      safeEstimateOrderLiquidationPrice({ ...add, size: undefined }, venue())
+    ).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 

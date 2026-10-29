@@ -263,26 +263,31 @@ export const safeEstimateLiquidationPrice = createSafeFunction(
 
 /**
  * Estimate the liquidation price of the isolated position that an order
- * leaves, from the flat `market.maintenanceMarginRate`: a new position, or
- * the blend of the order into `params.position`. The collateral of the
- * position is `position.marginUsed`, so the venue `marginUsed` must exclude
- * the unrealized PnL, as Lighter `allocated_margin` does.
+ * leaves: a new position, or the blend of the order into `params.position`.
+ * The venue callbacks run only after the margin-mode and side checks pass.
  *
- * @returns The estimate, or `undefined` when the market carries no
- *   `maintenanceMarginRate`, when the order or the position is cross (the
- *   liquidation depends on the whole account), when the order reduces the
- *   position, or when {@link estimateLiquidationPrice} gives `undefined`.
- * @throws {PerpsError} `ValidationError` on an input that
+ * @param venue.maintenanceMarginRate - Venue maintenance margin rate as a
+ *   fraction (`'0.01'` = 1%).
+ * @param venue.positionCollateral - Collateral of `position`, net of
+ *   unrealized PnL. It depends on the venue meaning of `Position.marginUsed`.
+ * @returns The estimate, or `undefined` when the order or the position is
+ *   cross (the liquidation depends on the whole account), when the order
+ *   reduces the position, or when {@link estimateLiquidationPrice} gives
+ *   `undefined`.
+ * @throws {PerpsError} `ValidationError` when `params.position` comes
+ *   without `params.size`, or on an input that
  *   {@link estimateLiquidationPrice} rejects.
  * @public
  */
-export function estimateLiquidationPriceAtMarketRate(
-  market: PerpsMarket,
-  params: LiquidationEstimateParams
+export function estimateOrderLiquidationPrice(
+  params: LiquidationEstimateParams,
+  venue: {
+    maintenanceMarginRate: () => string
+    positionCollateral: (position: Position) => string
+  }
 ): string | undefined {
   const { position } = params
   if (
-    market.maintenanceMarginRate === undefined ||
     params.marginMode === MarginMode.CROSS ||
     position?.marginMode === MarginMode.CROSS ||
     (position !== undefined &&
@@ -290,21 +295,60 @@ export function estimateLiquidationPriceAtMarketRate(
   ) {
     return undefined
   }
+  const maintenanceMarginRate = venue.maintenanceMarginRate()
+  if (position === undefined) {
+    return estimateLiquidationPrice({
+      entryPrice: params.entryPrice,
+      leverage: params.leverage,
+      isLong: params.isLong,
+      maintenanceMarginRate,
+      size: params.size,
+    })
+  }
+  const margin = venue.positionCollateral(position)
+  if (params.size === undefined) {
+    throw invalidInput('size', 'is required with `position`')
+  }
   return estimateLiquidationPrice({
     entryPrice: params.entryPrice,
     leverage: params.leverage,
     isLong: params.isLong,
-    maintenanceMarginRate: market.maintenanceMarginRate,
+    maintenanceMarginRate,
     size: params.size,
-    ...(position === undefined
-      ? {}
-      : {
-          current: {
-            size: position.size,
-            entryPrice: position.entryPrice,
-            margin: position.marginUsed,
-          },
-        }),
+    current: { size: position.size, entryPrice: position.entryPrice, margin },
+  })
+}
+
+/** @public */
+export const safeEstimateOrderLiquidationPrice = createSafeFunction(
+  'estimateOrderLiquidationPrice',
+  estimateOrderLiquidationPrice
+)
+
+/**
+ * Estimate the liquidation price of the isolated position that an order
+ * leaves, from the flat `market.maintenanceMarginRate`. The collateral of the
+ * position is `position.marginUsed`, so the venue `marginUsed` must exclude
+ * the unrealized PnL, as Lighter `allocated_margin` does.
+ *
+ * @returns The estimate, or `undefined` when the market carries no
+ *   `maintenanceMarginRate`, or as {@link estimateOrderLiquidationPrice}
+ *   documents.
+ * @throws {PerpsError} `ValidationError` as {@link estimateOrderLiquidationPrice}
+ *   documents.
+ * @public
+ */
+export function estimateLiquidationPriceAtMarketRate(
+  market: PerpsMarket,
+  params: LiquidationEstimateParams
+): string | undefined {
+  const { maintenanceMarginRate } = market
+  if (maintenanceMarginRate === undefined) {
+    return undefined
+  }
+  return estimateOrderLiquidationPrice(params, {
+    maintenanceMarginRate: () => maintenanceMarginRate,
+    positionCollateral: (position) => position.marginUsed,
   })
 }
 

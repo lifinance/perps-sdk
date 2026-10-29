@@ -15,18 +15,13 @@
 import {
   createSafeFunction,
   divideDecimalString,
-  estimateLiquidationPrice,
+  estimateOrderLiquidationPrice,
   type LiquidationEstimateParams,
   numberToDecimalString,
   PerpsError,
   subtractDecimalString,
 } from '@lifi/perps-sdk'
-import {
-  type DecimalString,
-  MarginMode,
-  PerpsErrorCode,
-  PositionSide,
-} from '@lifi/perps-types'
+import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 
 /**
  * Maintenance margin fraction for a Hyperliquid asset: half of the initial
@@ -69,42 +64,19 @@ export const safeCalculateMaintenanceMarginRate = createSafeFunction(
  * @returns The estimate, or `undefined` when the order or the position is
  *   cross (the liquidation depends on the whole account), when the order
  *   reduces the position, or when `leverage` is at or above `2 × maxLeverage`,
- *   as {@link estimateLiquidationPrice} documents.
+ *   as {@link estimateOrderLiquidationPrice} documents.
  * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
- *   number above zero, or on an input that `estimateLiquidationPrice` rejects.
+ *   number above zero, or as {@link estimateOrderLiquidationPrice} documents.
  * @public
  */
 export function calculateLiquidationPrice(
   params: LiquidationEstimateParams,
   maxLeverage: number
 ): string | undefined {
-  const { position } = params
-  if (
-    params.marginMode === MarginMode.CROSS ||
-    position?.marginMode === MarginMode.CROSS ||
-    (position !== undefined &&
-      (position.side === PositionSide.LONG) !== params.isLong)
-  ) {
-    return undefined
-  }
-  return estimateLiquidationPrice({
-    entryPrice: params.entryPrice,
-    leverage: params.leverage,
-    isLong: params.isLong,
-    maintenanceMarginRate: calculateMaintenanceMarginRate(maxLeverage),
-    size: params.size,
-    ...(position === undefined
-      ? {}
-      : {
-          current: {
-            size: position.size,
-            entryPrice: position.entryPrice,
-            margin: subtractDecimalString(
-              position.marginUsed,
-              position.unrealizedPnl
-            ),
-          },
-        }),
+  return estimateOrderLiquidationPrice(params, {
+    maintenanceMarginRate: () => calculateMaintenanceMarginRate(maxLeverage),
+    positionCollateral: (position) =>
+      subtractDecimalString(position.marginUsed, position.unrealizedPnl),
   })
 }
 
