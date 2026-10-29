@@ -1,5 +1,17 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 32.0.0
+
+### Minor Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+### Patch Changes
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b), [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41)]:
+  - @lifi/perps-types@26.0.0
+  - @lifi/perps-sdk@29.0.0
+
 ## 31.0.1
 
 ### Patch Changes
