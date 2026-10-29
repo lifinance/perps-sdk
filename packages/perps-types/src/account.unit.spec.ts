@@ -4,6 +4,7 @@ import type {
   ActivityItem,
   DepositActivity,
   Fill,
+  FillLiquidation,
   LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
@@ -20,6 +21,7 @@ import type { Asset } from './asset.js'
 import {
   ActivityType,
   FillClassification,
+  LiquidationMethod,
   LiquidityRole,
   MarginMode,
   OrderSide,
@@ -662,5 +664,38 @@ describe('Order read contract', () => {
       | 'createdAt'
       | 'updatedAt'
     >()
+  })
+  it('marks only a regular order as a venue liquidation', () => {
+    expectTypeOf<RegularOrder['isLiquidation']>().toEqualTypeOf<
+      true | undefined
+    >()
+    expectTypeOf<TriggerOrder>().not.toHaveProperty('isLiquidation')
+    expectTypeOf<TwapOrder>().not.toHaveProperty('isLiquidation')
+  })
+})
+
+describe('Fill liquidation', () => {
+  it('keeps the liquidation mark price apart from the execution price', () => {
+    const fill: Fill = {
+      ...BASE_FILL,
+      price: '185.64',
+      liquidation: { method: LiquidationMethod.MARKET, markPrice: '185.71' },
+    }
+
+    expect(fill.price).toBe('185.64')
+    expect(fill.liquidation?.markPrice).toBe('185.71')
+  })
+
+  it('types the method as LiquidationMethod and the mark price as a decimal string', () => {
+    expectTypeOf<FillLiquidation['method']>().toEqualTypeOf<
+      LiquidationMethod | undefined
+    >()
+    expectTypeOf<FillLiquidation['markPrice']>().toEqualTypeOf<
+      string | undefined
+    >()
+  })
+
+  it('omits liquidation on an ordinary fill', () => {
+    expect(BASE_FILL.liquidation).toBeUndefined()
   })
 })

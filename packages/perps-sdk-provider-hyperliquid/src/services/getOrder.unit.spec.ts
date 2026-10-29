@@ -9,6 +9,8 @@ import {
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
   HL_TWAP_HISTORY_FINISHED,
+  HL_TWAP_LONG_ACTIVATED,
+  HL_TWAP_LONG_SLICE_FILLS,
   HL_TWAP_SLICE_FILLS,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
@@ -234,6 +236,36 @@ describe('getOrder', () => {
     expect(installed.requests.map(({ body }) => body)).toContainEqual({
       type: 'userTwapSliceFills',
       user: ADDRESS,
+    })
+  })
+
+  it('reads a running TWAP from all of its slice fills when the slice-fill window is full', async () => {
+    const window = HL_TWAP_LONG_SLICE_FILLS.slice(-2000).reverse()
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [HL_TWAP_LONG_ACTIVATED],
+        userTwapSliceFills: window,
+        userTwapSliceFillsByTime: HL_TWAP_LONG_SLICE_FILLS.slice(0, 1001),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329400' })
+    ).toMatchObject({
+      orderId: '2329400',
+      status: OrderStatus.PARTIALLY_FILLED,
+      filledSize: '30',
+      remainingSize: '10',
+      averagePrice: '120',
+    })
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userTwapSliceFillsByTime',
+      user: ADDRESS,
+      startTime: HL_TWAP_LONG_ACTIVATED.state.timestamp,
+      endTime: window[window.length - 1].fill.time,
     })
   })
 

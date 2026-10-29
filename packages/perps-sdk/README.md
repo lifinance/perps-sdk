@@ -94,6 +94,19 @@ Account-specific reads go directly to the venue. `getOrders()` returns the
 `Order` union with regular, trigger, and TWAP rows. Its default filter includes
 PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
 
+Orders and fills show a venue liquidation:
+
+- `RegularOrder.isLiquidation` is `true` on an order that the venue placed to
+  liquidate the account. Its `price` is the order limit, not an execution price.
+- `Fill.liquidation` is present only on a fill of the liquidated account. A
+  counterparty fill of the same trade never carries it.
+- `Fill.liquidation.method` is a `LiquidationMethod`: `MARKET`, `BACKSTOP`, or
+  `DELEVERAGE`. It is absent when the venue reports no known method.
+- `Fill.liquidation.markPrice` is the mark price of the liquidation, when the
+  venue reports one. `Fill.price` stays the execution price.
+
+Each provider README tells which of these values its venue reports.
+
 `getWithdrawableBalances()` returns the `(asset, category)` pairs an address can
 withdraw at the venue. Hyperliquid, Lighter, and Ondo implement it. The client
 joins each row onto the registry `Asset` and drops a row below the per-asset

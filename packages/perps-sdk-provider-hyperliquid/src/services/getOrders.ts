@@ -12,7 +12,6 @@ import type {
   HlFrontendOpenOrders,
   HlHistoricalOrders,
   HlTwapHistoryEntry,
-  HlTwapSliceFill,
 } from '../types/index.js'
 import { withExplorerLinks } from '../utils/explorer.js'
 import { mapOrder, perpsDexNames } from '../utils/index.js'
@@ -23,6 +22,7 @@ import {
   resolveTwapExecution,
 } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { fetchTwapSliceFills } from './twapSliceFills.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
 export type GetOrdersParams = ProviderGetOrdersParams
@@ -78,16 +78,8 @@ export const getOrders = async (
   ])
   const latestTwaps = resolveLatestTwapEntries(twaps)
   const sliceFills =
-    (active || statuses.includes(OrderStatus.FILLED)) &&
-    latestTwaps.some(
-      (entry) =>
-        entry.twapId !== undefined && entry.status.status === 'activated'
-    )
-      ? await infoRequest<HlTwapSliceFill[]>(
-          apiUrl,
-          { type: 'userTwapSliceFills', user: params.address },
-          infoOpts
-        )
+    active || statuses.includes(OrderStatus.FILLED)
+      ? await fetchTwapSliceFills(apiUrl, params.address, latestTwaps, infoOpts)
       : []
   const rows = new Map<string, Order>()
   const keep = (key: string, order: Order | undefined): void => {

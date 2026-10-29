@@ -10,11 +10,12 @@ import {
   isDecimalStringZero,
   safeAddDecimalString,
   safeDivideDecimalString,
+  safeIsDecimalStringZero,
   safeMultiplyDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
-import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
+import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
+import { LiquidationMethod, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { LIGHTER_FEE_TICK_SCALE, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
@@ -111,8 +112,28 @@ const deriveRealizedPnl = (
   return isDecimalStringZero(pnl) ? null : pnl
 }
 
+// The liquidation engine trades as the taker for the liquidated account; the
+// maker of a forced trade is its counterparty.
+const mapFillLiquidation = (
+  type: string,
+  isMaker: boolean
+): FillLiquidation | undefined => {
+  if (isMaker) {
+    return undefined
+  }
+  switch (type) {
+    case 'liquidation':
+      return { method: LiquidationMethod.MARKET }
+    case 'deleverage':
+      return { method: LiquidationMethod.DELEVERAGE }
+    default:
+      return undefined
+  }
+}
+
 /**
- * Map a raw Lighter trade to the generic Fill type.
+ * Map a raw Lighter trade to the generic Fill type. Leaves `type` absent: a
+ * trade row does not name the originating order type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
  * @param market - Backend-resolved market identity for `trade.market_id`.
  * @public
@@ -122,7 +143,13 @@ export const mapFill = (
   accountIndex: number,
   market: MarketDisplay
 ): Fill | undefined => {
-  const { size, price } = trade
+  const { size } = trade
+  // Lighter reports a zero `price` on a `deleverage` row, but `usd_amount`
+  // still carries the execution notional.
+  const price =
+    trade.type === 'deleverage' && safeIsDecimalStringZero(trade.price) === true
+      ? (safeDivideDecimalString(trade.usd_amount, size) ?? trade.price)
+      : trade.price
   const createdAt = rowTimestampToIsoStringOrUndefined(trade.timestamp)
   if (createdAt === undefined) {
     warnSkippedVenueRow(
@@ -159,13 +186,13 @@ export const mapFill = (
     feeTick === undefined
       ? undefined
       : tickToFeeAmount(trade.usd_amount, feeTick, integratorFeeTick)
+  const liquidation = mapFillLiquidation(trade.type, isMaker)
 
   return {
     id: trade.trade_id_str,
     orderId: isBuyer ? trade.bid_id_str : trade.ask_id_str,
     market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
-    type: OrderType.LIMIT,
     size,
     price,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
@@ -192,5 +219,6 @@ export const mapFill = (
     explorerLink: isPlaceholderTxHash(trade.tx_hash)
       ? undefined
       : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
+    ...(liquidation === undefined ? {} : { liquidation }),
   }
 }

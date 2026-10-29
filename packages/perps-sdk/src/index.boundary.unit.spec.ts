@@ -335,7 +335,12 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPriceAtMarketRate: [
     { ...MARKET, maintenanceMarginRate: '0.01' },
-    { entryPrice: '100', leverage: '10', isLong: true },
+    {
+      entryPrice: '100',
+      leverage: '10',
+      isLong: true,
+      marginMode: MarginMode.ISOLATED,
+    },
   ],
   estimateNewLeverage: [
     {

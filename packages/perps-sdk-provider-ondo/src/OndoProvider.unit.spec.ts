@@ -635,6 +635,7 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
       entryPrice: '200',
       leverage: '5',
       isLong: true,
+      marginMode: MarginMode.ISOLATED,
     })
     expect(liq).toBe('163.2653061224489795918367346938775510204082')
   })
