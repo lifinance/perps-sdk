@@ -10,7 +10,6 @@ import {
   LiquidationMethod,
   LiquidityRole,
   OrderSide,
-  OrderType,
 } from '@lifi/perps-types'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HlFillLiquidation, HlUserFill } from '../types/index.js'
@@ -50,12 +49,9 @@ const mapFillLiquidation = (
   }
 }
 
-/**
- * Spot-ness comes from the resolved market's category, not the coin string —
- * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`. A fill with
- * an invalid time gives `undefined`.
- * @param address - Account that owns the fill. Only a fill of the liquidated
- * account carries `liquidation`.
+/** Maps a fill using the market category; the order type stays absent.
+ * Invalid times return `undefined`. The venue does not report the order type.
+ * @param address - Fill owner; only the liquidated account carries `liquidation`.
  * @public
  */
 export const mapFill = (
@@ -86,13 +82,6 @@ export const mapFill = (
     clientOrderId: fill.cloid,
     market,
     side,
-    // HL fills don't carry the originating order type. A maker fill (crossed:
-    // false) comes from a resting limit order, except when a backstop
-    // liquidator takes over the liquidated account's position; a taker fill
-    // (crossed: true) may be a market OR an aggressive limit order, which the
-    // payload can't distinguish, so the type is left undefined.
-    type:
-      fill.crossed || liquidation !== undefined ? undefined : OrderType.LIMIT,
     size,
     price: fill.px,
     liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
