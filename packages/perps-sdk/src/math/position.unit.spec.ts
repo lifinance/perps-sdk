@@ -556,6 +556,91 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
       estimateLiquidationPriceAtMarketRate(market({}), order({ leverage: '0' }))
     ).toThrow('`leverage` must not be zero.')
   })
+
+  describe('with the margin mode and the open position', () => {
+    const position = (overrides: Partial<Position>): Position => ({
+      market: market({}),
+      side: PositionSide.LONG,
+      size: '1',
+      entryPrice: '90000',
+      markPrice: '100000',
+      liquidationPrice: '81000',
+      unrealizedPnl: '10000',
+      marginUsed: '9000',
+      marginMode: MarginMode.ISOLATED,
+      ...overrides,
+    })
+    const rate = market({ maintenanceMarginRate: '0.01' })
+    const add = (overrides: Partial<LiquidationEstimateParams>) =>
+      order({ entryPrice: '100000', size: '1', ...overrides })
+
+    it('returns undefined for a cross order', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          order({ marginMode: MarginMode.CROSS })
+        )
+      ).toBeUndefined()
+    })
+
+    it('returns undefined for an isolated order on a cross position', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ position: position({ marginMode: MarginMode.CROSS }) })
+        )
+      ).toBeUndefined()
+    })
+
+    it('returns undefined for an order against the side of the position', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ isLong: false, position: position({}) })
+        )
+      ).toBeUndefined()
+    })
+
+    it('blends a long add into the position with marginUsed as the collateral', () => {
+      // equity at 100000 = 9000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 29000
+      // margin available = 29000 − 0.01 × 2 × 100000 = 27000, per unit 13500
+      // liq = 100000 − 13500 / 0.99
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ position: position({}) })
+        )
+      ).toBe('86363.6363636363636363636363636363636363636364')
+    })
+
+    it('blends a short add into the position with marginUsed as the collateral', () => {
+      // equity at 100000 = 11000 − 1 × (100000 − 110000) + 100000 ÷ 10 = 31000
+      // margin available = 31000 − 2000 = 29000, per unit 14500
+      // liq = 100000 + 14500 / 1.01
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({
+            isLong: false,
+            position: position({
+              side: PositionSide.SHORT,
+              entryPrice: '110000',
+              marginUsed: '11000',
+            }),
+          })
+        )
+      ).toBe('114356.4356435643564356435643564356435643564356')
+    })
+
+    it('throws a ValidationError for a position without a size', () => {
+      expect(() =>
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          order({ entryPrice: '100000', position: position({}) })
+        )
+      ).toThrow('`size` is required with `current`.')
+    })
+  })
 })
 
 describe('estimateAverageEntryPrice', () => {
