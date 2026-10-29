@@ -10,6 +10,7 @@ import {
   isDecimalStringZero,
   safeAddDecimalString,
   safeDivideDecimalString,
+  safeIsDecimalStringZero,
   safeMultiplyDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
@@ -146,7 +147,13 @@ export const mapFill = (
   accountIndex: number,
   market: MarketDisplay
 ): Fill | undefined => {
-  const { size, price } = trade
+  const { size } = trade
+  // Lighter reports a zero `price` on a `deleverage` row, but `usd_amount`
+  // still carries the execution notional.
+  const price =
+    trade.type === 'deleverage' && safeIsDecimalStringZero(trade.price) === true
+      ? (safeDivideDecimalString(trade.usd_amount, size) ?? trade.price)
+      : trade.price
   const createdAt = rowTimestampToIsoStringOrUndefined(trade.timestamp)
   if (createdAt === undefined) {
     warnSkippedVenueRow(
