@@ -224,6 +224,10 @@ When the filter includes an active status or FILLED, `getOrders` reads
 slice fills of its `twapId`.
 `getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
 `getOrder` also reads `userTwapSliceFills`.
+`userTwapSliceFills` holds only the 2,000 newest slice fills of the account.
+When it is full and its oldest row is not newer than the start of a running
+TWAP, both reads also read `userTwapSliceFillsByTime`. This read covers the
+time from the earliest running TWAP start to the oldest row.
 Both reads reject a failed required slice-fill request instead of reporting
 activation-time totals as current execution. Caller cancellation also rejects
 the read.
