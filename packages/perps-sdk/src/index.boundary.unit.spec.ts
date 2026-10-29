@@ -350,6 +350,18 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
       addMargin: '50',
     },
   ],
+  estimateOrderLiquidationPrice: [
+    {
+      entryPrice: '100',
+      leverage: '10',
+      isLong: true,
+      marginMode: MarginMode.ISOLATED,
+    },
+    {
+      maintenanceMarginRate: () => '0.01',
+      positionCollateral: (position: Position) => position.marginUsed,
+    },
+  ],
   estimateRealizedPnl: [SELL_LIMIT, LONG_POSITION],
   estimateUnrealizedPnl: [
     { entryPrice: '100', markPrice: '110', size: '2', isLong: true },

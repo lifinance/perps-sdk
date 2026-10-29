@@ -333,7 +333,7 @@ describe('calculateLiquidationPrice', () => {
         { ...isolated('100000', '10', true), position: openPosition({}) },
         50
       )
-    ).toThrow('`size` is required with `current`.')
+    ).toThrow('`size` is required with `position`.')
   })
 
   it('safeCalculateLiquidationPrice gives undefined and warns', () => {
