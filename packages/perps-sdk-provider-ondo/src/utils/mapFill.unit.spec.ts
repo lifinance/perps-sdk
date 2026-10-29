@@ -159,6 +159,22 @@ describe('mapFill', () => {
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })
+
+  it.each([
+    true,
+    false,
+  ])('maps an ADL fill with isMaker %s without a liquidation marker, because the venue names no liquidated party', (isMaker) => {
+    const mapped = mapValidFill(
+      fillFixture({
+        isADL: true,
+        isMaker,
+        side: 'sell',
+        direction: 'closeLong',
+      }),
+      MARKET
+    )
+    expect(mapped).not.toHaveProperty('liquidation')
+  })
 })
 
 describe('mapFill invalid rows', () => {

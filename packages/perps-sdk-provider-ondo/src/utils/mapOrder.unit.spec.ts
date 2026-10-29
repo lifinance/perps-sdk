@@ -120,6 +120,41 @@ describe('mapOrder', () => {
       mapOrder(orderFixture({ type: 'market', timeInForce: undefined }), MARKET)
     ).toMatchObject({ type: OrderType.MARKET, timeInForce: TimeInForce.IOC })
   })
+  it('marks an order of a venue liquidation event as a liquidation', () => {
+    expect(
+      mapOrder(
+        orderFixture({
+          type: 'limit',
+          side: 'sell',
+          reduceOnly: true,
+          liquidationId: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+        }),
+        MARKET
+      )
+    ).toMatchObject({ type: OrderType.LIMIT, isLiquidation: true })
+  })
+  it.each([
+    ['market', orderFixture({ type: 'market', timeInForce: undefined })],
+    ['limit with an empty liquidationId', orderFixture({ liquidationId: '' })],
+    [
+      'take-profit',
+      orderFixture({
+        type: 'market',
+        stopOrderType: 'takeProfit',
+        triggerPrice: '220',
+      }),
+    ],
+    [
+      'stop-loss',
+      orderFixture({
+        type: 'market',
+        stopOrderType: 'stopLoss',
+        triggerPrice: '180',
+      }),
+    ],
+  ])('does not mark an ordinary %s order as a liquidation', (_label, order) => {
+    expect(mapOrder(order, MARKET)).not.toHaveProperty('isLiquidation')
+  })
   it('rejects an unsupported timeInForce instead of reporting none', () => {
     const raw: OndoOrder = JSON.parse(
       JSON.stringify({ ...orderFixture(), timeInForce: 'FOK' })

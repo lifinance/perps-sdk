@@ -2,6 +2,7 @@ import { isDecimalString } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
+  LiquidationMethod,
   LiquidityRole,
   OrderSide,
   OrderType,
@@ -1118,6 +1119,43 @@ describe('mapFill (Lighter)', () => {
 
 const LLP_ACCOUNT_INDEX = 281474976710654
 
+// Live mainnet `/api/v1/trades` rows. The liquidation engine trades as the
+// taker for the liquidated account.
+const MAINNET_LIQUIDATION: LtTrade = {
+  trade_id: 36914789863,
+  trade_id_str: '36914789863',
+  tx_hash:
+    '00000020b50552fb000001a183ae3a40000000000000000000000000000000000000000000000000',
+  type: 'liquidation',
+  market_id: 90,
+  size: '0.003',
+  price: '1297.829',
+  usd_amount: '3.893487',
+  ask_id: 25614223700955116,
+  // `JSON.parse` rounds the venue 25895697045416278; the `_str` twin is exact.
+  bid_id: 25895697045416280,
+  ask_id_str: '25614223700955116',
+  bid_id_str: '25895697045416278',
+  ask_client_id_str: '74791190471254',
+  bid_client_id_str: '0',
+  ask_account_id: 281474976499586,
+  bid_account_id: 281474976587073,
+  is_maker_ask: true,
+  block_height: 367947777,
+  timestamp: 1793210595904,
+  taker_fee: 10000,
+  maker_fee: 28,
+  transaction_time: 1793210595916152,
+  taker_position_size_before: '-0.003',
+  maker_position_size_before: '2.315',
+  taker_entry_quote_before: '3.818055',
+  maker_entry_quote_before: '2987.553574',
+  taker_initial_margin_fraction_before: 500,
+  maker_initial_margin_fraction_before: 500,
+  ask_order_version: 0,
+  bid_order_version: 0,
+}
+
 // Live `/api/v1/trades?type=deleverage` rows. Lighter reports a zero `price`
 // on a deleverage row; `usd_amount` carries the execution notional.
 const MAINNET_DELEVERAGE: LtTrade = {
@@ -1152,6 +1190,40 @@ const MAINNET_DELEVERAGE: LtTrade = {
   bid_order_version: 0,
 }
 
+// Live Robinhood chain `/api/v1/trades` rows.
+const RH_LIQUIDATION: LtTrade = {
+  trade_id: 2171400880,
+  trade_id_str: '2171400880',
+  tx_hash:
+    '00000001ddf55957000001a183b9b830000000000000000000000000000000000000000000000000',
+  type: 'liquidation',
+  market_id: 18,
+  size: '26.6954',
+  price: '143.62',
+  usd_amount: '3833.993348',
+  ask_id: 5348024626235326,
+  bid_id: 5629499459459710,
+  ask_id_str: '5348024626235326',
+  bid_id_str: '5629499459459710',
+  ask_client_id_str: '0',
+  bid_client_id_str: '921',
+  ask_account_id: 31476,
+  bid_account_id: 6611,
+  is_maker_ask: false,
+  block_height: 47634479,
+  timestamp: 1793211349040,
+  taker_fee: 10000,
+  maker_fee: 84,
+  transaction_time: 1793211349044435,
+  taker_position_size_before: '26.6954',
+  maker_position_size_before: '20.5673',
+  taker_entry_quote_before: '4158.904707',
+  maker_entry_quote_before: '2956.473917',
+  taker_initial_margin_fraction_before: 500,
+  maker_initial_margin_fraction_before: 500,
+  ask_order_version: 0,
+  bid_order_version: 0,
+}
 const RH_DELEVERAGE: LtTrade = {
   trade_id: 2016301647,
   trade_id_str: '2016301647',
@@ -1245,5 +1317,73 @@ describe('mapFill (Lighter) deleverage price', () => {
     )
     expect(fill.price).toBe('0.0000')
     warn.mockRestore()
+  })
+})
+
+describe('mapFill (Lighter) liquidation', () => {
+  it.each([
+    [
+      'mainnet partial liquidation',
+      MAINNET_LIQUIDATION,
+      281474976587073,
+      LiquidationMethod.MARKET,
+      '1297.829',
+      FillClassification.CLOSED_SHORT,
+    ],
+    [
+      'mainnet deleverage',
+      MAINNET_DELEVERAGE,
+      742436,
+      LiquidationMethod.DELEVERAGE,
+      MAINNET_DELEVERAGE_PRICE,
+      FillClassification.CLOSED_SHORT,
+    ],
+    [
+      'Robinhood chain partial liquidation',
+      RH_LIQUIDATION,
+      31476,
+      LiquidationMethod.MARKET,
+      '143.62',
+      FillClassification.CLOSED_LONG,
+    ],
+    [
+      'Robinhood chain deleverage',
+      RH_DELEVERAGE,
+      3366,
+      LiquidationMethod.DELEVERAGE,
+      RH_DELEVERAGE_PRICE,
+      FillClassification.CLOSED_LONG,
+    ],
+  ] as const)('marks the liquidated taker of a %s', (_label, trade, accountIndex, method, price, classification) => {
+    const fill = mapValidFill(trade, accountIndex, MARKET)
+    expect(fill.liquidation).toEqual({ method })
+    expect(fill.liquidity).toBe(LiquidityRole.TAKER)
+    expect(fill.price).toBe(price)
+    expect(fill.classification).toBe(classification)
+  })
+
+  it.each([
+    ['mainnet partial liquidation', MAINNET_LIQUIDATION, 281474976499586],
+    ['mainnet deleverage', MAINNET_DELEVERAGE, LLP_ACCOUNT_INDEX],
+    ['Robinhood chain partial liquidation', RH_LIQUIDATION, 6611],
+    ['Robinhood chain deleverage', RH_DELEVERAGE, LLP_ACCOUNT_INDEX],
+  ] as const)('does not mark the maker counterparty of a %s', (_label, trade, accountIndex) => {
+    const fill = mapValidFill(trade, accountIndex, MARKET)
+    expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+    expect(fill).not.toHaveProperty('liquidation')
+  })
+
+  it.each([
+    ['trade', LiquidityRole.TAKER, true],
+    ['trade', LiquidityRole.MAKER, false],
+    ['market-settlement', LiquidityRole.TAKER, true],
+  ] as const)('maps an ordinary %s %s fill without a liquidation marker', (type, liquidity, isMakerAsk) => {
+    const fill = mapValidFill(
+      baseTrade({ type, is_maker_ask: isMakerAsk }),
+      ACCOUNT_INDEX,
+      MARKET
+    )
+    expect(fill.liquidity).toBe(liquidity)
+    expect(fill).not.toHaveProperty('liquidation')
   })
 })

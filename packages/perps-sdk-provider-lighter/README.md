@@ -166,6 +166,24 @@ The division rounds half-up to 40 decimal places.
 A `deleverage` trade with a non-zero `price` keeps the venue value.
 If the provider cannot divide `usd_amount` by `size`, `Fill.price` shows the venue `price`.
 
+## Liquidations
+
+A Lighter order of type `liquidation` maps to a `MARKET` `RegularOrder` with
+`isLiquidation: true`.
+
+Lighter marks a forced trade with the trade `type`. The liquidation engine
+sends the order of the liquidated account as the taker. Thus `Fill.liquidation`
+is set on the taker fill only, on mainnet and on Robinhood chain:
+
+| Trade `type` | `Fill.liquidation.method` |
+| --- | --- |
+| `liquidation`: a partial liquidation on the order book | `MARKET` |
+| `deleverage`: a takeover by the LLP, or auto-deleveraging | `DELEVERAGE` |
+
+The maker fill of a forced trade carries no `liquidation`. A `trade` row and a
+`market-settlement` row also carry none. Lighter reports no mark price on a
+trade, so `markPrice` stays absent.
+
 ## Market TP/SL slippage
 
 A Lighter market TP/SL order needs a slippage-adjusted limit price: the lowest fill for a sell, or the highest fill for a buy.

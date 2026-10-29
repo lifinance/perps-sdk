@@ -118,6 +118,7 @@ const FILL_PATHS = [
   'items[].startPosition',
   'items[].fee.amount',
   'items[].builderFee.amount',
+  'items[].liquidation.markPrice',
 ]
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -199,7 +200,10 @@ const TWAP_SLICE_FILLS = [
   { twapId: 7, fill: { ...HL_USER_FILLS[0], sz: '0.0000001', px: '94000' } },
 ]
 
-/** A closing fill with a builder fee, so `realizedPnl` is not null. */
+/**
+ * A closing liquidation fill with a builder fee, so `realizedPnl` is not null
+ * and the liquidated account's fill carries the mark price.
+ */
 const CLOSING_FILL = {
   tid: 102,
   oid: 3,
@@ -214,6 +218,11 @@ const CLOSING_FILL = {
   crossed: true,
   time: 1704067200000,
   startPosition: '0.1',
+  liquidation: {
+    liquidatedUser: ADDRESS.toLowerCase(),
+    markPx: '0.0000006',
+    method: 'market',
+  },
 }
 
 const FILLS = [...HL_USER_FILLS, CLOSING_FILL]
