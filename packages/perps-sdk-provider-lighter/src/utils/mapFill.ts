@@ -15,12 +15,7 @@ import {
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
-import {
-  LiquidationMethod,
-  LiquidityRole,
-  OrderSide,
-  OrderType,
-} from '@lifi/perps-types'
+import { LiquidationMethod, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { LIGHTER_FEE_TICK_SCALE, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
@@ -137,7 +132,8 @@ const mapFillLiquidation = (
 }
 
 /**
- * Map a raw Lighter trade to the generic Fill type.
+ * Map a raw Lighter trade to the generic Fill type. Leaves `type` absent: a
+ * trade row does not name the originating order type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
  * @param market - Backend-resolved market identity for `trade.market_id`.
  * @public
@@ -197,7 +193,6 @@ export const mapFill = (
     orderId: isBuyer ? trade.bid_id_str : trade.ask_id_str,
     market,
     side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
-    type: OrderType.LIMIT,
     size,
     price,
     liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
