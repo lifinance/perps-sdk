@@ -73,6 +73,7 @@ import {
   mapPosition,
 } from '../utils/index.js'
 import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
+import { resolveTradePrice } from '../utils/tradePrice.js'
 import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
@@ -1097,7 +1098,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       data: trades.map((t) => ({
         provider: this.providerKey,
         marketId: assetId,
-        price: t.price,
+        price: resolveTradePrice(t),
         size: t.size,
         timestamp: t.timestamp,
         side: t.is_maker_ask ? 'buy' : 'sell',

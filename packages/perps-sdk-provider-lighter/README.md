@@ -154,7 +154,7 @@ Active reads return the complete snapshot and do not apply `limit` or `cursor`.
 History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
 WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
 
-## Fill prices
+## Fill and trade prices
 
 `Fill.price` shows the venue `price` of the trade, with one exception.
 Lighter reports a `price` of zero on a `deleverage` trade, on mainnet and on Robinhood chain.
@@ -165,6 +165,10 @@ The division rounds half-up to 40 decimal places.
 
 A `deleverage` trade with a non-zero `price` keeps the venue value.
 If the provider cannot divide `usd_amount` by `size`, `Fill.price` shows the venue `price`.
+
+The `trades` WebSocket channel uses the same rule for the `price` of a public trade.
+Lighter sends `deleverage` trades on the public `trade/{market_id}` channel with a `price` of zero.
+Thus the `price` of a `deleverage` trade on the `trades` channel is also `usd_amount` divided by `size`.
 
 ## Liquidations
 
