@@ -1,5 +1,23 @@
 # @lifi/perps-types
 
+## 26.0.0
+
+### Major Changes
+
+- [#668](https://github.com/lifinance/perps-sdk/pull/668) [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Hyperliquid provider leaves it absent for a `null` or empty `liquidationPx`, and does not give `'0'`.
+
+  `LiquidationEstimateParams` has a required `marginMode`, an optional `size`, and an optional `position`. `estimateLiquidationPrice` takes an optional `size` and `current` position, and blends the order into that position. The Hyperliquid `calculateLiquidationPrice` takes `(params, maxLeverage)`. It gives `undefined` for a cross order or a cross position, and for an order against the side of the position. For an isolated add, it blends the order into the open position.
+
+- [#673](https://github.com/lifinance/perps-sdk/pull/673) [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Lighter provider leaves it absent for a zero or empty `liquidation_price`, and does not give `'0'`.
+
+### Minor Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+### Patch Changes
+
+- [#675](https://github.com/lifinance/perps-sdk/pull/675) [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Hyperliquid `Fill` does not set `type`, because a Hyperliquid fill row does not name the type of the originating order. A maker fill can come from a limit order or from a triggered limit order.
+
 ## 25.0.1
 
 ### Patch Changes

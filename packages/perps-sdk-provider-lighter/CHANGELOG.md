@@ -1,5 +1,29 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 42.0.0
+
+### Major Changes
+
+- [#672](https://github.com/lifinance/perps-sdk/pull/672) [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - BREAKING: the `DepositFlow` kind `firstDepositPipeline` is now `venueDepositPipeline`, and the type `DepositFlowFirstDepositPipeline` is now `DepositFlowVenueDepositPipeline`. The name covers a venue `DEPOSIT` pipeline for an address with or without an account. Compare `flow.kind` with `'venueDepositPipeline'`, and import `DepositFlowVenueDepositPipeline`.
+
+### Minor Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+### Patch Changes
+
+- [#669](https://github.com/lifinance/perps-sdk/pull/669) [`caafb92`](https://github.com/lifinance/perps-sdk/commit/caafb924b3bcbe53bfd2aa92bd10ff5094790748) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Lighter `deleverage` fill shows its execution price, `usd_amount` divided by `size`, in place of the zero `price` that Lighter reports. The fill's realized PnL uses this price.
+
+- [#670](https://github.com/lifinance/perps-sdk/pull/670) [`5fd0b78`](https://github.com/lifinance/perps-sdk/commit/5fd0b78228735eb18325fdd59790445dde14548d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Lighter `Fill` does not set `type`, because a Lighter trade row does not name the type of the originating order.
+
+- [#666](https://github.com/lifinance/perps-sdk/pull/666) [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `lighterDepositFlow` returns `venueDepositPipeline` for an existing Lighter Robinhood account. The venue `DEPOSIT` action then credits the USDG on Robinhood Chain to the account, and a USDG source needs no swap. The `DepositFlowVenueDepositPipeline` TSDoc describes this case.
+
+- [#673](https://github.com/lifinance/perps-sdk/pull/673) [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Lighter provider leaves it absent for a zero or empty `liquidation_price`, and does not give `'0'`.
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b), [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41)]:
+  - @lifi/perps-types@26.0.0
+  - @lifi/perps-sdk@29.0.0
+
 ## 41.0.2
 
 ### Patch Changes

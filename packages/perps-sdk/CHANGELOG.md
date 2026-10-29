@@ -1,5 +1,26 @@
 # @lifi/perps-sdk
 
+## 29.0.0
+
+### Major Changes
+
+- [#668](https://github.com/lifinance/perps-sdk/pull/668) [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Hyperliquid provider leaves it absent for a `null` or empty `liquidationPx`, and does not give `'0'`.
+
+  `LiquidationEstimateParams` has a required `marginMode`, an optional `size`, and an optional `position`. `estimateLiquidationPrice` takes an optional `size` and `current` position, and blends the order into that position. The Hyperliquid `calculateLiquidationPrice` takes `(params, maxLeverage)`. It gives `undefined` for a cross order or a cross position, and for an order against the side of the position. For an isolated add, it blends the order into the open position.
+
+- [#672](https://github.com/lifinance/perps-sdk/pull/672) [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - BREAKING: the `DepositFlow` kind `firstDepositPipeline` is now `venueDepositPipeline`, and the type `DepositFlowFirstDepositPipeline` is now `DepositFlowVenueDepositPipeline`. The name covers a venue `DEPOSIT` pipeline for an address with or without an account. Compare `flow.kind` with `'venueDepositPipeline'`, and import `DepositFlowVenueDepositPipeline`.
+
+- [#673](https://github.com/lifinance/perps-sdk/pull/673) [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Lighter provider leaves it absent for a zero or empty `liquidation_price`, and does not give `'0'`.
+
+- [#674](https://github.com/lifinance/perps-sdk/pull/674) [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LiquidationEstimateParams` has a required `marginMode`, an optional `size`, and an optional `position`. `estimateLiquidationPrice` takes an optional `size` and `current` position, and blends the order into that position. `estimateLiquidationPriceAtMarketRate`, which is the Lighter and Ondo `estimateLiquidationPrice`, gives `undefined` for a cross order or a cross position, and for an order against the side of the position. For an isolated add, it blends the order into the open position, with `position.marginUsed` as the collateral.
+
+### Patch Changes
+
+- [#666](https://github.com/lifinance/perps-sdk/pull/666) [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `lighterDepositFlow` returns `venueDepositPipeline` for an existing Lighter Robinhood account. The venue `DEPOSIT` action then credits the USDG on Robinhood Chain to the account, and a USDG source needs no swap. The `DepositFlowVenueDepositPipeline` TSDoc describes this case.
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b)]:
+  - @lifi/perps-types@26.0.0
+
 ## 28.1.0
 
 ### Minor Changes
