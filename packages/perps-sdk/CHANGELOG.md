@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 29.1.0
+
+### Minor Changes
+
+- [#678](https://github.com/lifinance/perps-sdk/pull/678) [`aa44edb`](https://github.com/lifinance/perps-sdk/commit/aa44edb79828f257e9fc7f8ef3057d6ae05cf250) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `estimateOrderLiquidationPrice` and `safeEstimateOrderLiquidationPrice`. They hold the margin mode check, the side check, and the mapping from `LiquidationEstimateParams.position` to the open position. A `position` without a `size` now throws a `ValidationError` that names `size` and `position`.
+
 ## 29.0.0
 
 ### Major Changes

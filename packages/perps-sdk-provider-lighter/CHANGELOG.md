@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 42.0.1
+
+### Patch Changes
+
+- [#677](https://github.com/lifinance/perps-sdk/pull/677) [`f853207`](https://github.com/lifinance/perps-sdk/commit/f853207cdee772e8b2cc17a8503193d66b30f3d2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A `deleverage` trade on the Lighter `trades` channel shows its execution price, `usd_amount` divided by `size`, in place of the zero `price` that Lighter sends. `LtWsTrade` declares the `type` and `usd_amount` fields of the venue frame.
+
 ## 42.0.0
 
 ### Major Changes
