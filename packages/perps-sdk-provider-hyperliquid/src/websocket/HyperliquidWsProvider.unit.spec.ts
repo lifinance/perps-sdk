@@ -6,6 +6,7 @@ import {
 } from '@lifi/perps-sdk'
 import type { Market, Subscription } from '@lifi/perps-types'
 import {
+  LiquidationMethod,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -2985,6 +2986,50 @@ describe('HyperliquidWsProvider', () => {
         size: '0.1',
         fee: { amount: '4.70', asset: 'USDC' },
       })
+    })
+
+    it('marks a live liquidation fill only for the liquidated subscriber', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      const liquidationFill = (tid: number, liquidatedUser: string) => ({
+        tid,
+        coin: 'BTC',
+        side: 'A',
+        px: '94000',
+        sz: '0.1',
+        dir: 'Close Long',
+        fee: '4.70',
+        closedPnl: '-12',
+        crossed: true,
+        time: 1704067200000,
+        startPosition: '0.1',
+        liquidation: { liquidatedUser, markPx: '94100', method: 'market' },
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [
+              liquidationFill(556, '0xuser1'),
+              liquidationFill(557, '0xother'),
+            ],
+          },
+        })
+      )
+
+      const [own, counterparty] = listener.mock.calls[0][0].data
+      expect(own.liquidation).toEqual({
+        method: LiquidationMethod.MARKET,
+        markPrice: '94100',
+      })
+      expect(counterparty).not.toHaveProperty('liquidation')
     })
 
     it('suppresses the isSnapshot history and emits only the subsequent live fill', async () => {

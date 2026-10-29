@@ -66,6 +66,7 @@ import type {
   OndoWalletWithdrawal,
 } from './types/wire.js'
 import { OndoApiError, OndoSessionExpiredError } from './utils/apiClient.js'
+import { mapPosition } from './utils/mapPosition.js'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -635,8 +636,33 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
       entryPrice: '200',
       leverage: '5',
       isLong: true,
+      marginMode: MarginMode.ISOLATED,
     })
     expect(liq).toBe('163.2653061224489795918367346938775510204082')
+  })
+
+  it('gives no liquidation estimate for a cross order', () => {
+    expect(
+      ondoProvider().estimateLiquidationPrice(market, {
+        entryPrice: '200',
+        leverage: '5',
+        isLong: true,
+        marginMode: MarginMode.CROSS,
+      })
+    ).toBeUndefined()
+  })
+
+  it('gives no liquidation estimate for an add to a cross Ondo position', () => {
+    expect(
+      ondoProvider().estimateLiquidationPrice(market, {
+        entryPrice: '200',
+        leverage: '5',
+        isLong: true,
+        marginMode: MarginMode.ISOLATED,
+        size: '1',
+        position: mapPosition(POSITION_RESULT, market),
+      })
+    ).toBeUndefined()
   })
 })
 

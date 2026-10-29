@@ -4,25 +4,60 @@ import {
   explorerTxUrl,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
-import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
+import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
+import {
+  FillClassification,
+  LiquidationMethod,
+  LiquidityRole,
+  OrderSide,
+} from '@lifi/perps-types'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
-import type { HlUserFill } from '../types/index.js'
+import type { HlFillLiquidation, HlUserFill } from '../types/index.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Re-export the shared fill-position classifier used by Hyperliquid mappings. @public */
 export { classifyFillFromPosition }
 
-/**
- * Spot-ness comes from the resolved market's category, not the coin string —
- * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`. A fill with
- * an invalid time gives `undefined`. Leaves `type` absent: a fill row does not
- * name the originating order type.
+const mapLiquidationMethod = (
+  method: string
+): LiquidationMethod | undefined => {
+  switch (method) {
+    case 'market':
+      return LiquidationMethod.MARKET
+    case 'backstop':
+      return LiquidationMethod.BACKSTOP
+    default:
+      return undefined
+  }
+}
+
+// Hyperliquid attaches `liquidation` to the fills of both parties.
+const mapFillLiquidation = (
+  liquidation: HlFillLiquidation | undefined,
+  address: string
+): FillLiquidation | undefined => {
+  if (
+    liquidation === undefined ||
+    liquidation.liquidatedUser.toLowerCase() !== address.toLowerCase()
+  ) {
+    return undefined
+  }
+  const method = mapLiquidationMethod(liquidation.method)
+  return {
+    ...(method === undefined ? {} : { method }),
+    markPrice: liquidation.markPx,
+  }
+}
+
+/** Maps a fill using the market category; the order type stays absent.
+ * Invalid times return `undefined`. The venue does not report the order type.
+ * @param address - Fill owner; only the liquidated account carries `liquidation`.
  * @public
  */
 export const mapFill = (
   fill: HlUserFill,
-  market: MarketDisplay
+  market: MarketDisplay,
+  address: string
 ): Fill | undefined => {
   const size = fill.sz
   const createdAt = rowTimestampToIsoStringOrUndefined(fill.time)
@@ -36,6 +71,7 @@ export const mapFill = (
   // HL charges the builder portion in the same token as the total fee.
   const feeAsset = fill.feeToken ?? market.quoteAsset.displaySymbol
   const side = fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL
+  const liquidation = mapFillLiquidation(fill.liquidation, address)
 
   return {
     ...(market.categoryId === SPOT_MARKET_ID
@@ -67,5 +103,6 @@ export const mapFill = (
           : FillClassification.SPOT_SELL
         : classifyFillFromPosition(fill.startPosition, side, size),
     createdAt,
+    ...(liquidation === undefined ? {} : { liquidation }),
   }
 }

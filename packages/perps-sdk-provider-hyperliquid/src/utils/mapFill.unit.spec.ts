@@ -1,11 +1,22 @@
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
+import {
+  FillClassification,
+  LiquidationMethod,
+  LiquidityRole,
+  OrderSide,
+} from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './mapFill.js'
 
-const mapValidFill = (...args: Parameters<typeof mapFill>): Fill => {
-  const fill = mapFill(...args)
+const ADDRESS = '0x1234567890123456789012345678901234567890'
+
+const mapValidFill = (
+  row: HlUserFill,
+  market: MarketDisplay,
+  address: string = ADDRESS
+): Fill => {
+  const fill = mapFill(row, market, address)
   if (fill === undefined) {
     throw new Error('mapFill skipped a valid row')
   }
@@ -350,10 +361,225 @@ describe('mapFill (Hyperliquid)', () => {
   })
 })
 
+const perpMarket = (id: string): MarketDisplay => ({
+  ...ETH_MARKET,
+  id,
+  baseAsset: { ...ETH_MARKET.baseAsset, id, displaySymbol: id },
+})
+
+const MRNA_LIQUIDATED_USER = '0xbf81e01476d5e56f0b16e7ffb52623ba4032c992'
+const HMSTR_LIQUIDATED_USER = '0xcb02837caaee310c178501855b63bf7f4f4b1f8b'
+const HMSTR_LIQUIDATOR = '0x2e3d94f0562703b25c83308a05046ddaf9a8dd14'
+const ENA_LIQUIDATED_USER = '0xec8ad9a79c0a3b23ab6f387325717c4bc3e7d4ca'
+const ENA_LIQUIDATOR = '0x5e177e5e39c0f4e421f5865a6d8beed8d921cb70'
+
+// Venue `userFillsByTime` rows. The isolated-only `xyz:MRNA` liquidation order
+// had a 148.55 limit and filled at 185.64.
+const MRNA_ISOLATED_MARKET_LIQUIDATION: HlUserFill = {
+  coin: 'xyz:MRNA',
+  px: '185.64',
+  sz: '0.5',
+  side: 'A',
+  time: 1793108252888,
+  startPosition: '0.5',
+  dir: 'Close Long',
+  closedPnl: '-5.265',
+  hash: '0xf26389b60feb6f03f3dd04477a28a7020e03009baaee8dd6962c3508ceef48ee',
+  oid: 587296189511,
+  crossed: true,
+  fee: '0.008019',
+  tid: 557720431649339,
+  liquidation: {
+    liquidatedUser: MRNA_LIQUIDATED_USER,
+    markPx: '185.71',
+    method: 'market',
+  },
+  feeToken: 'USDC',
+}
+
+const HMSTR_ISOLATED_BACKSTOP_LIQUIDATION: HlUserFill = {
+  coin: 'HMSTR',
+  px: '0.000255',
+  sz: '13385820.0',
+  side: 'B',
+  time: 1787375624383,
+  startPosition: '-13385820.0',
+  dir: 'Liquidated Isolated Short',
+  closedPnl: '-843.30666',
+  hash: '0x3995b356b05a726a3b0f0442b43f850203cc003c4b5d913cdd5e5ea96f5e4c54',
+  oid: 522778434368,
+  crossed: false,
+  fee: '0.0',
+  tid: 802203254918732,
+  liquidation: {
+    liquidatedUser: HMSTR_LIQUIDATED_USER,
+    markPx: '0.000231',
+    method: 'backstop',
+  },
+  feeToken: 'USDC',
+}
+
+const HMSTR_LIQUIDATOR_FILL: HlUserFill = {
+  ...HMSTR_ISOLATED_BACKSTOP_LIQUIDATION,
+  side: 'A',
+  startPosition: '0.0',
+  closedPnl: '0.0',
+  crossed: true,
+}
+
+const ENA_CROSS_BACKSTOP_LIQUIDATION: HlUserFill = {
+  coin: 'ENA',
+  px: '0.190162',
+  sz: '4425.0',
+  side: 'A',
+  time: 1791981031011,
+  startPosition: '4425.0',
+  dir: 'Liquidated Cross Long',
+  closedPnl: '-87.3495',
+  hash: '0x59941b081bb8e1995b0d04468ac819010e0032edb6bc006bfd5cc65adabcbb83',
+  oid: 574111277572,
+  crossed: false,
+  fee: '0.0',
+  tid: 841827541118148,
+  liquidation: {
+    liquidatedUser: ENA_LIQUIDATED_USER,
+    markPx: '0.19481',
+    method: 'backstop',
+  },
+  feeToken: 'USDC',
+}
+
+const ENA_LIQUIDATOR_FILL: HlUserFill = {
+  ...ENA_CROSS_BACKSTOP_LIQUIDATION,
+  side: 'B',
+  startPosition: '58322.0',
+  closedPnl: '0.0',
+  crossed: true,
+}
+
+describe('mapFill (Hyperliquid) liquidation', () => {
+  it.each([
+    [
+      'an isolated market liquidation',
+      MRNA_ISOLATED_MARKET_LIQUIDATION,
+      MRNA_LIQUIDATED_USER,
+      LiquidationMethod.MARKET,
+      '185.71',
+      '185.64',
+      FillClassification.CLOSED_LONG,
+    ],
+    [
+      'an isolated backstop liquidation',
+      HMSTR_ISOLATED_BACKSTOP_LIQUIDATION,
+      HMSTR_LIQUIDATED_USER,
+      LiquidationMethod.BACKSTOP,
+      '0.000231',
+      '0.000255',
+      FillClassification.CLOSED_SHORT,
+    ],
+    [
+      'a cross backstop liquidation',
+      ENA_CROSS_BACKSTOP_LIQUIDATION,
+      ENA_LIQUIDATED_USER,
+      LiquidationMethod.BACKSTOP,
+      '0.19481',
+      '0.190162',
+      FillClassification.CLOSED_LONG,
+    ],
+  ] as const)('marks %s on the liquidated account fill', (_label, row, address, method, markPrice, price, classification) => {
+    const fill = mapValidFill(row, perpMarket(row.coin), address)
+    expect(fill.liquidation).toEqual({ method, markPrice })
+    expect(fill.price).toBe(price)
+    expect(fill.classification).toBe(classification)
+  })
+
+  it('matches a checksummed account address to the venue lowercase address', () => {
+    const fill = mapValidFill(
+      MRNA_ISOLATED_MARKET_LIQUIDATION,
+      perpMarket('xyz:MRNA'),
+      '0xbf81E01476d5E56f0b16E7FFb52623Ba4032C992'
+    )
+    expect(fill.liquidation?.method).toBe(LiquidationMethod.MARKET)
+  })
+
+  it('gives no order type to a liquidated maker fill, which no resting limit order made', () => {
+    const fill = mapValidFill(
+      HMSTR_ISOLATED_BACKSTOP_LIQUIDATION,
+      perpMarket('HMSTR'),
+      HMSTR_LIQUIDATED_USER
+    )
+    expect(fill.liquidity).toBe(LiquidityRole.MAKER)
+    expect(fill).not.toHaveProperty('type')
+  })
+
+  it.each([
+    [
+      'order-book maker',
+      {
+        ...MRNA_ISOLATED_MARKET_LIQUIDATION,
+        side: 'B',
+        startPosition: '0',
+        dir: 'Open Long',
+        closedPnl: '0.0',
+        crossed: false,
+      },
+      ADDRESS,
+    ],
+    ['isolated backstop', HMSTR_LIQUIDATOR_FILL, HMSTR_LIQUIDATOR],
+    ['cross backstop', ENA_LIQUIDATOR_FILL, ENA_LIQUIDATOR],
+  ] as const)('does not mark the %s counterparty fill', (_label, row, address) => {
+    const fill = mapValidFill(row, perpMarket(row.coin), address)
+    expect(fill).not.toHaveProperty('liquidation')
+    expect(fill).not.toHaveProperty('type')
+  })
+
+  it('keeps the mark price when the venue reports an unknown method', () => {
+    const fill = mapValidFill(
+      {
+        ...MRNA_ISOLATED_MARKET_LIQUIDATION,
+        liquidation: {
+          liquidatedUser: MRNA_LIQUIDATED_USER,
+          markPx: '185.71',
+          method: 'unknown',
+        },
+      },
+      perpMarket('xyz:MRNA'),
+      MRNA_LIQUIDATED_USER
+    )
+    expect(fill.liquidation).toEqual({ markPrice: '185.71' })
+  })
+
+  it.each([
+    [
+      'market close',
+      baseFill({
+        side: 'A',
+        startPosition: '1',
+        dir: 'Close Long',
+        closedPnl: '12.5',
+      }),
+    ],
+    [
+      'TP/SL close',
+      baseFill({
+        side: 'B',
+        startPosition: '-1',
+        dir: 'Close Short',
+        closedPnl: '-3',
+        crossed: false,
+      }),
+    ],
+  ])('maps an ordinary %s without a liquidation marker', (_label, row) => {
+    expect(map(row)).not.toHaveProperty('liquidation')
+  })
+})
+
 describe('mapFill (Hyperliquid) invalid rows', () => {
   it('keeps a fill with a non-decimal sz as the raw venue string', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(baseFill({ sz: '10oops' }), ETH_MARKET)).toMatchObject({
+    expect(
+      mapFill(baseFill({ sz: '10oops' }), ETH_MARKET, ADDRESS)
+    ).toMatchObject({
       size: '10oops',
       filledSize: '10oops',
     })
@@ -363,7 +589,7 @@ describe('mapFill (Hyperliquid) invalid rows', () => {
 
   it('keeps a fill with a non-decimal px as the raw venue string', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(baseFill({ px: '' }), ETH_MARKET)).toMatchObject({
+    expect(mapFill(baseFill({ px: '' }), ETH_MARKET, ADDRESS)).toMatchObject({
       price: '',
     })
     expect(warn).not.toHaveBeenCalled()
@@ -372,7 +598,9 @@ describe('mapFill (Hyperliquid) invalid rows', () => {
 
   it('skips a fill with an invalid time and warns once', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(mapFill(baseFill({ time: Number.NaN }), ETH_MARKET)).toBeUndefined()
+    expect(
+      mapFill(baseFill({ time: Number.NaN }), ETH_MARKET, ADDRESS)
+    ).toBeUndefined()
     expect(warn).toHaveBeenCalledOnce()
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("skipping fill row on market 'ETH': `time`")

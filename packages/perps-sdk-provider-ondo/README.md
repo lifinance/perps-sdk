@@ -109,6 +109,15 @@ WebSocket `orderUpdates.data.orders` includes terminal rows.
 `orderUpdates.data.terminated` also contains their ids.
 Fills carry no lifecycle status.
 
+An order with a non-empty `liquidationId` maps to a `RegularOrder` with
+`isLiquidation: true`. The Ondo liquidation engine places these orders for the
+liquidated account.
+
+Ondo fills do not name the liquidated party, so `Fill.liquidation` stays
+absent on Ondo. The venue `isADL` flag marks an auto-deleveraging fill, but it
+does not tell which party the venue liquidated. To find the fills of a
+liquidation order, match `Fill.orderId` to an order with `isLiquidation`.
+
 ## Activity coverage
 
 `getActivity` reports four movement types from Ondo's authenticated REST API:

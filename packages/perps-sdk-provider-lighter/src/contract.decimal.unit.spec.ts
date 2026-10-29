@@ -206,7 +206,7 @@ const ACCOUNT_PAYLOAD = {
           position_value: '0.047',
           unrealized_pnl: '0.0000005',
           realized_pnl: '0.000000',
-          liquidation_price: '0',
+          liquidation_price: '47000.0',
           total_funding_paid_out: '-0.0000001',
           margin_mode: 0,
           margin_set_flag: 1,
