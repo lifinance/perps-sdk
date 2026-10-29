@@ -13,8 +13,13 @@ import {
   safeMultiplyDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
-import type { Fill, MarketDisplay } from '@lifi/perps-types'
-import { LiquidityRole, OrderSide, OrderType } from '@lifi/perps-types'
+import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
+import {
+  LiquidationMethod,
+  LiquidityRole,
+  OrderSide,
+  OrderType,
+} from '@lifi/perps-types'
 import { LIGHTER_FEE_TICK_SCALE, LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtTrade } from '../types/index.js'
 import { leverageFromScaledImf } from './mapPosition.js'
@@ -111,6 +116,25 @@ const deriveRealizedPnl = (
   return isDecimalStringZero(pnl) ? null : pnl
 }
 
+// The liquidation engine trades as the taker for the liquidated account; the
+// maker of a forced trade is its counterparty.
+const mapFillLiquidation = (
+  type: string,
+  isMaker: boolean
+): FillLiquidation | undefined => {
+  if (isMaker) {
+    return undefined
+  }
+  switch (type) {
+    case 'liquidation':
+      return { method: LiquidationMethod.MARKET }
+    case 'deleverage':
+      return { method: LiquidationMethod.DELEVERAGE }
+    default:
+      return undefined
+  }
+}
+
 /**
  * Map a raw Lighter trade to the generic Fill type.
  * @param accountIndex - The viewer's Lighter account index (selects buy/sell side and maker/taker role).
@@ -159,6 +183,7 @@ export const mapFill = (
     feeTick === undefined
       ? undefined
       : tickToFeeAmount(trade.usd_amount, feeTick, integratorFeeTick)
+  const liquidation = mapFillLiquidation(trade.type, isMaker)
 
   return {
     id: trade.trade_id_str,
@@ -192,5 +217,6 @@ export const mapFill = (
     explorerLink: isPlaceholderTxHash(trade.tx_hash)
       ? undefined
       : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
+    ...(liquidation === undefined ? {} : { liquidation }),
   }
 }
