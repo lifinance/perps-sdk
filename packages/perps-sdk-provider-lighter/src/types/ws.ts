@@ -142,8 +142,10 @@ export type LtWsTrade = {
   trade_id: number
   trade_id_str?: string
   market_id?: number
+  type: string
   size: string
   price: string
+  usd_amount: string
   is_maker_ask: boolean
   timestamp: number
 }
