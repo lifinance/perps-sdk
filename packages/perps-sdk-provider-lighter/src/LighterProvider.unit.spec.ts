@@ -3850,6 +3850,49 @@ describe('LighterProvider — getPositions keeps a row with a bad position_value
   })
 })
 
+describe('LighterProvider — getPositions without a liquidation price', () => {
+  it('leaves liquidationPrice absent for a cross row with liquidation_price "0"', async () => {
+    // Cross BTC row from live `GET /api/v1/account?by=index&value=7684`.
+    const crossRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '2.00',
+      open_order_count: 14,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '0.56759',
+      avg_entry_price: '84114.6',
+      position_value: '47898.579546',
+      unrealized_pnl: '155.946751',
+      realized_pnl: '0.000000',
+      liquidation_price: '0',
+      total_funding_paid_out: '-2.506444',
+      margin_mode: 0,
+      margin_set_flag: 1,
+      allocated_margin: '0.000000',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [
+              { ...ACCOUNT_PAYLOAD.accounts[0], positions: [crossRow] },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].marginMode).toBe(MarginMode.CROSS)
+    expect(positions[0]).not.toHaveProperty('liquidationPrice')
+  })
+})
+
 describe('LighterProvider — getAccount keeps a position with a bad position_value', () => {
   it('returns the position and totals instead of a throw', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
