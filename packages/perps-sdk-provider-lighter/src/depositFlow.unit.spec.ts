@@ -20,7 +20,7 @@ describe('lighterDepositFlow', () => {
 
   it('opens a mainnet account with an Ethereum USDC pipeline', () => {
     expect(lighterDepositFlow(LIGHTER_PROVIDER_KEY, false)).toEqual({
-      kind: 'firstDepositPipeline',
+      kind: 'venueDepositPipeline',
       chainId: ETHEREUM_USDC.chainId,
       gasAsset: ETHEREUM_NATIVE_GAS,
       collateral: ETHEREUM_USDC,
@@ -33,7 +33,7 @@ describe('lighterDepositFlow', () => {
     ['does not exist', false],
   ])('deposits Robinhood USDG through the venue when the account %s', (_, accountExists) => {
     expect(lighterDepositFlow(LIGHTER_RH_PROVIDER_KEY, accountExists)).toEqual({
-      kind: 'firstDepositPipeline',
+      kind: 'venueDepositPipeline',
       chainId: ROBINHOOD_USDG.chainId,
       gasAsset: ROBINHOOD_NATIVE_GAS,
       collateral: ROBINHOOD_USDG,

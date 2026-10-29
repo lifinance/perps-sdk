@@ -17,19 +17,19 @@ interface LighterDepositAssets {
    */
   venueCollateral?: DeclaredDepositAsset
   /** Collateral the venue deposit is made in, on the chain that deposit runs on. */
-  firstDepositCollateral: DeclaredDepositAsset
-  firstDepositGas: DeclaredDepositAsset
+  venueDepositCollateral: DeclaredDepositAsset
+  venueDepositGas: DeclaredDepositAsset
 }
 
 const DEPOSIT_ASSETS: Record<LighterProviderKey, LighterDepositAssets> = {
   [LIGHTER_PROVIDER_KEY]: {
     venueCollateral: LIGHTER_USDC,
-    firstDepositCollateral: ETHEREUM_USDC,
-    firstDepositGas: ETHEREUM_NATIVE_GAS,
+    venueDepositCollateral: ETHEREUM_USDC,
+    venueDepositGas: ETHEREUM_NATIVE_GAS,
   },
   [LIGHTER_RH_PROVIDER_KEY]: {
-    firstDepositCollateral: ROBINHOOD_USDG,
-    firstDepositGas: ROBINHOOD_NATIVE_GAS,
+    venueDepositCollateral: ROBINHOOD_USDG,
+    venueDepositGas: ROBINHOOD_NATIVE_GAS,
   },
 }
 
@@ -52,10 +52,10 @@ export function lighterDepositFlow(
   }
 
   return {
-    kind: 'firstDepositPipeline',
-    chainId: assets.firstDepositCollateral.chainId,
-    gasAsset: assets.firstDepositGas,
-    collateral: assets.firstDepositCollateral,
+    kind: 'venueDepositPipeline',
+    chainId: assets.venueDepositCollateral.chainId,
+    gasAsset: assets.venueDepositGas,
+    collateral: assets.venueDepositCollateral,
     bridgeAction: ActionType.DEPOSIT,
   }
 }

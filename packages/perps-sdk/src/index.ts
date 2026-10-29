@@ -263,9 +263,9 @@ export type {
 export type {
   DeclaredDepositAsset,
   DepositFlow,
-  DepositFlowFirstDepositPipeline,
   DepositFlowLifiSwap,
   DepositFlowSetupRequired,
+  DepositFlowVenueDepositPipeline,
 } from './types/deposit.js'
 export type {
   ActionSignerContribution,

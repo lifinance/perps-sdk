@@ -45,8 +45,8 @@ export interface DepositFlowLifiSwap {
  *
  * @public
  */
-export interface DepositFlowFirstDepositPipeline {
-  kind: 'firstDepositPipeline'
+export interface DepositFlowVenueDepositPipeline {
+  kind: 'venueDepositPipeline'
   /** Chain on which the deposit legs broadcast; the wallet must be switched here. */
   chainId: number
   /** Native gas asset needed to broadcast the deposit legs. */
@@ -78,5 +78,5 @@ export interface DepositFlowSetupRequired {
  */
 export type DepositFlow =
   | DepositFlowLifiSwap
-  | DepositFlowFirstDepositPipeline
+  | DepositFlowVenueDepositPipeline
   | DepositFlowSetupRequired
