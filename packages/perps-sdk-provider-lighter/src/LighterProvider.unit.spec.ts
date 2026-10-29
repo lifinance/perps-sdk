@@ -9,6 +9,7 @@ import {
   PerpsError,
   type PerpsSDKClient,
   type ProviderSetup,
+  ROBINHOOD_NATIVE_GAS,
   ROBINHOOD_USDG,
   type StorageAdapter,
   safeSnapOrderPrice,
@@ -6237,12 +6238,18 @@ describe('LighterProvider — getDepositFlow', () => {
     })
   })
 
-  it('resolves the Robinhood deployment against its own collateral', async () => {
+  it('deposits through the venue when the Robinhood account resolves', async () => {
     const provider = lighterRhProvider()
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getDepositFlow!({ address: ADDRESS })
-    ).resolves.toEqual({ kind: 'lifiSwap', destination: ROBINHOOD_USDG })
+    ).resolves.toEqual({
+      kind: 'firstDepositPipeline',
+      chainId: ROBINHOOD_USDG.chainId,
+      gasAsset: ROBINHOOD_NATIVE_GAS,
+      collateral: ROBINHOOD_USDG,
+      bridgeAction: ActionType.DEPOSIT,
+    })
   })
 
   it('propagates a non-account-not-found probe error', async () => {
