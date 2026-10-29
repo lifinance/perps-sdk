@@ -9,6 +9,7 @@ import {
 import type {
   Eip712ActionStep,
   PerpsMarket,
+  Position,
   SpotMarket,
 } from '@lifi/perps-types'
 import {
@@ -17,6 +18,7 @@ import {
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
+  PositionSide,
   SigningMethod,
   UserActionStatus,
 } from '@lifi/perps-types'
@@ -175,6 +177,46 @@ describe('hyperliquidProvider', () => {
         marginMode: MarginMode.ISOLATED,
       })
       expect(liq).toBe('45454.5454545454545454545454545454545454545455')
+    })
+
+    it('gives no estimate for a cross order', () => {
+      const provider = hyperliquidProvider()
+      expect(
+        provider.estimateLiquidationPrice(perpMarket, {
+          entryPrice: '50000',
+          leverage: '10',
+          isLong: true,
+          marginMode: MarginMode.CROSS,
+        })
+      ).toBeUndefined()
+    })
+
+    it('blends an isolated add into the open position on the market', () => {
+      const provider = hyperliquidProvider()
+      const position: Position = {
+        market: perpMarket,
+        side: PositionSide.LONG,
+        size: '1',
+        entryPrice: '45000',
+        markPrice: '50000',
+        liquidationPrice: '40909.09',
+        unrealizedPnl: '5000',
+        marginUsed: '9500',
+        marginMode: MarginMode.ISOLATED,
+      }
+      // collateral 4500; equity at 50000 = 4500 + 5000 + 5000 = 14500
+      // marginAvail/unit = (14500 − 0.01 × 2 × 50000) / 2 = 6750
+      // liq = 50000 − 6750 / 0.99
+      expect(
+        provider.estimateLiquidationPrice(perpMarket, {
+          entryPrice: '50000',
+          leverage: '10',
+          isLong: true,
+          marginMode: MarginMode.ISOLATED,
+          size: '1',
+          position,
+        })
+      ).toBe('43181.8181818181818181818181818181818181818182')
     })
 
     it('throws a ValidationError when it estimates liquidation at zero leverage', () => {

@@ -41,6 +41,7 @@ import {
   type InfoRequestOptions,
   infoRequest,
 } from '../utils/infoClient.js'
+import { isFillLiquidatingAccount } from '../utils/isFillLiquidatingAccount.js'
 import { requireAccountExists } from './getAccountExists.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
@@ -111,9 +112,8 @@ const fetchLiquidationHistory = async (
     // Inclusive overlap retains all same-time fills at the venue page boundary.
     startTime = latest
   }
-  const queried = user.toLowerCase()
-  const fills = [...retained.values()].filter(
-    (fill) => fill.liquidation?.liquidatedUser.toLowerCase() === queried
+  const fills = [...retained.values()].filter((fill) =>
+    isFillLiquidatingAccount(fill, user)
   )
   if (fills.length === 0) {
     return []

@@ -224,6 +224,10 @@ When the filter includes an active status or FILLED, `getOrders` reads
 slice fills of its `twapId`.
 `getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
 `getOrder` also reads `userTwapSliceFills`.
+`userTwapSliceFills` holds only the 2,000 newest slice fills of the account.
+When it is full and its oldest row is not newer than the start of a running
+TWAP, both reads also read `userTwapSliceFillsByTime`. This read covers the
+time from the earliest running TWAP start to the oldest row.
 Both reads reject a failed required slice-fill request instead of reporting
 activation-time totals as current execution. Caller cancellation also rejects
 the read.
@@ -239,6 +243,23 @@ The `orderUpdates` WebSocket feed omits execution metadata. The provider reads
 `orderStatus` for each update, then retains the stream's status and quantities.
 The provider emits frames in stream order after these HTTP reads finish.
 Unavailable metadata reports a decode failure instead of inventing an order type.
+
+## Liquidations
+
+Hyperliquid closes a liquidated position with a `LiquidationMarket` order or
+with a backstop takeover.
+
+- A `LiquidationMarket` order maps to a `MARKET` `RegularOrder` with
+  `isLiquidation: true`. Its `price` is the order limit, not the execution price.
+- Hyperliquid attaches a `liquidation` block to the fills of both parties.
+  `getFills` and the `fills` WebSocket stream set `Fill.liquidation` only when
+  `liquidatedUser` is the requested address.
+- `Fill.liquidation.method` is `MARKET` for the venue `market` method and
+  `BACKSTOP` for `backstop`. An unknown method leaves `method` absent.
+- `Fill.liquidation.markPrice` is the venue `markPx`. `Fill.price` stays the
+  execution price.
+- A fill of the liquidated account has no `type`. A backstop takeover fills
+  that account as the maker, but no resting limit order exists.
 
 ## Documentation
 

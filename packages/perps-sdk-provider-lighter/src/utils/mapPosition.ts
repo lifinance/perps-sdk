@@ -79,7 +79,9 @@ const warnUnreadableField = (field: string, value: unknown): void => {
  * an invalid size gives `undefined`. An invalid position value or a
  * non-positive initial margin fraction keeps the row, leaves `leverage` and
  * `initialMarginRequirement` absent, sets a cross `marginUsed` to `'0'` and
- * warns once. Prices, PnL, funding and isolated margin pass through raw.
+ * warns once. Prices, PnL, funding and isolated margin pass through raw. A
+ * zero or empty `liquidation_price`, which Lighter sends for a position that
+ * no price liquidates, leaves `liquidationPrice` absent.
  * @param market - Backend-resolved market identity for `pos.market_id`.
  * @public
  */
@@ -107,6 +109,10 @@ export const mapPosition = (
     positionValue === undefined || leverage === undefined
       ? undefined
       : divideDecimalString(multiplyDecimalString(positionValue, imf), '100')
+  const liquidationPrice = pos.liquidation_price
+  const hasLiquidationPrice = isDecimalString(liquidationPrice)
+    ? !isDecimalStringZero(liquidationPrice)
+    : liquidationPrice !== ''
 
   return {
     market,
@@ -121,7 +127,7 @@ export const mapPosition = (
               ? '0'
               : divideDecimalString(positionValue, size),
         }),
-    liquidationPrice: pos.liquidation_price,
+    ...(hasLiquidationPrice ? { liquidationPrice } : {}),
     unrealizedPnl: pos.unrealized_pnl,
     accruedFunding: pos.total_funding_paid_out ?? '0',
     ...(leverage === undefined ? {} : { leverage }),
