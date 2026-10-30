@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 29.2.0
+
+### Minor Changes
+
+- [#662](https://github.com/lifinance/perps-sdk/pull/662) [`13800b6`](https://github.com/lifinance/perps-sdk/commit/13800b61e697250792e2b4b68d472661086644ff) Thanks [@laurentsenta](https://github.com/laurentsenta)! - Add a helper to calculate ROE from initial margin at entry.
+
 ## 29.1.0
 
 ### Minor Changes
