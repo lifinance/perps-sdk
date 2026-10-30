@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 31.0.2
+
+### Patch Changes
+
+- [#681](https://github.com/lifinance/perps-sdk/pull/681) [`1e136ed`](https://github.com/lifinance/perps-sdk/commit/1e136edd957b24589e57869ef13259bf9b46ff32) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Include Hyperliquid TWAP slice executions in `getFills` history and in the `fills` WebSocket channel.
+
 ## 31.0.1
 
 ### Patch Changes
