@@ -4,7 +4,7 @@ import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Market, Subscription } from '@lifi/perps-types'
+import type { Fill, Market, Subscription } from '@lifi/perps-types'
 import {
   LiquidationMethod,
   OrderSide,
@@ -19,6 +19,7 @@ import {
   HL_DELISTED_MARKET,
   HL_MARKETS,
   HL_SPOT_MARKET,
+  HL_TWAP_SLICE_FILL_REFERENCE,
   USDC_ASSET,
 } from '../../test/fixtures.js'
 import type {
@@ -1286,7 +1287,7 @@ describe('HyperliquidWsProvider', () => {
       }
     })
 
-    it('should map fills subscription to userFills payload', async () => {
+    it('subscribes fills to the userFills and userTwapSliceFills feeds', async () => {
       const provider = createProvider()
 
       await provider.subscribe(
@@ -1294,10 +1295,76 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'subscribe',
-        subscription: { type: 'userFills', user: '0xabc' },
-      })
+      expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'userFills', user: '0xabc' },
+        },
+        {
+          method: 'subscribe',
+          subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+        },
+      ])
+    })
+
+    it('shares both fill feeds between listeners and unsubscribes both when the last listener releases', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const sub: Subscription = {
+          channel: 'fills',
+          dex: 'hyperliquid',
+          address: '0xabc',
+        }
+
+        const unsubFirst = await provider.subscribe(sub, vi.fn())
+        const unsubSecond = await provider.subscribe(sub, vi.fn())
+        expect(getMockRwsInstance().sent).toHaveLength(2)
+
+        getMockRwsInstance().sent = []
+        unsubFirst()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent).toEqual([])
+
+        unsubSecond()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'userFills', user: '0xabc' },
+          },
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+          },
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('replays both fill feeds on reconnect', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      getMockRwsInstance().sent = []
+
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+
+      expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'userFills', user: '0xabc' },
+        },
+        {
+          method: 'subscribe',
+          subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+        },
+      ])
     })
 
     it('sends a single allDexsClearinghouseState subscribe for positions', async () => {
@@ -3131,6 +3198,113 @@ describe('HyperliquidWsProvider', () => {
       for (const call of listener.mock.calls) {
         expect(call[0].data).toHaveLength(0)
       }
+    })
+
+    it('emits a live userTwapSliceFills frame without isSnapshot on the fills channel', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: {
+            user: '0xuser1',
+            twapSliceFills: [HL_TWAP_SLICE_FILL_REFERENCE],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('fills')
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({
+        id: '648473049019291',
+        orderId: '590716607007',
+        market: { id: 'ETH' },
+        side: OrderSide.SELL,
+        size: '0.0161',
+        price: '3101.5',
+        fee: { amount: '0.022455', asset: 'USDC' },
+        realizedPnl: '1.288',
+        createdAt: '2026-10-29T18:55:20.247Z',
+      })
+      expect(event.data[0].explorerLink).toBeUndefined()
+    })
+
+    it('suppresses the userTwapSliceFills snapshot and emits only the subsequent live slice', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const snapshotFrame = JSON.stringify({
+        channel: 'userTwapSliceFills',
+        data: {
+          isSnapshot: true,
+          user: '0xuser1',
+          twapSliceFills: [HL_TWAP_SLICE_FILL_REFERENCE],
+        },
+      })
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      for (const call of listener.mock.calls) {
+        expect(call[0]).toMatchObject({ channel: 'fills', data: [] })
+      }
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            twapSliceFills: [
+              {
+                ...HL_TWAP_SLICE_FILL_REFERENCE,
+                fill: { ...HL_TWAP_SLICE_FILL_REFERENCE.fill, tid: 999 },
+              },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(3)
+      expect(
+        listener.mock.calls[2][0].data.map((fill: Fill) => fill.id)
+      ).toEqual(['999'])
+    })
+
+    it('skips a userTwapSliceFills frame without a twapSliceFills array', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warn = vi.spyOn(wsLog, 'parseFailure').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: { user: '0xuser1' },
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledOnce()
+      warn.mockRestore()
     })
 
     it('delivers fills when the venue echoes the user address in checksummed form', async () => {
