@@ -111,6 +111,7 @@ export {
 } from './math/order.js'
 export {
   calculateEffectiveLeverage,
+  calculateInitialMarginRoe,
   calculateLiquidationDistance,
   calculateNotionalValue,
   calculateRealizedPnl,
@@ -126,6 +127,7 @@ export {
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
   safeCalculateEffectiveLeverage,
+  safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
   safeCalculateNotionalValue,
   safeCalculateRealizedPnl,

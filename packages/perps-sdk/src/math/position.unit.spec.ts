@@ -11,6 +11,7 @@ import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import type { LiquidationEstimateParams } from '../types/provider.js'
 import {
   calculateEffectiveLeverage,
+  calculateInitialMarginRoe,
   calculateLiquidationDistance,
   calculateNotionalValue,
   calculateRealizedPnl,
@@ -26,6 +27,7 @@ import {
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
   safeCalculateEffectiveLeverage,
+  safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
   safeCalculateNotionalValue,
   safeCalculateRealizedPnl,
@@ -133,6 +135,71 @@ describe('calculateRoe', () => {
 
   it('should handle zero PnL', () => {
     expect(calculateRoe('0', '1000')).toBe('0')
+  })
+})
+
+describe('calculateInitialMarginRoe', () => {
+  it.each([
+    ['50', '1', '250'],
+    ['-50', '1', '-250'],
+    ['50', '-1', '250'],
+    ['-50', '-1', '-250'],
+  ])('calculates signed-size profit and loss', (pnl, size, expected) => {
+    expect(calculateInitialMarginRoe(pnl, size, '100', '5')).toBe(expected)
+  })
+
+  it('returns zero for zero PnL', () => {
+    expect(calculateInitialMarginRoe('0', '1', '100', '5')).toBe('0')
+  })
+
+  it('calculates the precise ZRO fixture', () => {
+    expect(calculateInitialMarginRoe('49.13981', '-214.3', '1.7265', '5')).toBe(
+      '66.40713188866856699368994668624562976813'
+    )
+  })
+
+  it.each([
+    ['size', '0', '100', '5'],
+    ['size', '-0.0', '100', '5'],
+    ['entryPrice', '1', '0', '5'],
+    ['entryPrice', '1', '-100', '5'],
+    ['leverage', '1', '100', '0'],
+    ['leverage', '1', '100', '-5'],
+  ])('rejects invalid %s values', (parameter, size, entryPrice, leverage) => {
+    expect(() =>
+      calculateInitialMarginRoe('1', size, entryPrice, leverage)
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(`\`${parameter}\``),
+      })
+    )
+    expect(
+      safeCalculateInitialMarginRoe('1', size, entryPrice, leverage)
+    ).toBeUndefined()
+  })
+
+  it.each([
+    ['pnl', 'bad', '1', '100', '5'],
+    ['size', '1', 'bad', '100', '5'],
+    ['entryPrice', '1', '1', 'bad', '5'],
+    ['leverage', '1', '1', '100', 'bad'],
+  ])('names malformed %s input', (parameter, pnl, size, entryPrice, leverage) => {
+    expect(() =>
+      calculateInitialMarginRoe(pnl, size, entryPrice, leverage)
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining(`\`${parameter}\``),
+      })
+    )
+    expect(
+      safeCalculateInitialMarginRoe(pnl, size, entryPrice, leverage)
+    ).toBeUndefined()
+  })
+
+  it('returns a result from the safe function on valid input', () => {
+    expect(safeCalculateInitialMarginRoe('50', '1', '100', '5')).toBe('250')
   })
 })
 
