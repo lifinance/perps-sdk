@@ -13,7 +13,8 @@ import {
 } from '@lifi/perps-types'
 import { zeroHash } from 'viem'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
-import type { HlFillLiquidation, HlUserFill } from '../types/index.js'
+import type { HlUserFill } from '../types/index.js'
+import { isFillLiquidatingAccount } from './isFillLiquidatingAccount.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Re-export the shared fill-position classifier used by Hyperliquid mappings. @public */
@@ -34,13 +35,11 @@ const mapLiquidationMethod = (
 
 // Hyperliquid attaches `liquidation` to the fills of both parties.
 const mapFillLiquidation = (
-  liquidation: HlFillLiquidation | undefined,
+  fill: HlUserFill,
   address: string
 ): FillLiquidation | undefined => {
-  if (
-    liquidation === undefined ||
-    liquidation.liquidatedUser.toLowerCase() !== address.toLowerCase()
-  ) {
+  const { liquidation } = fill
+  if (liquidation === undefined || !isFillLiquidatingAccount(fill, address)) {
     return undefined
   }
   const method = mapLiquidationMethod(liquidation.method)
@@ -72,7 +71,7 @@ export const mapFill = (
   // HL charges the builder portion in the same token as the total fee.
   const feeAsset = fill.feeToken ?? market.quoteAsset.displaySymbol
   const side = fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL
-  const liquidation = mapFillLiquidation(fill.liquidation, address)
+  const liquidation = mapFillLiquidation(fill, address)
 
   return {
     ...(market.categoryId === SPOT_MARKET_ID
