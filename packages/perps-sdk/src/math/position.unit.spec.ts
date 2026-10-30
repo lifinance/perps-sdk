@@ -8,6 +8,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import type { LiquidationEstimateParams } from '../types/provider.js'
 import {
   calculateEffectiveLeverage,
   calculateInitialMarginRoe,
@@ -21,6 +22,7 @@ import {
   estimateLiquidationPrice,
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
+  estimateOrderLiquidationPrice,
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
@@ -35,6 +37,7 @@ import {
   safeEstimateAverageEntryPrice,
   safeEstimateLiquidationPrice,
   safeEstimateNewLeverage,
+  safeEstimateOrderLiquidationPrice,
   safeEstimateUnrealizedPnl,
   safeWouldImmediatelyLiquidate,
   wouldImmediatelyLiquidate,
@@ -430,6 +433,102 @@ describe('estimateLiquidationPrice', () => {
       })
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
+
+  describe('with a current position', () => {
+    const current = { size: '1', entryPrice: '90000', margin: '9000' }
+
+    it('blends a long add into the current position', () => {
+      // equity at 100000 = 9000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 29000
+      // margin available = 29000 − 0.01 × 2 × 100000 = 27000, per unit 13500
+      // liq = 100000 − 13500 / 0.99
+      expect(
+        estimateLiquidationPrice({
+          entryPrice: '100000',
+          leverage: '10',
+          isLong: true,
+          maintenanceMarginRate: '0.01',
+          size: '1',
+          current,
+        })
+      ).toBe('86363.6363636363636363636363636363636363636364')
+    })
+
+    it('blends a short add into the current position', () => {
+      // equity at 100000 = 11000 − 1 × (100000 − 110000) + 100000 ÷ 10 = 31000
+      // margin available = 31000 − 2000 = 29000, per unit 14500
+      // liq = 100000 + 14500 / 1.01
+      expect(
+        estimateLiquidationPrice({
+          entryPrice: '100000',
+          leverage: '10',
+          isLong: false,
+          maintenanceMarginRate: '0.01',
+          size: '1',
+          current: { size: '1', entryPrice: '110000', margin: '11000' },
+        })
+      ).toBe('114356.4356435643564356435643564356435643564356')
+    })
+
+    it('gives the single-position result for a zero current size and margin', () => {
+      const params = {
+        entryPrice: '100',
+        leverage: '10',
+        isLong: true,
+        maintenanceMarginRate: '0.01',
+      }
+      expect(
+        estimateLiquidationPrice({
+          ...params,
+          size: '3',
+          current: { size: '0', entryPrice: '0', margin: '0' },
+        })
+      ).toBe(estimateLiquidationPrice(params))
+    })
+
+    it('returns undefined when the blended position has no margin above maintenance', () => {
+      // equity at 50000 = 9000 + (50000 − 90000) + 5000 < 0
+      expect(
+        estimateLiquidationPrice({
+          entryPrice: '50000',
+          leverage: '10',
+          isLong: true,
+          maintenanceMarginRate: '0.01',
+          size: '1',
+          current,
+        })
+      ).toBeUndefined()
+    })
+
+    it('throws a ValidationError when size is absent', () => {
+      expect(() =>
+        estimateLiquidationPrice({
+          entryPrice: '100000',
+          leverage: '10',
+          isLong: true,
+          maintenanceMarginRate: '0.01',
+          current,
+        })
+      ).toThrow(
+        expect.objectContaining({
+          code: PerpsErrorCode.ValidationError,
+          message: '`size` is required with `current`.',
+        })
+      )
+    })
+
+    it('throws a ValidationError when the blended size is not positive', () => {
+      expect(() =>
+        estimateLiquidationPrice({
+          entryPrice: '100000',
+          leverage: '10',
+          isLong: true,
+          maintenanceMarginRate: '0.01',
+          size: '0',
+          current: { ...current, size: '0' },
+        })
+      ).toThrow('`size + current.size` must be positive.')
+    })
+  })
 })
 
 describe('estimateLiquidationPriceAtMarketRate', () => {
@@ -458,23 +557,28 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     ...overrides,
   })
 
+  const order = (
+    overrides: Partial<LiquidationEstimateParams>
+  ): LiquidationEstimateParams => ({
+    entryPrice: '61729.6',
+    leverage: '10',
+    isLong: true,
+    marginMode: MarginMode.ISOLATED,
+    ...overrides,
+  })
+
   it('estimates a long liquidation from the market maintenance margin rate', () => {
     // entry * (1 - 1/leverage) / (1 - mmr) = 61729.6 * 0.9 / 0.988
-    const liq = estimateLiquidationPriceAtMarketRate(market({}), {
-      entryPrice: '61729.6',
-      leverage: '10',
-      isLong: true,
-    })
+    const liq = estimateLiquidationPriceAtMarketRate(market({}), order({}))
     expect(Number(liq)).toBeCloseTo(56231.417, 2)
   })
 
   it('estimates a short liquidation from the market maintenance margin rate', () => {
     // entry * (1 + 1/leverage) / (1 + mmr) = 61729.6 * 1.1 / 1.012
-    const liq = estimateLiquidationPriceAtMarketRate(market({}), {
-      entryPrice: '61729.6',
-      leverage: '10',
-      isLong: false,
-    })
+    const liq = estimateLiquidationPriceAtMarketRate(
+      market({}),
+      order({ isLong: false })
+    )
     expect(Number(liq)).toBeCloseTo(67097.391, 2)
   })
 
@@ -483,7 +587,7 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     expect(
       estimateLiquidationPriceAtMarketRate(
         market({ maintenanceMarginRate: '0.05' }),
-        { entryPrice: '95', leverage: '10', isLong: true }
+        order({ entryPrice: '95' })
       )
     ).toBe('90')
   })
@@ -492,7 +596,7 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
     expect(
       estimateLiquidationPriceAtMarketRate(
         market({ maintenanceMarginRate: undefined }),
-        { entryPrice: '61729.6', leverage: '10', isLong: true }
+        order({})
       )
     ).toBeUndefined()
   })
@@ -503,29 +607,228 @@ describe('estimateLiquidationPriceAtMarketRate', () => {
   ])('returns undefined when 1 / leverage is at or below the market rate (isLong %s)', (isLong) => {
     const ondoLike = market({ maintenanceMarginRate: '0.05' })
     expect(
-      estimateLiquidationPriceAtMarketRate(ondoLike, {
-        entryPrice: '86130.49',
-        leverage: '40',
-        isLong,
-      })
+      estimateLiquidationPriceAtMarketRate(
+        ondoLike,
+        order({ entryPrice: '86130.49', leverage: '40', isLong })
+      )
     ).toBeUndefined()
     expect(
-      estimateLiquidationPriceAtMarketRate(ondoLike, {
-        entryPrice: '86130.49',
-        leverage: '20',
-        isLong,
-      })
+      estimateLiquidationPriceAtMarketRate(
+        ondoLike,
+        order({ entryPrice: '86130.49', leverage: '20', isLong })
+      )
     ).toBeUndefined()
   })
 
   it('throws a ValidationError for zero leverage', () => {
     expect(() =>
-      estimateLiquidationPriceAtMarketRate(market({}), {
-        entryPrice: '61729.6',
-        leverage: '0',
-        isLong: true,
-      })
+      estimateLiquidationPriceAtMarketRate(market({}), order({ leverage: '0' }))
     ).toThrow('`leverage` must not be zero.')
+  })
+
+  describe('with the margin mode and the open position', () => {
+    const position = (overrides: Partial<Position>): Position => ({
+      market: market({}),
+      side: PositionSide.LONG,
+      size: '1',
+      entryPrice: '90000',
+      markPrice: '100000',
+      liquidationPrice: '81000',
+      unrealizedPnl: '10000',
+      marginUsed: '9000',
+      marginMode: MarginMode.ISOLATED,
+      ...overrides,
+    })
+    const rate = market({ maintenanceMarginRate: '0.01' })
+    const add = (overrides: Partial<LiquidationEstimateParams>) =>
+      order({ entryPrice: '100000', size: '1', ...overrides })
+
+    it('returns undefined for a cross order', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          order({ marginMode: MarginMode.CROSS })
+        )
+      ).toBeUndefined()
+    })
+
+    it('returns undefined for an isolated order on a cross position', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ position: position({ marginMode: MarginMode.CROSS }) })
+        )
+      ).toBeUndefined()
+    })
+
+    it('returns undefined for an order against the side of the position', () => {
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ isLong: false, position: position({}) })
+        )
+      ).toBeUndefined()
+    })
+
+    it('blends a long add into the position with marginUsed as the collateral', () => {
+      // equity at 100000 = 9000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 29000
+      // margin available = 29000 − 0.01 × 2 × 100000 = 27000, per unit 13500
+      // liq = 100000 − 13500 / 0.99
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({ position: position({}) })
+        )
+      ).toBe('86363.6363636363636363636363636363636363636364')
+    })
+
+    it('blends a short add into the position with marginUsed as the collateral', () => {
+      // equity at 100000 = 11000 − 1 × (100000 − 110000) + 100000 ÷ 10 = 31000
+      // margin available = 31000 − 2000 = 29000, per unit 14500
+      // liq = 100000 + 14500 / 1.01
+      expect(
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          add({
+            isLong: false,
+            position: position({
+              side: PositionSide.SHORT,
+              entryPrice: '110000',
+              marginUsed: '11000',
+            }),
+          })
+        )
+      ).toBe('114356.4356435643564356435643564356435643564356')
+    })
+
+    it('throws a ValidationError for a position without a size', () => {
+      expect(() =>
+        estimateLiquidationPriceAtMarketRate(
+          rate,
+          order({ entryPrice: '100000', position: position({}) })
+        )
+      ).toThrow('`size` is required with `position`.')
+    })
+  })
+})
+
+describe('estimateOrderLiquidationPrice', () => {
+  const position: Position = {
+    market: {
+      providerId: 'lighter',
+      id: '1',
+      categoryId: 'lighter',
+      baseAsset: {
+        providerId: 'lighter',
+        id: '1',
+        displaySymbol: 'BTC',
+        logoURI: '',
+      },
+      quoteAsset: {
+        providerId: 'lighter',
+        id: 'USDC',
+        displaySymbol: 'USDC',
+        logoURI: '',
+      },
+      positionMarginAdjustment: PositionMarginAdjustment.ADD_AND_REMOVE,
+    },
+    side: PositionSide.LONG,
+    size: '1',
+    entryPrice: '90000',
+    markPrice: '100000',
+    liquidationPrice: '81000',
+    unrealizedPnl: '10000',
+    marginUsed: '9000',
+    marginMode: MarginMode.ISOLATED,
+  }
+  const add: LiquidationEstimateParams = {
+    entryPrice: '100000',
+    leverage: '10',
+    isLong: true,
+    marginMode: MarginMode.ISOLATED,
+    size: '1',
+    position,
+  }
+  const venue = () => ({
+    maintenanceMarginRate: vi.fn(() => '0.01'),
+    positionCollateral: vi.fn(({ marginUsed }: Position) => marginUsed),
+  })
+
+  it('reads the collateral of the position from the venue', () => {
+    const { maintenanceMarginRate } = venue()
+    const positionCollateral = vi.fn(() => '8000')
+    // equity at 100000 = 8000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 28000
+    // margin available = 28000 − 0.01 × 2 × 100000 = 26000, per unit 13000
+    expect(
+      estimateOrderLiquidationPrice(add, {
+        maintenanceMarginRate,
+        positionCollateral,
+      })
+    ).toBe('86868.6868686868686868686868686868686868686869')
+    expect(positionCollateral).toHaveBeenCalledWith(position)
+  })
+
+  it('estimates a new position without reading the collateral', () => {
+    const { maintenanceMarginRate, positionCollateral } = venue()
+    expect(
+      estimateOrderLiquidationPrice(
+        { ...add, position: undefined },
+        { maintenanceMarginRate, positionCollateral }
+      )
+    ).toBe(
+      estimateLiquidationPrice({
+        entryPrice: '100000',
+        leverage: '10',
+        isLong: true,
+        maintenanceMarginRate: '0.01',
+      })
+    )
+    expect(positionCollateral).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: 'a cross order', params: { ...add, marginMode: MarginMode.CROSS } },
+    {
+      name: 'a cross position',
+      params: {
+        ...add,
+        position: { ...position, marginMode: MarginMode.CROSS },
+      },
+    },
+    {
+      name: 'an order against the side of the position',
+      params: { ...add, isLong: false },
+    },
+  ])('returns undefined for $name without reading the venue', ({ params }) => {
+    const { maintenanceMarginRate, positionCollateral } = venue()
+    expect(
+      estimateOrderLiquidationPrice(params, {
+        maintenanceMarginRate,
+        positionCollateral,
+      })
+    ).toBeUndefined()
+    expect(maintenanceMarginRate).not.toHaveBeenCalled()
+    expect(positionCollateral).not.toHaveBeenCalled()
+  })
+
+  it('throws a ValidationError that names size and position', () => {
+    expect(() =>
+      estimateOrderLiquidationPrice({ ...add, size: undefined }, venue())
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: '`size` is required with `position`.',
+      })
+    )
+  })
+
+  it('safeEstimateOrderLiquidationPrice gives undefined and warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      safeEstimateOrderLiquidationPrice({ ...add, size: undefined }, venue())
+    ).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
   })
 })
 

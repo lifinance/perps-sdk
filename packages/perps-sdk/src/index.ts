@@ -122,6 +122,7 @@ export {
   estimateLiquidationPrice,
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
+  estimateOrderLiquidationPrice,
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
@@ -137,6 +138,7 @@ export {
   safeEstimateLiquidationPrice,
   safeEstimateLiquidationPriceAtMarketRate,
   safeEstimateNewLeverage,
+  safeEstimateOrderLiquidationPrice,
   safeEstimateUnrealizedPnl,
   safeWouldImmediatelyLiquidate,
   wouldImmediatelyLiquidate,
@@ -265,9 +267,9 @@ export type {
 export type {
   DeclaredDepositAsset,
   DepositFlow,
-  DepositFlowFirstDepositPipeline,
   DepositFlowLifiSwap,
   DepositFlowSetupRequired,
+  DepositFlowVenueDepositPipeline,
 } from './types/deposit.js'
 export type {
   ActionSignerContribution,

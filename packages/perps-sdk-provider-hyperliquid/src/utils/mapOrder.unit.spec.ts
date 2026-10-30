@@ -365,6 +365,65 @@ describe('mapOrder', () => {
       )
     ).toMatchObject({ type, timeInForce })
   })
+  it('marks the venue liquidation order and keeps its limit price', () => {
+    // Venue `orderStatus` row of the isolated `xyz:MRNA` liquidation; its fill executed at 185.64.
+    const liquidation: HlOrderDetail = {
+      order: {
+        coin: 'xyz:MRNA',
+        side: 'A',
+        limitPx: '148.55',
+        sz: '0.0',
+        oid: 587296189511,
+        timestamp: 1793108252888,
+        triggerCondition: 'N/A',
+        isTrigger: false,
+        triggerPx: '0.0',
+        children: [],
+        isPositionTpsl: false,
+        reduceOnly: true,
+        orderType: 'Market',
+        origSz: '0.5',
+        tif: 'LiquidationMarket',
+        cloid: null,
+      },
+      status: 'filled',
+      statusTimestamp: 1793108252888,
+    }
+    expect(mapOrder(liquidation, MARKET)).toMatchObject({
+      orderId: '587296189511',
+      type: OrderType.MARKET,
+      price: '148.55',
+      timeInForce: TimeInForce.IOC,
+      status: OrderStatus.FILLED,
+      isLiquidation: true,
+    })
+  })
+  it.each([
+    ['market', raw({ orderType: 'Market', tif: 'FrontendMarket' })],
+    ['IOC limit', raw({ tif: 'Ioc' })],
+    [
+      'take-profit',
+      raw({
+        orderType: 'Take Profit Market',
+        isTrigger: true,
+        tpsl: 'tp',
+        triggerPx: '3500',
+        reduceOnly: true,
+      }),
+    ],
+    [
+      'stop-loss',
+      raw({
+        orderType: 'Stop Market',
+        isTrigger: true,
+        tpsl: 'sl',
+        triggerPx: '2500',
+        reduceOnly: true,
+      }),
+    ],
+  ])('does not mark an ordinary %s order as a liquidation', (_label, order) => {
+    expect(mapOrder(order, MARKET)).not.toHaveProperty('isLiquidation')
+  })
   it.each([
     ['activated', OrderStatus.PARTIALLY_FILLED, undefined],
     ['finished', OrderStatus.FILLED, undefined],
@@ -403,5 +462,39 @@ describe('mapOrder', () => {
       updatedAt: '2023-11-14T22:13:22.000Z',
     })
     expect(order?.statusReason).toBe(statusReason)
+  })
+
+  it.each([
+    [
+      '0.041999999999999999999',
+      OrderStatus.PARTIALLY_FILLED,
+      '0.000000000000000000001',
+    ],
+    ['0.042', OrderStatus.FILLED, '0'],
+    ['0.042000000000000000001', OrderStatus.FILLED, '0'],
+  ])('maps activated execution %s at the target boundary', (executedSz, status, remainingSize) => {
+    const entry: HlTwapHistoryEntry = {
+      twapId: 5,
+      time: 1_700_000_002,
+      state: {
+        coin: 'ETH',
+        side: 'B',
+        sz: '0.042',
+        executedSz,
+        executedNtl: '168',
+        minutes: 10,
+        reduceOnly: false,
+        timestamp: 1_700_000_000_000,
+      },
+      status: { status: 'activated' },
+    }
+
+    expect(mapOrder(entry, MARKET)).toMatchObject({
+      orderId: '5',
+      originalSize: '0.042',
+      filledSize: executedSz,
+      remainingSize,
+      status,
+    })
   })
 })

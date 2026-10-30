@@ -15,6 +15,7 @@ import {
   type PerpsMarket,
   type Position,
   PositionMarginAdjustment,
+  PositionSide,
 } from '@lifi/perps-types'
 import {
   absDecimalString,
@@ -227,16 +228,27 @@ export const safeCalculateEffectiveLeverage = createSafeFunction(
  *   margin_available = entryPrice × (1 / leverage - mmr)
  *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
  *
+ * With `current`, the order of `size` adds to that position on the same side.
+ * The equity of the blended position at `entryPrice` is `current.margin`, the
+ * PnL of `current` at `entryPrice`, and the margin of the order. The margin
+ * available is that equity minus the maintenance margin of the blended size,
+ * and the formula above divides it by the blended size.
+ *
  * For existing positions, prefer `Position.liquidationPrice` from the venue.
  *
  * @param maintenanceMarginRate - Venue maintenance margin rate as a fraction
  *   (`'0.01'` = 1%).
- * @returns The estimate, or `undefined` when `1 / leverage` is at or below
- *   `maintenanceMarginRate`: the position opens at or past liquidation, so
- *   the model has no price on the correct side of entry.
+ * @param size - Order size as a non-negative magnitude. Read only with
+ *   `current`.
+ * @param current - Open isolated position on the same side that the order
+ *   adds to. `margin` is its collateral net of unrealized PnL.
+ * @returns The estimate, or `undefined` when the margin above the
+ *   maintenance requirement is not positive: the position opens at or past
+ *   liquidation, so the model has no price on the correct side of entry.
  * @throws {PerpsError} `ValidationError` when an input does not match the
- *   decimal pattern, `leverage` is zero, or `maintenanceMarginRate` gives a
- *   zero denominator (`1` for a long, `-1` for a short).
+ *   decimal pattern, `leverage` is zero, `maintenanceMarginRate` gives a
+ *   zero denominator (`1` for a long, `-1` for a short), `current` comes
+ *   without `size`, or `current.size + size` is not positive.
  * @public
  */
 export function estimateLiquidationPrice(params: {
@@ -244,6 +256,8 @@ export function estimateLiquidationPrice(params: {
   leverage: string
   isLong: boolean
   maintenanceMarginRate: string
+  size?: string
+  current?: { size: string; entryPrice: string; margin: string }
 }): string | undefined {
   const entryPrice = decimalStringToBig(params.entryPrice)
   const leverage = decimalStringToBig(params.leverage)
@@ -259,13 +273,38 @@ export function estimateLiquidationPrice(params: {
       `must not be ${params.isLong ? '1' : '-1'} for this side`
     )
   }
-  const marginFractionAvailable = new DivBig(1).div(leverage).minus(mmr)
-  if (marginFractionAvailable.lte(0)) {
+  if (params.current === undefined) {
+    const marginFractionAvailable = new DivBig(1).div(leverage).minus(mmr)
+    if (marginFractionAvailable.lte(0)) {
+      return undefined
+    }
+    const marginAvailable = marginFractionAvailable.times(entryPrice)
+    return bigToDecimalString(
+      entryPrice.minus(marginAvailable.times(side).div(denominator))
+    )
+  }
+  if (params.size === undefined) {
+    throw invalidInput('size', 'is required with `current`')
+  }
+  const addSize = decimalStringToBig(params.size)
+  const currentSize = decimalStringToBig(params.current.size)
+  const currentEntry = decimalStringToBig(params.current.entryPrice)
+  const currentMargin = decimalStringToBig(params.current.margin)
+  const totalSize = currentSize.plus(addSize)
+  if (totalSize.lte(0)) {
+    throw invalidInput('size + current.size', 'must be positive')
+  }
+  const equity = currentMargin
+    .plus(currentSize.times(entryPrice.minus(currentEntry)).times(side))
+    .plus(new DivBig(entryPrice).times(addSize).div(leverage))
+  const marginAvailablePerUnit = new DivBig(equity)
+    .minus(mmr.times(totalSize).times(entryPrice))
+    .div(totalSize)
+  if (marginAvailablePerUnit.lte(0)) {
     return undefined
   }
-  const marginAvailable = marginFractionAvailable.times(entryPrice)
   return bigToDecimalString(
-    entryPrice.minus(marginAvailable.times(side).div(denominator))
+    entryPrice.minus(marginAvailablePerUnit.times(side).div(denominator))
   )
 }
 
@@ -276,28 +315,93 @@ export const safeEstimateLiquidationPrice = createSafeFunction(
 )
 
 /**
- * Estimate the liquidation price of a new isolated position from the flat
- * `market.maintenanceMarginRate`.
+ * Estimate the liquidation price of the isolated position that an order
+ * leaves: a new position, or the blend of the order into `params.position`.
+ * The venue callbacks run only after the margin-mode and side checks pass.
+ *
+ * @param venue.maintenanceMarginRate - Venue maintenance margin rate as a
+ *   fraction (`'0.01'` = 1%).
+ * @param venue.positionCollateral - Collateral of `position`, net of
+ *   unrealized PnL. It depends on the venue meaning of `Position.marginUsed`.
+ * @returns The estimate, or `undefined` when the order or the position is
+ *   cross (the liquidation depends on the whole account), when the order
+ *   reduces the position, or when {@link estimateLiquidationPrice} gives
+ *   `undefined`.
+ * @throws {PerpsError} `ValidationError` when `params.position` comes
+ *   without `params.size`, or on an input that
+ *   {@link estimateLiquidationPrice} rejects.
+ * @public
+ */
+export function estimateOrderLiquidationPrice(
+  params: LiquidationEstimateParams,
+  venue: {
+    maintenanceMarginRate: () => string
+    positionCollateral: (position: Position) => string
+  }
+): string | undefined {
+  const { position } = params
+  if (
+    params.marginMode === MarginMode.CROSS ||
+    position?.marginMode === MarginMode.CROSS ||
+    (position !== undefined &&
+      (position.side === PositionSide.LONG) !== params.isLong)
+  ) {
+    return undefined
+  }
+  const maintenanceMarginRate = venue.maintenanceMarginRate()
+  if (position === undefined) {
+    return estimateLiquidationPrice({
+      entryPrice: params.entryPrice,
+      leverage: params.leverage,
+      isLong: params.isLong,
+      maintenanceMarginRate,
+      size: params.size,
+    })
+  }
+  const margin = venue.positionCollateral(position)
+  if (params.size === undefined) {
+    throw invalidInput('size', 'is required with `position`')
+  }
+  return estimateLiquidationPrice({
+    entryPrice: params.entryPrice,
+    leverage: params.leverage,
+    isLong: params.isLong,
+    maintenanceMarginRate,
+    size: params.size,
+    current: { size: position.size, entryPrice: position.entryPrice, margin },
+  })
+}
+
+/** @public */
+export const safeEstimateOrderLiquidationPrice = createSafeFunction(
+  'estimateOrderLiquidationPrice',
+  estimateOrderLiquidationPrice
+)
+
+/**
+ * Estimate the liquidation price of the isolated position that an order
+ * leaves, from the flat `market.maintenanceMarginRate`. The collateral of the
+ * position is `position.marginUsed`, so the venue `marginUsed` must exclude
+ * the unrealized PnL, as Lighter `allocated_margin` does.
  *
  * @returns The estimate, or `undefined` when the market carries no
- *   `maintenanceMarginRate` or {@link estimateLiquidationPrice} gives
- *   `undefined`.
- * @throws {PerpsError} `ValidationError` on an input that
- *   {@link estimateLiquidationPrice} rejects.
+ *   `maintenanceMarginRate`, or as {@link estimateOrderLiquidationPrice}
+ *   documents.
+ * @throws {PerpsError} `ValidationError` as {@link estimateOrderLiquidationPrice}
+ *   documents.
  * @public
  */
 export function estimateLiquidationPriceAtMarketRate(
   market: PerpsMarket,
   params: LiquidationEstimateParams
 ): string | undefined {
-  if (market.maintenanceMarginRate === undefined) {
+  const { maintenanceMarginRate } = market
+  if (maintenanceMarginRate === undefined) {
     return undefined
   }
-  return estimateLiquidationPrice({
-    entryPrice: params.entryPrice,
-    leverage: params.leverage,
-    isLong: params.isLong,
-    maintenanceMarginRate: market.maintenanceMarginRate,
+  return estimateOrderLiquidationPrice(params, {
+    maintenanceMarginRate: () => maintenanceMarginRate,
+    positionCollateral: (position) => position.marginUsed,
   })
 }
 

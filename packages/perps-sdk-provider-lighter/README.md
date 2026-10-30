@@ -73,13 +73,19 @@ Restart pagination when the SDK reports this `ValidationError`.
 
 ## WASM signer loading
 
+The package vendors Lighter's `web-wasm/main.wasm`, not the separate `wasm/` build. Market IDs retain the upstream integer range. The SDK passes order IDs as decimal strings. It also uses decimal strings for the create-order amount, price, and trigger price.
+
+`wasm/lighter-signer.manifest.json` preserves the upstream build manifest. It records the source commit, source-tree hash, Go version, binary hash, runtime hash, and exports. The package build checks the binary and runtime hashes against that manifest.
+
+Signer-global cleanup uses the manifest's export names. The package build also signs through the built ESM and CommonJS packages. Negative checks reject an altered binary or runtime with an unchanged manifest.
+
 The Go signer binary ships as a separate asset that the package resolves itself. The ESM build uses `new URL('../../wasm/lighter-signer.wasm', import.meta.url)`. Webpack, Turbopack, and Vite production builds rewrite this expression into an emitted asset URL. Node reads the installed binary from disk. The loader checks the WASM preamble of the response. Vite's dependency optimizer can relocate the package into `.vite/deps`, which invalidates the static URL. The loader then resolves the asset through the bundler's own asset pipeline.
 
 Go's `wasm_exec.js` ships inside a generated initializer that compiles into both CommonJS and ESM. Package imports do not initialize Go or install its globals. `loadLighterWasm()` initializes the runtime after reading the binary, so callers can install required polyfills after import. The package evaluates no script text.
 
 Under a Content Security Policy, `script-src` must include `'wasm-unsafe-eval'` so the browser can run `WebAssembly.instantiate`. `'unsafe-eval'` is not required.
 
-Applications need no `optimizeDeps.exclude`, no `?url`/`?raw` imports, no `public/` copy step, no caller-supplied URL and no bundler configuration. `loadLighterWasm()` is exported for hosts that want to warm the signer up (and its 12.9 MB download) before the user's first trade:
+Applications need no `optimizeDeps.exclude`, no `?url`/`?raw` imports, no `public/` copy step, no caller-supplied URL and no bundler configuration. `loadLighterWasm()` is exported for hosts that want to load the signer before the user's first trade:
 
 ```ts
 import { loadLighterWasm } from '@lifi/perps-sdk-provider-lighter'
@@ -147,6 +153,40 @@ A mixed filter reads both endpoints. Running and finished TWAP parents use these
 Active reads return the complete snapshot and do not apply `limit` or `cursor`.
 History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
 WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
+
+## Fill and trade prices
+
+`Fill.price` shows the venue `price` of the trade, with one exception.
+Lighter reports a `price` of zero on a `deleverage` trade, on mainnet and on Robinhood chain.
+The `usd_amount` of that trade holds the execution notional.
+Thus the provider sets `Fill.price` to `usd_amount` divided by `size`.
+The division rounds half-up to 40 decimal places.
+`Fill.realizedPnl` uses the same price.
+
+A `deleverage` trade with a non-zero `price` keeps the venue value.
+If the provider cannot divide `usd_amount` by `size`, `Fill.price` shows the venue `price`.
+
+The `trades` WebSocket channel uses the same rule for the `price` of a public trade.
+Lighter sends `deleverage` trades on the public `trade/{market_id}` channel with a `price` of zero.
+Thus the `price` of a `deleverage` trade on the `trades` channel is also `usd_amount` divided by `size`.
+
+## Liquidations
+
+A Lighter order of type `liquidation` maps to a `MARKET` `RegularOrder` with
+`isLiquidation: true`.
+
+Lighter marks a forced trade with the trade `type`. The liquidation engine
+sends the order of the liquidated account as the taker. Thus `Fill.liquidation`
+is set on the taker fill only, on mainnet and on Robinhood chain:
+
+| Trade `type` | `Fill.liquidation.method` |
+| --- | --- |
+| `liquidation`: a partial liquidation on the order book | `MARKET` |
+| `deleverage`: a takeover by the LLP, or auto-deleveraging | `DELEVERAGE` |
+
+The maker fill of a forced trade carries no `liquidation`. A `trade` row and a
+`market-settlement` row also carry none. Lighter reports no mark price on a
+trade, so `markPrice` stays absent.
 
 ## Market TP/SL slippage
 

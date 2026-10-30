@@ -53,3 +53,15 @@ export type HlUserFills = HlUserFill[]
 
 /** Fills returned by the time-bounded `userFillsByTime` query. @public */
 export type HlUserFillsByTime = HlUserFill[]
+
+/**
+ * One row of the `userTwapSliceFills` or `userTwapSliceFillsByTime` query: a
+ * fill that a TWAP slice made. Each query returns at most 2,000 rows:
+ * `userTwapSliceFills` the newest, newest first, and `userTwapSliceFillsByTime`
+ * the oldest of its inclusive range, oldest first.
+ * @public
+ */
+export type HlTwapSliceFill = {
+  fill: HlUserFill
+  twapId: number
+}

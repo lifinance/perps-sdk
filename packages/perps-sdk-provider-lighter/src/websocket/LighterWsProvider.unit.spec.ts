@@ -777,6 +777,66 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    // Mainnet `trade/182` deleverage row in the live `subscribed/trade` frame
+    // shape. Lighter reports a zero `price`; `usd_amount` carries the notional.
+    const DELEVERAGE_WS_TRADE = {
+      trade_id: 36907412776,
+      trade_id_str: '36907412776',
+      tx_hash:
+        '00000020b3ee1c24000001a18376f25a000000000000000000000000000000000000000000000000',
+      type: 'deleverage',
+      market_id: 182,
+      market_symbol: 'H100',
+      market_kind: 'perps',
+      size: '445.00',
+      price: '0.0000',
+      usd_amount: '1315.774894',
+      ask_id: 0,
+      ask_id_str: '0',
+      bid_id: 0,
+      bid_id_str: '0',
+      ask_account_id: 281474976710654,
+      bid_account_id: 742436,
+      is_maker_ask: true,
+      block_height: 367909102,
+      timestamp: 1793206973018,
+      transaction_time: 1793206973026121,
+    }
+
+    const emittedTradePrice = (trade: Record<string, unknown>) => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:182', listener)
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/trade',
+          channel: 'trade:182',
+          trades: [trade],
+        })
+      )
+      p.close()
+      return listener.mock.calls[0][0].data[0].price
+    }
+
+    it('prices a deleverage trade at usd_amount / size', () => {
+      expect(emittedTradePrice(DELEVERAGE_WS_TRADE)).toBe(
+        '2.9567975146067415730337078651685393258427'
+      )
+    })
+
+    it('keeps a non-zero venue price on a deleverage trade', () => {
+      expect(
+        emittedTradePrice({ ...DELEVERAGE_WS_TRADE, price: '2.9568' })
+      ).toBe('2.9568')
+    })
+
+    it('keeps a zero venue price on a trade that is not a deleverage', () => {
+      expect(emittedTradePrice({ ...DELEVERAGE_WS_TRADE, type: 'trade' })).toBe(
+        '0.0000'
+      )
+    })
+
     it('emits nothing for an empty trades batch', () => {
       const p = makeProvider()
       const listener = vi.fn()
@@ -1282,6 +1342,36 @@ describe('LighterWsProvider', () => {
       const event = listener.mock.calls[0][0]
       expect(event.data).toHaveLength(1)
       expect(event.data[0].accruedFunding).toBe('0')
+      p.close()
+    })
+
+    it('leaves liquidationPrice absent when the frame sends liquidation_price "0"', async () => {
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          { resolveAuthToken: async () => 'token' },
+          freshClient()
+        )
+      )
+      const listener = vi.fn()
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        listener
+      )
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': { ...RAW_POSITION, liquidation_price: '0' } },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).not.toHaveProperty('liquidationPrice')
       p.close()
     })
 

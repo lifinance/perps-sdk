@@ -54,7 +54,7 @@ describe('declared deposit assets', () => {
     })
   })
 
-  it('declares a native-gas asset for each first-deposit pipeline chain', () => {
+  it('declares a native-gas asset for each venue-deposit pipeline chain', () => {
     expect(depositAssets.ETHEREUM_NATIVE_GAS).toEqual({
       chainId: ChainId.ETH,
       address: zeroAddress,

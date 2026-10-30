@@ -15,9 +15,11 @@
 import {
   createSafeFunction,
   divideDecimalString,
-  estimateLiquidationPrice,
+  estimateOrderLiquidationPrice,
+  type LiquidationEstimateParams,
   numberToDecimalString,
   PerpsError,
+  subtractDecimalString,
 } from '@lifi/perps-sdk'
 import { type DecimalString, PerpsErrorCode } from '@lifi/perps-types'
 
@@ -50,34 +52,31 @@ export const safeCalculateMaintenanceMarginRate = createSafeFunction(
 )
 
 /**
- * Liquidation price of a new isolated position with the exact Hyperliquid
- * formula. For an existing position, prefer `Position.liquidationPrice` from
- * the API.
+ * Liquidation price of the isolated position that an order leaves, with the
+ * exact Hyperliquid formula: a new position, or the blend of the order into
+ * `params.position`. Hyperliquid isolated `marginUsed` includes the
+ * unrealized PnL, so the collateral of the position is `marginUsed` minus
+ * `unrealizedPnl`. For an existing position, prefer
+ * `Position.liquidationPrice` from the API.
  *
- * Formula derivation (isolated margin, single position):
- *   margin_available = entryPrice × (1 / leverage - mmr)
- *   liq_price        = entryPrice - side × margin_available / (1 - mmr × side)
- *
- * @param leverage - User-selected leverage (e.g., `'10'`)
  * @param maxLeverage - Asset's maximum leverage (e.g., 50 for BTC). Sets
  *   mmr = 1 / (2 × maxLeverage).
- * @returns The estimate, or `undefined` when `leverage` is at or above
- *   `2 × maxLeverage`, as {@link estimateLiquidationPrice} documents.
+ * @returns The estimate, or `undefined` when the order or the position is
+ *   cross (the liquidation depends on the whole account), when the order
+ *   reduces the position, or when `leverage` is at or above `2 × maxLeverage`,
+ *   as {@link estimateOrderLiquidationPrice} documents.
  * @throws {PerpsError} `ValidationError` when `maxLeverage` is not a finite
- *   number above zero, or on an input that `estimateLiquidationPrice` rejects.
+ *   number above zero, or as {@link estimateOrderLiquidationPrice} documents.
  * @public
  */
 export function calculateLiquidationPrice(
-  entryPrice: string,
-  leverage: string,
-  isLong: boolean,
+  params: LiquidationEstimateParams,
   maxLeverage: number
 ): string | undefined {
-  return estimateLiquidationPrice({
-    entryPrice,
-    leverage,
-    isLong,
-    maintenanceMarginRate: calculateMaintenanceMarginRate(maxLeverage),
+  return estimateOrderLiquidationPrice(params, {
+    maintenanceMarginRate: () => calculateMaintenanceMarginRate(maxLeverage),
+    positionCollateral: (position) =>
+      subtractDecimalString(position.marginUsed, position.unrealizedPnl),
   })
 }
 

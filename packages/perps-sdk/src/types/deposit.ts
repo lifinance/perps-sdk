@@ -37,20 +37,21 @@ export interface DepositFlowLifiSwap {
 }
 
 /**
- * Fund an address that has no venue account yet. Collateral and the native gas
- * to broadcast with are both needed on `chainId`, where the venue's
- * {@link ActionType.DEPOSIT} action stages the on-chain legs that open the
- * account.
+ * Fund an address that has no venue account yet, or an existing account on a
+ * venue whose collateral no LI.FI route credits directly. Collateral and the
+ * native gas to broadcast with are both needed on `chainId`, where the venue's
+ * {@link ActionType.DEPOSIT} action stages the on-chain legs that credit the
+ * account and open it when none exists.
  *
  * @public
  */
-export interface DepositFlowFirstDepositPipeline {
-  kind: 'firstDepositPipeline'
+export interface DepositFlowVenueDepositPipeline {
+  kind: 'venueDepositPipeline'
   /** Chain on which the deposit legs broadcast; the wallet must be switched here. */
   chainId: number
   /** Native gas asset needed to broadcast the deposit legs. */
   gasAsset: DeclaredDepositAsset
-  /** Collateral asset credited by the first deposit. */
+  /** Collateral asset the venue deposit credits. */
   collateral: DeclaredDepositAsset
   /** Action type used to stage the deposit pipeline. */
   bridgeAction: ActionType.DEPOSIT
@@ -77,5 +78,5 @@ export interface DepositFlowSetupRequired {
  */
 export type DepositFlow =
   | DepositFlowLifiSwap
-  | DepositFlowFirstDepositPipeline
+  | DepositFlowVenueDepositPipeline
   | DepositFlowSetupRequired

@@ -9,6 +9,9 @@ import {
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
   HL_TWAP_HISTORY_FINISHED,
+  HL_TWAP_LONG_ACTIVATED,
+  HL_TWAP_LONG_SLICE_FILLS,
+  HL_TWAP_SLICE_FILLS,
 } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
@@ -172,6 +175,7 @@ describe('getOrder', () => {
             },
           },
         ],
+        userTwapSliceFills: [],
       },
       HL_MARKETS
     )
@@ -199,6 +203,121 @@ describe('getOrder', () => {
       orderId: '2329352',
       status: OrderStatus.FILLED,
       filledSize: '0.042',
+    })
+    expect(installed.requests.map(({ body }) => body.type)).toEqual([
+      'preTransferCheck',
+      'orderStatus',
+      'twapHistory',
+    ])
+  })
+
+  it('reads a running TWAP from the slice fills of its twapId', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: HL_TWAP_SLICE_FILLS,
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).toMatchObject({
+      orderId: '2329352',
+      type: OrderType.TWAP,
+      status: OrderStatus.PARTIALLY_FILLED,
+      originalSize: '0.042',
+      filledSize: '0.0094',
+      remainingSize: '0.0326',
+      averagePrice: '3991',
+    })
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userTwapSliceFills',
+      user: ADDRESS,
+    })
+  })
+
+  it('reads a running TWAP from all of its slice fills when the slice-fill window is full', async () => {
+    const window = HL_TWAP_LONG_SLICE_FILLS.slice(-2000).reverse()
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [HL_TWAP_LONG_ACTIVATED],
+        userTwapSliceFills: window,
+        userTwapSliceFillsByTime: HL_TWAP_LONG_SLICE_FILLS.slice(0, 1001),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329400' })
+    ).toMatchObject({
+      orderId: '2329400',
+      status: OrderStatus.PARTIALLY_FILLED,
+      filledSize: '30',
+      remainingSize: '10',
+      averagePrice: '120',
+    })
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userTwapSliceFillsByTime',
+      user: ADDRESS,
+      startTime: HL_TWAP_LONG_ACTIVATED.state.timestamp,
+      endTime: window[window.length - 1].fill.time,
+    })
+  })
+
+  it('rejects a running TWAP read when its slice-fill request fails', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    await expect(
+      getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      tool: 'hyperliquid',
+    })
+  })
+
+  it('reads a fully executed TWAP as filled before its finished history row arrives', async () => {
+    const [, activated] = HL_TWAP_HISTORY_FINISHED
+    const installed = installInfoFetchMock(
+      {
+        orderStatus: HL_ORDER_STATUS_UNKNOWN,
+        twapHistory: [activated],
+        userTwapSliceFills: [
+          {
+            ...HL_TWAP_SLICE_FILLS[0],
+            fill: {
+              ...HL_TWAP_SLICE_FILLS[0].fill,
+              sz: '0.042',
+              px: '4000',
+            },
+          },
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    expect(
+      await getOrder(ctx, { address: ADDRESS, id: '2329352' })
+    ).toMatchObject({
+      orderId: '2329352',
+      status: OrderStatus.FILLED,
+      filledSize: '0.042',
+      remainingSize: '0',
+      averagePrice: '4000',
     })
   })
 

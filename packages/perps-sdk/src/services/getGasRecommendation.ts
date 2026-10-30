@@ -17,13 +17,13 @@ export const LIFI_API_URL = 'https://li.quest/v1'
  * @public
  */
 export interface GetGasRecommendationParams {
-  /** Chain to hold native gas on — a `firstDepositPipeline` flow's `chainId`. */
+  /** Chain to hold native gas on — a `venueDepositPipeline` flow's `chainId`. */
   chainId: number
 }
 
 /**
  * How much native gas LI.FI suggests holding on `params.chainId` to transact
- * there, for seeding the gas leg of a first-deposit pipeline. Read straight
+ * there, for seeding the gas leg of a venue-deposit pipeline. Read straight
  * from the LI.FI API by the user's client.
  *
  * @returns The suggestion, with `available: false` and no amounts on a chain

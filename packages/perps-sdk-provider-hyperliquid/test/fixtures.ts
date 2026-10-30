@@ -14,6 +14,7 @@ import type {
   HlPerpDexs,
   HlSpotClearinghouseState,
   HlTwapHistoryEntry,
+  HlTwapSliceFill,
   HlUserFees,
   HlUserFills,
   HlUserFunding,
@@ -362,6 +363,87 @@ export const HL_TWAP_HISTORY_FINISHED: HlTwapHistoryEntry[] = [
     },
   },
 ]
+
+const twapSliceFill = (
+  twapId: number,
+  fill: Pick<HlTwapSliceFill['fill'], 'tid' | 'oid' | 'sz' | 'px' | 'time'>
+): HlTwapSliceFill => ({
+  twapId,
+  fill: {
+    coin: 'ETH',
+    side: 'B',
+    dir: 'Open Long',
+    fee: '0.008442',
+    feeToken: 'USDC',
+    closedPnl: '0.0',
+    crossed: true,
+    hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    startPosition: '0.0',
+    ...fill,
+  },
+})
+
+/**
+ * `userTwapSliceFills` newest first: two slices of the ETH TWAP in
+ * {@link HL_TWAP_HISTORY_FINISHED} (0.0094 at an average of 3991), then one
+ * slice of a different TWAP.
+ */
+export const HL_TWAP_SLICE_FILLS: HlTwapSliceFill[] = [
+  twapSliceFill(2329352, {
+    tid: 5002,
+    oid: 4002,
+    sz: '0.0047',
+    px: '3992',
+    time: 1_792_154_990_000,
+  }),
+  twapSliceFill(2329351, {
+    tid: 5001,
+    oid: 4001,
+    sz: '0.01',
+    px: '3900',
+    time: 1_792_154_970_000,
+  }),
+  twapSliceFill(2329352, {
+    tid: 5000,
+    oid: 4000,
+    sz: '0.0047',
+    px: '3990',
+    time: 1_792_154_960_000,
+  }),
+]
+
+/** The `activated` `twapHistory` row of a running ETH TWAP of 40. */
+export const HL_TWAP_LONG_ACTIVATED: HlTwapHistoryEntry = {
+  twapId: 2329400,
+  time: 1_792_154_930,
+  status: { status: 'activated' },
+  state: {
+    coin: 'ETH',
+    executedNtl: '0.0',
+    executedSz: '0.0',
+    minutes: 1_440,
+    side: 'B',
+    sz: '40',
+    timestamp: 1_792_154_930_000,
+    reduceOnly: false,
+  },
+}
+
+/**
+ * 3,000 slice fills of {@link HL_TWAP_LONG_ACTIVATED}, oldest first, one each
+ * 30 s: 1,000 of 0.01 at 100, then 2,000 of 0.01 at 130 (30 at an average of 120).
+ */
+export const HL_TWAP_LONG_SLICE_FILLS: HlTwapSliceFill[] = Array.from(
+  { length: 3_000 },
+  (_, index) =>
+    twapSliceFill(2329400, {
+      tid: 10_000 + index,
+      oid: 20_000 + index,
+      sz: '0.01',
+      px: index < 1_000 ? '100' : '130',
+      time: 1_792_154_930_000 + (index + 1) * 30_000,
+    })
+)
 
 export const HL_USER_FILLS: HlUserFills = [
   {

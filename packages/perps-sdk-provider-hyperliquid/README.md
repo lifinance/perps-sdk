@@ -190,7 +190,7 @@ explorer failure leaves the rows unlinked instead of failing the order read.
 | `filled` | FILLED |
 | `canceled`, `scheduledCancel`, documented cancellation reasons, unknown `...Canceled` statuses | CANCELLED |
 | `rejected`, documented rejection reasons, unknown `...Rejected` statuses | REJECTED |
-| TWAP `activated` | OPEN or PARTIALLY_FILLED |
+| TWAP `activated` | OPEN, PARTIALLY_FILLED, or FILLED according to executed size |
 | TWAP `waitingForTrigger` | OPEN |
 | TWAP `finished` | FILLED |
 | TWAP `terminated`, `stopped` | CANCELLED |
@@ -217,7 +217,24 @@ The default filter is `ACTIVE_ORDER_STATUSES`: PENDING, OPEN,
 PARTIALLY_FILLED, and TRIGGERED. Active filters read `frontendOpenOrders`.
 Terminal filters read `historicalOrders`. Mixed filters read both.
 `twapHistory` supplies both running and finished TWAP parents.
-`getOrder` reads `orderStatus` and uses the same mapper.
+Hyperliquid writes the `activated` row of a TWAP one time, at activation.
+When the filter includes an active status or FILLED, `getOrders` reads
+`userTwapSliceFills` only when the newest row of at least one TWAP is
+`activated`. A running TWAP takes its filled size and average price from the
+slice fills of its `twapId`.
+`getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
+`getOrder` also reads `userTwapSliceFills`.
+`userTwapSliceFills` holds only the 2,000 newest slice fills of the account.
+When it is full and its oldest row is not newer than the start of a running
+TWAP, both reads also read `userTwapSliceFillsByTime`. This read covers the
+time from the earliest running TWAP start to the oldest row.
+Both reads reject a failed required slice-fill request instead of reporting
+activation-time totals as current execution. Caller cancellation also rejects
+the read.
+
+An `activated` TWAP maps to FILLED when its filled size reaches its original
+size. The remaining size never falls below zero. The filled size preserves the
+actual execution, even when it exceeds the original size.
 
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.
@@ -226,6 +243,23 @@ The `orderUpdates` WebSocket feed omits execution metadata. The provider reads
 `orderStatus` for each update, then retains the stream's status and quantities.
 The provider emits frames in stream order after these HTTP reads finish.
 Unavailable metadata reports a decode failure instead of inventing an order type.
+
+## Liquidations
+
+Hyperliquid closes a liquidated position with a `LiquidationMarket` order or
+with a backstop takeover.
+
+- A `LiquidationMarket` order maps to a `MARKET` `RegularOrder` with
+  `isLiquidation: true`. Its `price` is the order limit, not the execution price.
+- Hyperliquid attaches a `liquidation` block to the fills of both parties.
+  `getFills` and the `fills` WebSocket stream set `Fill.liquidation` only when
+  `liquidatedUser` is the requested address.
+- `Fill.liquidation.method` is `MARKET` for the venue `market` method and
+  `BACKSTOP` for `backstop`. An unknown method leaves `method` absent.
+- `Fill.liquidation.markPrice` is the venue `markPx`. `Fill.price` stays the
+  execution price.
+- A fill of the liquidated account has no `type`. A backstop takeover fills
+  that account as the maker, but no resting limit order exists.
 
 ## Documentation
 

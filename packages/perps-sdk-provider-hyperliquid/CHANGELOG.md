@@ -1,5 +1,44 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 31.0.1
+
+### Patch Changes
+
+- [#678](https://github.com/lifinance/perps-sdk/pull/678) [`aa44edb`](https://github.com/lifinance/perps-sdk/commit/aa44edb79828f257e9fc7f8ef3057d6ae05cf250) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `estimateOrderLiquidationPrice` and `safeEstimateOrderLiquidationPrice`. They hold the margin mode check, the side check, and the mapping from `LiquidationEstimateParams.position` to the open position. A `position` without a `size` now throws a `ValidationError` that names `size` and `position`.
+
+## 31.0.0
+
+### Major Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+- [#668](https://github.com/lifinance/perps-sdk/pull/668) [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Hyperliquid provider leaves it absent for a `null` or empty `liquidationPx`, and does not give `'0'`.
+
+  `LiquidationEstimateParams` has a required `marginMode`, an optional `size`, and an optional `position`. `estimateLiquidationPrice` takes an optional `size` and `current` position, and blends the order into that position. The Hyperliquid `calculateLiquidationPrice` takes `(params, maxLeverage)`. It gives `undefined` for a cross order or a cross position, and for an order against the side of the position. For an isolated add, it blends the order into the open position.
+
+### Patch Changes
+
+- [#671](https://github.com/lifinance/perps-sdk/pull/671) [`df4bc37`](https://github.com/lifinance/perps-sdk/commit/df4bc37cfa0cc856872e22bdc7423740e7255846) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Share one check for the liquidated account across the Hyperliquid liquidation activity and history code.
+
+- [#675](https://github.com/lifinance/perps-sdk/pull/675) [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Hyperliquid `Fill` does not set `type`, because a Hyperliquid fill row does not name the type of the originating order. A maker fill can come from a limit order or from a triggered limit order.
+
+- [#663](https://github.com/lifinance/perps-sdk/pull/663) [`bfadc85`](https://github.com/lifinance/perps-sdk/commit/bfadc85848dda4908b6fa16789451ce5b6dae89f) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A running TWAP shows the correct filled size, remaining size, and average price when the account has more than 2,000 TWAP slice fills. If `userTwapSliceFills` is full and its oldest row is not newer than a running TWAP start, `getOrders` and `getOrder` also read `userTwapSliceFillsByTime`.
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b), [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41)]:
+  - @lifi/perps-types@26.0.0
+  - @lifi/perps-sdk@29.0.0
+
+## 30.0.2
+
+### Patch Changes
+
+- [#658](https://github.com/lifinance/perps-sdk/pull/658) [`499c686`](https://github.com/lifinance/perps-sdk/commit/499c686253d282fdd04611f71b01504b28e4cb2a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Read running Hyperliquid TWAP progress from slice fills in `getOrders` and `getOrder`.
+  Request `userTwapSliceFills` only for running TWAPs, and preserve required-feed failures.
+  Map completed execution to `FILLED` and keep the remaining size nonnegative.
+  Export `HlTwapSliceFill` for the venue response.
+
+- [#659](https://github.com/lifinance/perps-sdk/pull/659) [`302546e`](https://github.com/lifinance/perps-sdk/commit/302546e3eed2c6c0e8004a25ec7715351090ff09) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `HlSpotTransferDelta.nonce` accepts `null`, because Hyperliquid sends `nonce: null` on some `spotTransfer` ledger rows.
+
 ## 30.0.1
 
 ### Patch Changes

@@ -322,6 +322,28 @@ describe('mapLedgerEntry — spotTransfer', () => {
     })
   })
 
+  it('keeps a null spotTransfer nonce as null in meta', () => {
+    const entry = spotTransferUpdate({
+      user: QUERIED as HlSpotTransferDelta['user'],
+      destination: COUNTERPARTY as HlSpotTransferDelta['destination'],
+      nonce: null,
+    })
+
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+
+    expect((result as TransferActivity).meta).toStrictEqual({
+      transferType: 'spotTransfer',
+      usdcValue: '12.5',
+      nonce: null,
+    })
+  })
+
   it('reports the spotTransfer fee in USDC and the native-token fee in HYPE', () => {
     const entry = spotTransferUpdate({
       token: 'PURR',
@@ -453,7 +475,7 @@ describe('mapLedgerEntry — spotTransfer', () => {
     )
 
     const t = result as TransferActivity
-    expect(t.meta).toEqual({
+    expect(t.meta).toStrictEqual({
       transferType: 'spotTransfer',
       usdcValue: '1',
     })
