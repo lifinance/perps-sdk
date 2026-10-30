@@ -11,6 +11,7 @@ import {
   LiquidityRole,
   OrderSide,
 } from '@lifi/perps-types'
+import { zeroHash } from 'viem'
 import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
 import type { HlFillLiquidation, HlUserFill } from '../types/index.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
@@ -95,7 +96,11 @@ export const mapFill = (
         ? undefined
         : { amount: fill.builderFee, asset: feeAsset },
     startPosition: fill.startPosition,
-    explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, fill.hash),
+    // A TWAP slice fill carries the zero hash: no venue transaction to link.
+    explorerLink: explorerTxUrl(
+      ExplorerChainId.HYPERLIQUID,
+      fill.hash === zeroHash ? undefined : fill.hash
+    ),
     classification:
       market.categoryId === SPOT_MARKET_ID
         ? side === OrderSide.BUY

@@ -3,7 +3,7 @@
 import type { DecimalString } from '@lifi/perps-types'
 import type { HlClearinghouseState, HlSpotBalance } from './account.js'
 import type { HlCandle, HlL2Book } from './asset.js'
-import type { HlUserFill } from './fill.js'
+import type { HlTwapSliceFill, HlUserFill } from './fill.js'
 
 type HlWsNumberString = string | number
 
@@ -183,6 +183,13 @@ export type HlWsUserFillsData = {
   isSnapshot: boolean
   user: string
   fills: HlUserFill[]
+}
+
+/** TWAP slice fills event. A live frame can omit `isSnapshot`. @public */
+export type HlWsUserTwapSliceFillsData = {
+  isSnapshot?: boolean
+  user: string
+  twapSliceFills: HlTwapSliceFill[]
 }
 
 /**

@@ -162,6 +162,26 @@ the original upper time bound, preventing subsequent pages from regrouping an
 order using newly arriving fills. Funding/ledger-only activity and ordinary fill
 pages use bounded newest-first windows instead of repeatedly downloading full history.
 
+### TWAP slice fills
+
+Hyperliquid reports the executions of a TWAP on separate feeds. The regular
+feeds (`userFills` and `userFillsByTime`) omit them. `getFills` reads
+`userTwapSliceFills` or `userTwapSliceFillsByTime` next to the regular feed
+of each window, and merges both into one newest-first page. A slice fill
+appears regardless of the lifecycle state of its parent TWAP. The cap of 2,000
+rows applies to each feed: a window that saturates either feed narrows. A
+failed request on either feed rejects the read.
+
+A slice fill maps with the same fields as a regular fill. `Fill.orderId` is
+the child order ID of the slice, not the TWAP ID. The venue gives a slice fill
+the zero transaction hash, so the row carries no `explorerLink`.
+
+One `fills` WebSocket subscription opens both the `userFills` and the
+`userTwapSliceFills` venue channels. Listeners share the pair, the last
+release closes both, and a reconnect replays both. The snapshot frame of each
+channel emits an empty event. A live `userTwapSliceFills` frame can omit
+`isSnapshot`.
+
 ## Order reads
 
 `getOrders` returns `{ provider, orders, pagination }`. Each `Order` carries a

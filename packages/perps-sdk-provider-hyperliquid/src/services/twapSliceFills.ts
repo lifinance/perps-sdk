@@ -1,10 +1,8 @@
 import type { Address } from 'viem'
+import { FILL_ROWS_CAP } from '../constants.js'
 import type { HlTwapHistoryEntry, HlTwapSliceFill } from '../types/index.js'
 import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
 import { historyPage } from './historyPagination.js'
-
-/** Row cap of both `userTwapSliceFills` and `userTwapSliceFillsByTime`. */
-const TWAP_SLICE_FILLS_CAP = 2000
 
 /**
  * Read the slice fills of each `activated` TWAP in `entries`, or none without
@@ -31,7 +29,7 @@ export const fetchTwapSliceFills = async (
     { type: 'userTwapSliceFills', user },
     options
   )
-  if (window.length < TWAP_SLICE_FILLS_CAP) {
+  if (window.length < FILL_ROWS_CAP) {
     return window
   }
   const oldest = Math.min(...window.map(({ fill }) => fill.time))
@@ -54,7 +52,7 @@ export const fetchTwapSliceFills = async (
         },
         options
       )
-      return fills.length >= TWAP_SLICE_FILLS_CAP
+      return fills.length >= FILL_ROWS_CAP
         ? { items: [], saturated: true }
         : { items: fills, saturated: false }
     },

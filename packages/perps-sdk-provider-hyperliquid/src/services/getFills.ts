@@ -1,9 +1,9 @@
 import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
 import type { Fill, FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY } from '../constants.js'
+import { FILL_ROWS_CAP, PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type { HlUserFills } from '../types/index.js'
+import type { HlTwapSliceFill, HlUserFills } from '../types/index.js'
 import { assetIsOutcome, mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
 import { requireAccountExists } from './getAccountExists.js'
@@ -20,13 +20,16 @@ export interface GetFillsParams {
   limit?: number
   /** Opaque cursor returned in the previous page's `pagination.cursor`. */
   cursor?: string
-  /** Inclusive lower bound in milliseconds; selects `userFillsByTime`. */
+  /** Inclusive lower bound in milliseconds; selects the `...ByTime` feeds. */
   startTime?: number
-  /** Inclusive upper bound in milliseconds; selects `userFillsByTime`. */
+  /** Inclusive upper bound in milliseconds; selects the `...ByTime` feeds. */
   endTime?: number
 }
 
-/** Fetch retained fills newest-first, using opaque cursors across inclusive time ranges. */
+/**
+ * Fetch retained regular and TWAP slice fills newest-first, using opaque
+ * cursors across inclusive time ranges.
+ */
 export const getFills = async (
   { client, apiUrl }: HyperliquidContext,
   params: GetFillsParams,
@@ -46,30 +49,39 @@ export const getFills = async (
     params,
     limit,
     async (startTime, endTime) => {
-      const fills = await infoRequest<HlUserFills>(
-        apiUrl,
-        useRecent
-          ? { type: 'userFills', user: params.address }
-          : {
-              type: 'userFillsByTime',
-              user: params.address,
-              startTime,
-              endTime,
-            },
-        infoOpts
-      )
+      const user = params.address
+      const [fills, sliceFills] = await Promise.all([
+        infoRequest<HlUserFills>(
+          apiUrl,
+          useRecent
+            ? { type: 'userFills', user }
+            : { type: 'userFillsByTime', user, startTime, endTime },
+          infoOpts
+        ),
+        infoRequest<HlTwapSliceFill[]>(
+          apiUrl,
+          useRecent
+            ? { type: 'userTwapSliceFills', user }
+            : { type: 'userTwapSliceFillsByTime', user, startTime, endTime },
+          infoOpts
+        ),
+      ])
       useRecent = false
-      if (fills.length >= 2000) {
+      if (fills.length >= FILL_ROWS_CAP || sliceFills.length >= FILL_ROWS_CAP) {
         return { items: [], saturated: true }
       }
-      const items = fills.flatMap((fill): Fill[] => {
-        if (assetIsOutcome(fill.coin)) {
-          return []
+      const seen = new Set<number>()
+      const items = [...fills, ...sliceFills.map(({ fill }) => fill)].flatMap(
+        (fill): Fill[] => {
+          if (assetIsOutcome(fill.coin) || seen.has(fill.tid)) {
+            return []
+          }
+          seen.add(fill.tid)
+          const market = registry.get(fill.coin)
+          const mapped = market && mapFill(fill, market, params.address)
+          return mapped ? [mapped] : []
         }
-        const market = registry.get(fill.coin)
-        const mapped = market && mapFill(fill, market, params.address)
-        return mapped ? [mapped] : []
-      })
+      )
       return { items, saturated: false }
     },
     (fill) => ({

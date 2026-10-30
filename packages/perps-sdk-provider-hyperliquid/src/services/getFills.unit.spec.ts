@@ -1,4 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
+import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_DELISTED_MARKET,
@@ -6,9 +7,13 @@ import {
   HL_MARKETS,
   HL_SPOT_MARKET,
   HL_SPOT_USER_FILLS,
+  HL_TWAP_SLICE_FILL_REFERENCE,
   HL_USER_FILLS,
 } from '../../test/fixtures.js'
-import { installInfoFetchMock } from '../../test/mockFetch.js'
+import {
+  installInfoFetchMock,
+  type RecordedRequest,
+} from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import type { HlUserFills } from '../types/index.js'
 import { getFills } from './getFills.js'
@@ -23,6 +28,8 @@ const client = createPerpsClient({
 const baseResponses = {
   userFills: HL_USER_FILLS,
   userFillsByTime: HL_USER_FILLS,
+  userTwapSliceFills: [],
+  userTwapSliceFillsByTime: [],
 }
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
@@ -116,6 +123,101 @@ describe('getFills', () => {
 
     const seenIds = [...page1.items, ...page2.items].map((i) => i.id)
     expect(new Set(seenIds).size).toBe(4)
+  })
+
+  it('returns a TWAP slice fill that the regular feed omits', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { ...baseResponses, userTwapSliceFills: [HL_TWAP_SLICE_FILL_REFERENCE] },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, { address: ADDRESS })
+
+    expect(result.items.map((item) => item.id)).toEqual([
+      '648473049019291',
+      '100',
+    ])
+    const [twapFill] = result.items
+    expect(twapFill).toMatchObject({
+      id: '648473049019291',
+      orderId: '590716607007',
+      market: { id: 'ETH' },
+      side: OrderSide.SELL,
+      size: '0.0161',
+      price: '3101.5',
+      fee: { amount: '0.022455', asset: 'USDC' },
+      realizedPnl: '1.288',
+      liquidity: LiquidityRole.TAKER,
+      classification: FillClassification.REDUCED_LONG,
+      createdAt: '2026-10-29T18:55:20.247Z',
+    })
+    expect(twapFill.explorerLink).toBeUndefined()
+  })
+
+  it('reads both time-bounded feeds with the requested bounds', async () => {
+    let requests: RecordedRequest[]
+    ;({ restore, requests } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userTwapSliceFillsByTime: [HL_TWAP_SLICE_FILL_REFERENCE],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, {
+      address: ADDRESS,
+      startTime: 1_793_286_644_010,
+      endTime: 1_793_368_005_021,
+    })
+
+    expect(result.items.map((item) => item.id)).toEqual(['648473049019291'])
+    expect(requests.map(({ body }) => body)).toEqual(
+      expect.arrayContaining([
+        {
+          type: 'userFillsByTime',
+          user: ADDRESS,
+          startTime: 1_793_286_644_010,
+          endTime: 1_793_368_005_021,
+        },
+        {
+          type: 'userTwapSliceFillsByTime',
+          user: ADDRESS,
+          startTime: 1_793_286_644_010,
+          endTime: 1_793_368_005_021,
+        },
+      ])
+    )
+    expect(
+      requests.some(({ body }) => body.type === 'userTwapSliceFills')
+    ).toBe(false)
+  })
+
+  it('returns one execution when both feeds carry the same trade ID', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userTwapSliceFills: [{ twapId: 1, fill: HL_USER_FILLS[0] }],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, { address: ADDRESS })
+
+    expect(result.items.map((item) => item.id)).toEqual(['100'])
+  })
+
+  it('rejects when the TWAP slice fill request fails', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userTwapSliceFills: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    ))
+
+    await expect(getFills(ctx, { address: ADDRESS })).rejects.toMatchObject({
+      tool: 'hyperliquid',
+    })
   })
 })
 

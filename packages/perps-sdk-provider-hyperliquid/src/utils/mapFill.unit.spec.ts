@@ -5,6 +5,7 @@ import {
   LiquidityRole,
   OrderSide,
 } from '@lifi/perps-types'
+import { zeroHash } from 'viem'
 import { describe, expect, it, vi } from 'vitest'
 import type { HlUserFill } from '../types/index.js'
 import { classifyFillFromPosition, mapFill } from './mapFill.js'
@@ -296,6 +297,12 @@ describe('mapFill (Hyperliquid)', () => {
 
   it('leaves explorerLink unset when the fill has no tx hash', () => {
     expect(map(baseFill()).explorerLink).toBeUndefined()
+  })
+
+  it('leaves explorerLink unset and keeps the fill when the hash is the zero hash', () => {
+    const fill = map(baseFill({ hash: zeroHash }))
+    expect(fill.explorerLink).toBeUndefined()
+    expect(fill).toMatchObject({ id: '12345', orderId: '67890' })
   })
 
   describe('classification', () => {

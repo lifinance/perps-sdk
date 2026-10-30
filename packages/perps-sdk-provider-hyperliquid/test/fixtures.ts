@@ -445,6 +445,30 @@ export const HL_TWAP_LONG_SLICE_FILLS: HlTwapSliceFill[] = Array.from(
     })
 )
 
+/**
+ * One `userTwapSliceFillsByTime` row of a public account, in the shape the
+ * venue returned it. `userFillsByTime` for the same range omits its trade ID.
+ */
+export const HL_TWAP_SLICE_FILL_REFERENCE: HlTwapSliceFill = {
+  twapId: 2455234,
+  fill: {
+    coin: 'ETH',
+    px: '3101.5',
+    sz: '0.0161',
+    side: 'A',
+    time: 1_793_300_120_247,
+    startPosition: '0.4523',
+    dir: 'Close Long',
+    closedPnl: '1.288',
+    hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    oid: 590716607007,
+    crossed: true,
+    fee: '0.022455',
+    tid: 648473049019291,
+    feeToken: 'USDC',
+  },
+}
+
 export const HL_USER_FILLS: HlUserFills = [
   {
     tid: 100,
