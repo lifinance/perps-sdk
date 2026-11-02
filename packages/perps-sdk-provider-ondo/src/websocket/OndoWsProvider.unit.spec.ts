@@ -748,6 +748,7 @@ describe('OndoWsProvider', () => {
       )
 
       expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
+        provider: 'ondo',
         marketId: 'AAPL-USD.P',
         midPrice: '227.505',
         markPrice: '227.50',
@@ -842,6 +843,7 @@ describe('OndoWsProvider', () => {
 
       feed(p, markFrame('AAPL-USD.P', '227.45'))
       expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
+        provider: 'ondo',
         marketId: 'AAPL-USD.P',
         midPrice: '227.5',
         markPrice: '227.45',
@@ -866,6 +868,7 @@ describe('OndoWsProvider', () => {
       feed(p, markFrame('AAPL-USD.P', '228.00'))
 
       expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
+        provider: 'ondo',
         marketId: 'AAPL-USD.P',
         midPrice: '227.5',
         markPrice: '228.00',
@@ -899,12 +902,14 @@ describe('OndoWsProvider', () => {
         channel: 'marketsContext',
         data: {
           'AAPL-USD.P': {
+            provider: 'ondo',
             marketId: 'AAPL-USD.P',
             midPrice: '227.50',
             markPrice: '227.50',
             oraclePrice: '227.47',
           },
           'NVDA-USD.P': {
+            provider: 'ondo',
             marketId: 'NVDA-USD.P',
             midPrice: '900.00',
             markPrice: '900.00',
@@ -993,6 +998,7 @@ describe('OndoWsProvider', () => {
         channel: 'marketsContext',
         data: {
           'AAPL-USD.P': {
+            provider: 'ondo',
             marketId: 'AAPL-USD.P',
             midPrice: '227.50',
             markPrice: '227.50',
@@ -1044,6 +1050,7 @@ describe('OndoWsProvider', () => {
       expect(listener).toHaveBeenCalledWith({
         channel: 'marketContext',
         data: {
+          provider: 'ondo',
           marketId: 'AAPL-USD.P',
           midPrice: '227.50',
           markPrice: '227.50',
@@ -1065,11 +1072,43 @@ describe('OndoWsProvider', () => {
       expect(listener).toHaveBeenLastCalledWith({
         channel: 'marketContext',
         data: {
+          provider: 'ondo',
           marketId: 'AAPL-USD.P',
           midPrice: '227.5',
           markPrice: '227.50',
         },
       })
+      p.close()
+    })
+
+    it('stamps the instance provider key on marketsContext and marketContext emits', () => {
+      const p = new OndoWsProvider(
+        'ws://127.0.0.1:1',
+        'ondo-testnet',
+        { storage: seededStorage() },
+        freshClient()
+      )
+      const allListener = vi.fn()
+      const oneListener = vi.fn()
+      inject(p, 'marketsContext', allListener)
+      inject(p, 'marketContext:AAPL-USD.P', oneListener)
+
+      feed(p, markFrame('AAPL-USD.P', '227.50'))
+      feed(
+        p,
+        topOfBookFrame(
+          'AAPL-USD.P',
+          [['227.40', '100.0']],
+          [['227.60', '80.0']]
+        )
+      )
+
+      expect(lastContext(allListener, 'AAPL-USD.P').provider).toBe(
+        'ondo-testnet'
+      )
+      expect(oneListener.mock.calls.at(-1)?.[0].data.provider).toBe(
+        'ondo-testnet'
+      )
       p.close()
     })
   })

@@ -33,6 +33,7 @@ const MARKETS = {
 const PRICES = {
   prices: [
     {
+      provider: 'lighter',
       marketId: '1',
       midPrice: '100',
       markPrice: '100',

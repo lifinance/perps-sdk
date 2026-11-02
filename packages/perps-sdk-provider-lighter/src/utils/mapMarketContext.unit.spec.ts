@@ -39,8 +39,9 @@ const spotStats: LtWsSpotMarketStats = {
 
 describe('mapMarketContext (Lighter)', () => {
   it('maps a perp stats record with oracle, mark, mid, funding and OI', () => {
-    const result = mapMarketContext(perpStats)
+    const result = mapMarketContext('lighter', perpStats)
 
+    expect(result.provider).toBe('lighter')
     expect(result.marketId).toBe('1')
     expect(result.midPrice).toBe('95001')
     expect(result.markPrice).toBe('95000')
@@ -55,12 +56,20 @@ describe('mapMarketContext (Lighter)', () => {
   })
 
   it.each([
+    ['perp', perpStats],
+    ['spot', spotStats],
+  ])('stamps the provider key on a %s stats record', (_label, stats) => {
+    expect(mapMarketContext('lighter', stats).provider).toBe('lighter')
+    expect(mapMarketContext('lighter-rh', stats).provider).toBe('lighter-rh')
+  })
+
+  it.each([
     ['0.0012', '0.000012'],
     ['-0.0008', '-0.000008'],
     ['0.5', '0.005'],
     ['0', '0'],
   ])('maps the percent funding rate %s to the fraction %s', (percent, fraction) => {
-    const result = mapMarketContext({
+    const result = mapMarketContext('lighter', {
       ...perpStats,
       current_funding_rate: percent,
     })
@@ -70,7 +79,10 @@ describe('mapMarketContext (Lighter)', () => {
 
   it('omits funding but keeps the record when the funding rate does not match the decimal pattern', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = mapMarketContext({ ...perpStats, current_funding_rate: '' })
+    const result = mapMarketContext('lighter', {
+      ...perpStats,
+      current_funding_rate: '',
+    })
 
     expect(result).not.toHaveProperty('funding')
     expect(result.markPrice).toBe('95000')
@@ -79,8 +91,9 @@ describe('mapMarketContext (Lighter)', () => {
   })
 
   it('maps a spot stats record, falling mark back to mid with no funding/OI', () => {
-    const result = mapMarketContext(spotStats)
+    const result = mapMarketContext('lighter', spotStats)
 
+    expect(result.provider).toBe('lighter')
     expect(result.marketId).toBe('2048')
     expect(result.midPrice).toBe('3.21')
     expect(result.markPrice).toBe('3.21')
@@ -102,7 +115,7 @@ describe('mapMarketContext (Lighter)', () => {
       })
     )
 
-    const result = mapMarketContext(freshMarket)
+    const result = mapMarketContext('lighter', freshMarket)
 
     expect(result.markPrice).toBe('95000')
     expect(result.openInterest).toBe('1234.5')
@@ -114,7 +127,7 @@ describe('mapMarketContext (Lighter)', () => {
     ['a sub-micro', 1e-7],
     ['a 1e21', 1e21],
   ])('emits DecimalString daily figures at %s magnitude', (_label, figure) => {
-    const result = mapMarketContext({
+    const result = mapMarketContext('lighter', {
       ...perpStats,
       daily_price_change: figure,
       daily_quote_token_volume: figure,

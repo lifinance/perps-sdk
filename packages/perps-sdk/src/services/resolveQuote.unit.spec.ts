@@ -61,12 +61,18 @@ const BTC_SPOT: SpotMarket = {
 
 const PRICES: MarketContext[] = [
   {
+    provider: 'hyperliquid',
     marketId: 'BTC',
     midPrice: '100',
     markPrice: '100',
     funding: { rate: '0.0001', nextFundingTime: 1704067200000 },
   },
-  { marketId: '@1', midPrice: '100', markPrice: '100' },
+  {
+    provider: 'hyperliquid',
+    marketId: '@1',
+    midPrice: '100',
+    markPrice: '100',
+  },
 ]
 
 const BOOK: OrderbookResponse = {

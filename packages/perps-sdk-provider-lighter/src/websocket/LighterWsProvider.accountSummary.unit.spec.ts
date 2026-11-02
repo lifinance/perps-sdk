@@ -92,6 +92,7 @@ const MARKETS_RESPONSE = {
 
 const MARKETS_CONTEXT_RESPONSE = {
   prices: SPOT_MARKS.map((m) => ({
+    provider: 'lighter',
     marketId: m.marketId,
     midPrice: m.mid,
     markPrice: m.mid,

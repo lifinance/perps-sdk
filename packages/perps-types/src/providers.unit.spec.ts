@@ -14,6 +14,7 @@ import { DECIMAL_PATTERN } from './decimal.js'
 import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
+import type { ProviderId } from './primitives.js'
 import type {
   Param,
   Provider,
@@ -463,6 +464,12 @@ type _MarketContextHasNoFundingCadence = Expect<
     never
   >
 >
+type _MarketContextProviderShape = Expect<
+  Equals<MarketContext['provider'], ProviderId>
+>
+type _MarketContextProviderIsRequired = Expect<
+  Equals<Extract<RequiredKeys<MarketContext>, 'provider'>, 'provider'>
+>
 
 // `setup` is required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
@@ -623,6 +630,8 @@ export type _TypeAssertions = [
   _ProviderFundingOptional,
   _ProviderFundingIsOptional,
   _MarketContextHasNoFundingCadence,
+  _MarketContextProviderShape,
+  _MarketContextProviderIsRequired,
   _SetupIsRequired,
   _SupportedIntervalsShape,
   _SupportedIntervalsIsRequired,

@@ -37,6 +37,7 @@ const perpsMarket = (id: string): Market => ({
 const HELD: ReadonlySet<string> = new Set(['1'])
 
 const context = (marketId: string, markPrice: string): MarketContext => ({
+  provider: 'lighter',
   marketId,
   midPrice: markPrice,
   markPrice,

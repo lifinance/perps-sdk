@@ -7,6 +7,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LIGHTER_COLLATERAL_ASSETS,
+  LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_WS_URL,
 } from '../constants.js'
@@ -1739,6 +1740,7 @@ describe('LighterWsProvider', () => {
       const perpEvent = listener.mock.calls[0][0]
       expect(perpEvent.channel).toBe('marketsContext')
       expect(perpEvent.data['0']).toMatchObject({
+        provider: 'lighter',
         marketId: '0',
         midPrice: '50001',
         markPrice: '50000',
@@ -1778,6 +1780,7 @@ describe('LighterWsProvider', () => {
       const spotEvent = listener.mock.calls[1][0]
       expect(Object.keys(spotEvent.data).sort()).toEqual(['0', '2048'])
       expect(spotEvent.data['2048']).toMatchObject({
+        provider: 'lighter',
         marketId: '2048',
         midPrice: '1814.34',
         markPrice: '1814.34',
@@ -1900,6 +1903,7 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: 'lighter',
           marketId: '0',
           midPrice: '50001',
           markPrice: '50000',
@@ -1956,6 +1960,7 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: 'lighter',
           marketId: '2048',
           midPrice: '1814.34',
           markPrice: '1814.34',
@@ -1967,6 +1972,56 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
       expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
       provider.close()
+    })
+
+    it.each([
+      LIGHTER_PROVIDER_KEY,
+      LIGHTER_RH_PROVIDER_KEY,
+    ])('stamps the %s provider key on marketsContext and marketContext emits', (providerKey) => {
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          providerKey,
+          {},
+          freshClient()
+        )
+      )
+      const allListener = vi.fn()
+      const oneListener = vi.fn()
+      inject(p, 'marketsContext', allListener)
+      inject(p, 'marketContext:0', oneListener)
+      const stats = {
+        market_id: 0,
+        index_price: '49998',
+        mark_price: '50000',
+        mid_price: '50001',
+        open_interest: '12.5',
+        last_trade_price: '50002',
+        current_funding_rate: '0.0012',
+        funding_rate: '0.0001',
+        funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+        daily_base_token_volume: 10,
+        daily_quote_token_volume: 500000,
+        daily_price_change: 1.2,
+      }
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          market_stats: { '0': stats },
+        })
+      )
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats/0',
+          market_stats: stats,
+        })
+      )
+
+      expect(allListener.mock.calls[0][0].data['0'].provider).toBe(providerKey)
+      expect(oneListener.mock.calls[0][0].data.provider).toBe(providerKey)
+      p.close()
     })
 
     it('routes a perps market with a high market id to the perps stats channel', async () => {

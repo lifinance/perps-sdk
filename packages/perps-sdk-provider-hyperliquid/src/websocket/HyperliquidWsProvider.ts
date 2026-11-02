@@ -45,6 +45,7 @@ import type {
   OrderbookLevel,
   OrderbookResponse,
   Position,
+  ProviderId,
   Subscription,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
@@ -965,7 +966,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const fast = this.fastCtxByMarketId[marketId]
     const spotCtx = this.spotCtxByMarketId[marketId]
     if (spotCtx !== undefined) {
-      const context = mapSpotMarketContext(marketId, spotCtx, fast)
+      const context = mapSpotMarketContext(
+        this.providerKey,
+        marketId,
+        spotCtx,
+        fast
+      )
       if (context !== undefined) {
         return context
       }
@@ -975,12 +981,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       perpCtx = byMarketId[marketId] ?? perpCtx
     }
     if (perpCtx !== undefined) {
-      return mapMarketContext(marketId, perpCtx, fast)
+      return mapMarketContext(this.providerKey, marketId, perpCtx, fast)
     }
     const midPrice = fast?.midPx ?? fast?.markPx
     const markPrice = fast?.markPx ?? fast?.midPx
     if (midPrice != null && markPrice != null) {
-      return { marketId, midPrice, markPrice }
+      return { provider: this.providerKey, marketId, midPrice, markPrice }
     }
     return undefined
   }
@@ -996,7 +1002,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
     this.emit(`marketContext:${data.coin}`, {
       channel: 'marketContext',
-      data: mapMarketContext(data.coin, ctx),
+      data: mapMarketContext(this.providerKey, data.coin, ctx),
     })
   }
 
@@ -1004,7 +1010,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     if (assetIsOutcome(data.coin)) {
       return
     }
-    const context = mapSpotMarketContext(data.coin, data.ctx)
+    const context = mapSpotMarketContext(this.providerKey, data.coin, data.ctx)
     if (context === undefined) {
       return
     }
@@ -1830,6 +1836,7 @@ function activePerpAssetCtx(
 }
 
 function mapSpotMarketContext(
+  providerKey: ProviderId,
   marketId: string,
   ctx: HlWsSpotAssetCtx,
   fast?: HlWsFastAssetCtx
@@ -1842,6 +1849,7 @@ function mapSpotMarketContext(
 
   const emittedMarkPrice = fast?.markPx != null ? fast.markPx : markPrice
   return {
+    provider: providerKey,
     marketId,
     midPrice: fast?.midPx != null ? fast.midPx : midPrice,
     markPrice: emittedMarkPrice,

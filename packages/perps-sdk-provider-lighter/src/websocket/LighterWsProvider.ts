@@ -1026,7 +1026,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const channelMarketId = this.marketIdFromChannel(channel, prefix)
     if (channelMarketId !== null) {
       for (const entry of entries) {
-        const ctx = mapMarketContext(entry)
+        const ctx = mapMarketContext(this.providerKey, entry)
         if (ctx.marketId === String(channelMarketId)) {
           this.emit(`marketContext:${ctx.marketId}`, {
             channel: 'marketContext',
@@ -1037,7 +1037,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     for (const entry of entries) {
-      const ctx = mapMarketContext(entry)
+      const ctx = mapMarketContext(this.providerKey, entry)
       this.marketsContext[ctx.marketId] = ctx
     }
     this.emit('marketsContext', {

@@ -27,8 +27,9 @@ describe('mapMarketContext (Hyperliquid)', () => {
   it('maps the asset context onto a MarketContext', () => {
     vi.setSystemTime(new Date('2024-01-01T00:30:00Z'))
 
-    const result = mapMarketContext('BTC', ctx)
+    const result = mapMarketContext('hyperliquid', 'BTC', ctx)
 
+    expect(result.provider).toBe('hyperliquid')
     expect(result.marketId).toBe('BTC')
     expect(result.midPrice).toBe('95001')
     expect(result.markPrice).toBe('95000')
@@ -39,8 +40,15 @@ describe('mapMarketContext (Hyperliquid)', () => {
     expect(result.funding?.rate).toBe('0.0001')
   })
 
+  it.each([
+    'hyperliquid',
+    'hyperliquid-testnet',
+  ])('stamps the provider key %s on the context', (providerKey) => {
+    expect(mapMarketContext(providerKey, 'BTC', ctx).provider).toBe(providerKey)
+  })
+
   it('preserves decimal precision when converting open interest to quote notional', () => {
-    const result = mapMarketContext('BTC', {
+    const result = mapMarketContext('hyperliquid', 'BTC', {
       ...ctx,
       openInterest: '0.000000000000000001',
       markPx: '95000.123456789',
@@ -50,7 +58,7 @@ describe('mapMarketContext (Hyperliquid)', () => {
   })
 
   it('converts open interest at the fast-feed mark when one is given', () => {
-    const result = mapMarketContext('BTC', ctx, {
+    const result = mapMarketContext('hyperliquid', 'BTC', ctx, {
       markPx: '96000',
       midPx: '96001',
     })
@@ -61,34 +69,43 @@ describe('mapMarketContext (Hyperliquid)', () => {
   })
 
   it('keeps the asset-context mark when the fast context carries none', () => {
-    const result = mapMarketContext('BTC', ctx, { midPx: '95002' })
+    const result = mapMarketContext('hyperliquid', 'BTC', ctx, {
+      midPx: '95002',
+    })
 
     expect(result.markPrice).toBe('95000')
     expect(result.openInterest).toBe('117277500')
   })
 
   it('leaves open interest unknown when the mark is not positive', () => {
-    expect(mapMarketContext('BTC', { ...ctx, markPx: '0' }).openInterest).toBe(
-      undefined
-    )
-    expect(mapMarketContext('BTC', { ...ctx, markPx: '-1' }).openInterest).toBe(
-      undefined
-    )
+    expect(
+      mapMarketContext('hyperliquid', 'BTC', { ...ctx, markPx: '0' })
+        .openInterest
+    ).toBe(undefined)
+    expect(
+      mapMarketContext('hyperliquid', 'BTC', { ...ctx, markPx: '-1' })
+        .openInterest
+    ).toBe(undefined)
   })
 
   it('leaves open interest unknown when a figure is not a number', () => {
     expect(
-      mapMarketContext('BTC', { ...ctx, markPx: 'null' }).openInterest
+      mapMarketContext('hyperliquid', 'BTC', { ...ctx, markPx: 'null' })
+        .openInterest
     ).toBe(undefined)
     expect(
-      mapMarketContext('BTC', { ...ctx, openInterest: '' }).openInterest
+      mapMarketContext('hyperliquid', 'BTC', { ...ctx, openInterest: '' })
+        .openInterest
     ).toBe(undefined)
   })
 
   it('falls back to mark when the book is empty (midPx null)', () => {
     vi.setSystemTime(new Date('2024-01-01T00:30:00Z'))
 
-    const result = mapMarketContext('BTC', { ...ctx, midPx: null })
+    const result = mapMarketContext('hyperliquid', 'BTC', {
+      ...ctx,
+      midPx: null,
+    })
 
     expect(result.midPrice).toBe('95000')
   })
@@ -97,7 +114,9 @@ describe('mapMarketContext (Hyperliquid)', () => {
     vi.setSystemTime(new Date('2024-01-01T00:30:00Z'))
     const expected = Math.ceil(Date.now() / HOUR_MS) * HOUR_MS
 
-    expect(mapMarketContext('BTC', ctx).funding?.nextFundingTime).toBe(expected)
+    expect(
+      mapMarketContext('hyperliquid', 'BTC', ctx).funding?.nextFundingTime
+    ).toBe(expected)
     // 00:30 rounds up to 01:00.
     expect(new Date(expected).toISOString()).toBe('2024-01-01T01:00:00.000Z')
   })
@@ -105,8 +124,8 @@ describe('mapMarketContext (Hyperliquid)', () => {
   it('keeps nextFundingTime at the boundary when already on the hour', () => {
     vi.setSystemTime(new Date('2024-01-01T02:00:00.000Z'))
 
-    expect(mapMarketContext('BTC', ctx).funding?.nextFundingTime).toBe(
-      Date.parse('2024-01-01T02:00:00.000Z')
-    )
+    expect(
+      mapMarketContext('hyperliquid', 'BTC', ctx).funding?.nextFundingTime
+    ).toBe(Date.parse('2024-01-01T02:00:00.000Z'))
   })
 })

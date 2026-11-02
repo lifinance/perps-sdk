@@ -287,6 +287,7 @@ const perpsMarket: PerpsMarket = {
 }
 
 const perpsPrice: MarketContext = {
+  provider: 'hyperliquid',
   marketId: 'BTC',
   midPrice: '100',
   markPrice: '100',
@@ -313,6 +314,7 @@ const spotMarket: SpotMarket = {
 }
 
 const spotPrice: MarketContext = {
+  provider: 'hyperliquid',
   marketId: '@1',
   midPrice: '100',
   markPrice: '100',
