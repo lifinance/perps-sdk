@@ -1,5 +1,17 @@
 # @lifi/perps-types
 
+## 26.1.0
+
+### Minor Changes
+
+- [#684](https://github.com/lifinance/perps-sdk/pull/684) [`59ceada`](https://github.com/lifinance/perps-sdk/commit/59ceada74d3183dff6775838f5d0a4fd482e647e) Thanks [@mmioana](https://github.com/mmioana)! - Add a shared spot category id and an order direction label.
+
+  - `@lifi/perps-types` exports `SPOT_CATEGORY_ID` and the type `OrderSideLabel`.
+  - `@lifi/perps-sdk` exports `isSpotCategory(categoryId)` and `orderSideLabel(side, market)`. `orderSideLabel` returns an `OrderSideLabel`: `'Buy'` or `'Sell'` on a spot market, and `'Long'` or `'Short'` on a perp market.
+  - The Hyperliquid and Lighter providers use `SPOT_CATEGORY_ID` and `isSpotCategory`.
+
+  Migration: `@lifi/perps-sdk-provider-lighter` does not export `LIGHTER_SPOT_CATEGORY_ID`. Replace `LIGHTER_SPOT_CATEGORY_ID` with `SPOT_CATEGORY_ID` from `@lifi/perps-types`.
+
 ## 26.0.0
 
 ### Major Changes

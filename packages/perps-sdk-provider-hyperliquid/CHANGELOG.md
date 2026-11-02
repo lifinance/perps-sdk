@@ -1,5 +1,22 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 31.0.3
+
+### Patch Changes
+
+- [#683](https://github.com/lifinance/perps-sdk/pull/683) [`7a942aa`](https://github.com/lifinance/perps-sdk/commit/7a942aa3fa0c480e91505a01e649e74c28b40b79) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Reuse the shared liquidated-account check in the Hyperliquid fill mapper. This is an internal change with no change to the mapped fills.
+
+- [#684](https://github.com/lifinance/perps-sdk/pull/684) [`59ceada`](https://github.com/lifinance/perps-sdk/commit/59ceada74d3183dff6775838f5d0a4fd482e647e) Thanks [@mmioana](https://github.com/mmioana)! - Add a shared spot category id and an order direction label.
+
+  - `@lifi/perps-types` exports `SPOT_CATEGORY_ID` and the type `OrderSideLabel`.
+  - `@lifi/perps-sdk` exports `isSpotCategory(categoryId)` and `orderSideLabel(side, market)`. `orderSideLabel` returns an `OrderSideLabel`: `'Buy'` or `'Sell'` on a spot market, and `'Long'` or `'Short'` on a perp market.
+  - The Hyperliquid and Lighter providers use `SPOT_CATEGORY_ID` and `isSpotCategory`.
+
+  Migration: `@lifi/perps-sdk-provider-lighter` does not export `LIGHTER_SPOT_CATEGORY_ID`. Replace `LIGHTER_SPOT_CATEGORY_ID` with `SPOT_CATEGORY_ID` from `@lifi/perps-types`.
+
+- Updated dependencies [[`59ceada`](https://github.com/lifinance/perps-sdk/commit/59ceada74d3183dff6775838f5d0a4fd482e647e)]:
+  - @lifi/perps-types@26.1.0
+
 ## 31.0.2
 
 ### Patch Changes
