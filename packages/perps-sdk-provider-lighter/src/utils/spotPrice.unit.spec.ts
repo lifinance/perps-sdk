@@ -1,6 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import type { Market, MarketContext } from '@lifi/perps-types'
-import { PositionMarginAdjustment } from '@lifi/perps-types'
+import { PositionMarginAdjustment, SPOT_CATEGORY_ID } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { spotPriceByAssetId, spotValuation } from './spotPrice.js'
 
@@ -16,7 +16,7 @@ const USDC = asset('USDC', 'USDC')
 const spotMarket = (id: string, baseAssetId: string): Market => ({
   providerId: 'lighter',
   id,
-  categoryId: 'spot',
+  categoryId: SPOT_CATEGORY_ID,
   baseAsset: asset(baseAssetId, 'ETH'),
   quoteAsset: USDC,
   szDecimals: 4,
@@ -46,7 +46,6 @@ describe('spotPriceByAssetId', () => {
   it('keys a spot market mark by its base asset id, not the market id', () => {
     const prices = spotPriceByAssetId(
       [spotMarket('2048', '1')],
-      'spot',
       [context('2048', '2714.67')],
       HELD
     )
@@ -57,7 +56,6 @@ describe('spotPriceByAssetId', () => {
   it('ignores markets outside the spot category', () => {
     const prices = spotPriceByAssetId(
       [perpsMarket('0')],
-      'spot',
       [context('0', '50000')],
       new Set(['0'])
     )
@@ -65,15 +63,12 @@ describe('spotPriceByAssetId', () => {
   })
 
   it('adds no entry for a spot market without a context row', () => {
-    expect(
-      spotPriceByAssetId([spotMarket('2048', '1')], 'spot', [], HELD).size
-    ).toBe(0)
+    expect(spotPriceByAssetId([spotMarket('2048', '1')], [], HELD).size).toBe(0)
   })
 
   it('adds no entry for a non-positive mark', () => {
     const prices = spotPriceByAssetId(
       [spotMarket('2048', '1'), spotMarket('2049', '2')],
-      'spot',
       [context('2048', '0'), context('2049', '-1')],
       new Set(['1', '2'])
     )
@@ -87,7 +82,6 @@ describe('spotPriceByAssetId', () => {
         spotMarket('2049', '1'),
         spotMarket('2050', '1'),
       ],
-      'spot',
       [context('2048', '0'), context('2049', '2700'), context('2050', '2800')],
       HELD
     )
@@ -97,7 +91,6 @@ describe('spotPriceByAssetId', () => {
   it('adds no entry for a base asset outside the requested ids', () => {
     const prices = spotPriceByAssetId(
       [spotMarket('2048', '1'), spotMarket('2049', '2')],
-      'spot',
       [context('2048', '2714.67'), context('2049', '0.5')],
       HELD
     )
@@ -107,7 +100,6 @@ describe('spotPriceByAssetId', () => {
   it('does not read the mark of a market whose base asset is not requested', () => {
     const prices = spotPriceByAssetId(
       [spotMarket('2048', '1'), spotMarket('2049', '2')],
-      'spot',
       [context('2048', '2714.67'), context('2049', 'n/a')],
       HELD
     )
@@ -118,7 +110,6 @@ describe('spotPriceByAssetId', () => {
     expect(() =>
       spotPriceByAssetId(
         [spotMarket('2048', '1')],
-        'spot',
         [context('2048', 'n/a')],
         HELD
       )

@@ -1148,7 +1148,6 @@ export const createLighterProvider = (
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
-        SPOT_CATEGORY_ID,
         prices,
         new Set(
           [...heldAssets, ...marginAssets]

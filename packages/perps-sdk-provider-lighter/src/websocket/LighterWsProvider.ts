@@ -31,7 +31,6 @@ import {
   type MarketContext,
   PerpsErrorCode,
   type Position,
-  SPOT_CATEGORY_ID,
   type Subscription,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
@@ -209,7 +208,6 @@ const heldPortfolioValue = (
     .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
   const spotPrices = spotPriceByAssetId(
     markets,
-    SPOT_CATEGORY_ID,
     contexts,
     new Set(
       held
