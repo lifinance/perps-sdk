@@ -1,5 +1,9 @@
 import { ExplorerChainId } from '@lifi/perps-sdk'
-import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
+import {
+  type FeeTier,
+  type LighterProviderKey,
+  SPOT_CATEGORY_ID,
+} from '@lifi/perps-types'
 import { LT_ASSET_ID_USDC } from './types/action.js'
 
 /**
@@ -25,7 +29,7 @@ export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
  *
  * @public
  */
-export const LIGHTER_SPOT_CATEGORY_ID = 'spot'
+export const LIGHTER_SPOT_CATEGORY_ID = SPOT_CATEGORY_ID
 
 /**
  * Default mainnet REST and WS base URL for Lighter.

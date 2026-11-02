@@ -322,6 +322,7 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
+export { isSpotCategory } from './utils/marketCategory.js'
 export {
   ACTIVE_ORDER_STATUSES,
   isActiveOrderStatus,
@@ -331,6 +332,7 @@ export {
   isTpSlOrder,
   isTriggerOrder,
   isTwapOrder,
+  orderSideLabel,
   triggerConditionFor,
 } from './utils/orderClassification.js'
 export {

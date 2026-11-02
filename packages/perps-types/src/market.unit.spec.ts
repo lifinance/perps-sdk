@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Asset } from './asset.js'
 import { PositionMarginAdjustment } from './enums.js'
-import type {
-  BaseMarket,
-  MarketContext,
-  MarketDisplay,
-  OhlcvInterval,
-  OhlcvResponse,
-  PerpsMarket,
-  PerpsMarketDisplay,
-  SpotMarket,
+import {
+  type BaseMarket,
+  type MarketContext,
+  type MarketDisplay,
+  type OhlcvInterval,
+  type OhlcvResponse,
+  type PerpsMarket,
+  type PerpsMarketDisplay,
+  SPOT_CATEGORY_ID,
+  type SpotMarket,
 } from './market.js'
 
 const btc: Asset = {
@@ -185,6 +186,12 @@ describe('OhlcvResponse', () => {
     }
     expect(response.interval).toBe('1h')
     expect(response.candles).toHaveLength(1)
+  })
+})
+
+describe('SPOT_CATEGORY_ID', () => {
+  it('is the stable string "spot"', () => {
+    expect(SPOT_CATEGORY_ID).toBe('spot')
   })
 })
 

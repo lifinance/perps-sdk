@@ -1,4 +1,5 @@
 import type {
+  MarketDisplay,
   Order,
   RegularOrder,
   TriggerOrder,
@@ -10,6 +11,7 @@ import {
   OrderType,
   TriggerCondition,
 } from '@lifi/perps-types'
+import { isSpotCategory } from './marketCategory.js'
 
 const TP_TYPES = new Set<OrderType>([
   OrderType.TAKE_PROFIT_MARKET,
@@ -87,4 +89,21 @@ export const ACTIVE_ORDER_STATUSES: ReadonlySet<OrderStatus> = new Set([
  */
 export function isActiveOrderStatus(status: OrderStatus): boolean {
   return ACTIVE_ORDER_STATUSES.has(status)
+}
+
+/**
+ * The direction label of an order: Buy or Sell on a spot market, Long or
+ * Short on a perp market. `reduceOnly` and `isLiquidation` do not change it.
+ *
+ * @public
+ */
+export function orderSideLabel(
+  side: OrderSide,
+  market: Pick<MarketDisplay, 'categoryId'>
+): 'Long' | 'Short' | 'Buy' | 'Sell' {
+  const buy = side === OrderSide.BUY
+  if (isSpotCategory(market.categoryId)) {
+    return buy ? 'Buy' : 'Sell'
+  }
+  return buy ? 'Long' : 'Short'
 }
