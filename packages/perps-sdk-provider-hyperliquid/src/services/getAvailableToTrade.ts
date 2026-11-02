@@ -1,5 +1,6 @@
 import {
   getMarketRegistry,
+  isSpotCategory,
   PerpsError,
   type SDKRequestOptions,
   toAssetDisplay,
@@ -7,7 +8,7 @@ import {
 import type { AvailableToTrade } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import { hlInfoOptions } from '../utils/infoClient.js'
 import { fetchActiveAssetData } from './activeAssetData.js'
@@ -42,7 +43,7 @@ export const getAvailableToTrade = async (
   const registry = getMarketRegistry(context.client, PROVIDER_KEY)
   await registry.sync()
   const market = registry.require(params.marketId)
-  if (market.categoryId === SPOT_MARKET_ID) {
+  if (isSpotCategory(market.categoryId)) {
     return undefined
   }
   await requireAccountExists(

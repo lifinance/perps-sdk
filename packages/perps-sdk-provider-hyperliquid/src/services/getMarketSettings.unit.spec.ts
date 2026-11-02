@@ -1,12 +1,8 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import { MarginMode, PerpsErrorCode } from '@lifi/perps-types'
+import { MarginMode, PerpsErrorCode, SPOT_CATEGORY_ID } from '@lifi/perps-types'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
-import {
-  DEFAULT_HYPERLIQUID_API_URL,
-  MAIN_MARKET_ID,
-  SPOT_MARKET_ID,
-} from '../constants.js'
+import { DEFAULT_HYPERLIQUID_API_URL, MAIN_MARKET_ID } from '../constants.js'
 import { getMarketSettings } from './getMarketSettings.js'
 
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
@@ -137,13 +133,13 @@ describe('getMarketSettings', () => {
     await expect(
       getMarketSettings(ctx, {
         address: ADDRESS,
-        market: { marketId: '@142', categoryId: SPOT_MARKET_ID },
+        market: { marketId: '@142', categoryId: SPOT_CATEGORY_ID },
       })
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     await expect(
       getMarketSettings(ctx, {
         address: ADDRESS,
-        market: { marketId: 'PURR/USDC', categoryId: SPOT_MARKET_ID },
+        market: { marketId: 'PURR/USDC', categoryId: SPOT_CATEGORY_ID },
       })
     ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
     expect(requests).toHaveLength(0)

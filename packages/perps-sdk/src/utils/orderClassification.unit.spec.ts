@@ -4,6 +4,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  SPOT_CATEGORY_ID,
   TimeInForce,
   TriggerCondition,
 } from '@lifi/perps-types'
@@ -16,6 +17,7 @@ import {
   isTpSlOrder,
   isTriggerOrder,
   isTwapOrder,
+  orderSideLabel,
   triggerConditionFor,
 } from './orderClassification.js'
 
@@ -172,5 +174,19 @@ describe('Order union classification', () => {
         OrderStatus.TRIGGERED,
       ].sort()
     )
+  })
+})
+
+describe('orderSideLabel', () => {
+  const perp = { categoryId: 'hyperliquid' }
+  const spot = { categoryId: SPOT_CATEGORY_ID }
+
+  it.each([
+    [OrderSide.BUY, perp, 'Long'],
+    [OrderSide.SELL, perp, 'Short'],
+    [OrderSide.BUY, spot, 'Buy'],
+    [OrderSide.SELL, spot, 'Sell'],
+  ] as const)('labels %s on %o as %s', (side, market, label) => {
+    expect(orderSideLabel(side, market)).toBe(label)
   })
 })

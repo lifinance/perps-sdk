@@ -57,5 +57,3 @@ export const FILL_ROWS_CAP = 2000
 export const MAIN_DEX_NAME = ''
 /** @internal */
 export const MAIN_MARKET_ID = 'hyperliquid'
-/** @internal */
-export const SPOT_MARKET_ID = 'spot'

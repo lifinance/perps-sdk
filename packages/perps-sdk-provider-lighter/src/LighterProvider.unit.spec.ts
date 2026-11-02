@@ -32,6 +32,7 @@ import {
   PositionMarginAdjustment,
   type PricesResponse,
   SigningMethod,
+  SPOT_CATEGORY_ID,
   type WasmBlobActionStep,
   type WasmBlobSignedActionStep,
   WithdrawalType,
@@ -51,7 +52,6 @@ import {
   LIGHTER_RH_DEPLOYMENT,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_REST_URL,
-  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 import {
   type LighterPerpsProvider,
@@ -1285,13 +1285,13 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '1',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '0.00609091',
         max: '0.00609091',
       },
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '10.9886',
         max: '10.9886',
       },
@@ -1346,7 +1346,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
@@ -1371,7 +1371,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
@@ -1469,7 +1469,7 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     stubFast()
 
     await expect(withdrawalTypes()).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       {
         source: { categoryId: 'lighter', asset: { id: '3' } },
         options: [
@@ -1489,7 +1489,7 @@ describe('LighterProvider — getWithdrawalTypes', () => {
           },
         ],
       },
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
   })
 
@@ -1548,9 +1548,9 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     stubFast(info, fee)
 
     await expect(withdrawalTypes()).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       standardOnly('lighter', '3', '60'),
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
   })
 
@@ -1562,9 +1562,9 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     await expect(
       provider.getWithdrawalTypes!({ address: ADDRESS })
     ).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       standardOnly('lighter', '3', '60'),
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
     expect(fastInfoCalls()).toHaveLength(0)
   })
@@ -2389,7 +2389,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
 })
 
 describe('LighterProvider — getAccount balance categoryId', () => {
-  // The null-quote category id differs from LIGHTER_SPOT_CATEGORY_ID, so the
+  // The null-quote category id differs from SPOT_CATEGORY_ID, so the
   // spot assertion fails if getAccount reads the spot id from /providers.
   const PERPS_CATEGORY_ID = 'perps'
   const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
@@ -2477,14 +2477,14 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     )
   })
 
-  it('labels spot token holdings with LIGHTER_SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
+  it('labels spot token holdings with SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.balances.length).toBeGreaterThan(0)
     for (const balance of account.balances) {
-      expect(balance.categoryId).toBe(LIGHTER_SPOT_CATEGORY_ID)
+      expect(balance.categoryId).toBe(SPOT_CATEGORY_ID)
     }
   })
 })

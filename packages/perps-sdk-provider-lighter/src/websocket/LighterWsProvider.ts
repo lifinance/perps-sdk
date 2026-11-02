@@ -4,6 +4,7 @@ import {
   createSafeFunction,
   getMarketRegistry,
   isDecimalStringGreaterThan,
+  isSpotCategory,
   type MarketRegistry,
   numberToDecimalString,
   PerpsError,
@@ -41,7 +42,6 @@ import {
   LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
-  LIGHTER_SPOT_CATEGORY_ID,
 } from '../constants.js'
 import type { LighterPerpsProvider } from '../LighterProvider.js'
 import type {
@@ -208,7 +208,6 @@ const heldPortfolioValue = (
     .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
   const spotPrices = spotPriceByAssetId(
     markets,
-    LIGHTER_SPOT_CATEGORY_ID,
     contexts,
     new Set(
       held
@@ -527,10 +526,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       const market = this.registry.require(sub.marketId)
-      const prefix =
-        market.categoryId === LIGHTER_SPOT_CATEGORY_ID
-          ? 'spot_market_stats'
-          : 'market_stats'
+      const prefix = isSpotCategory(market.categoryId)
+        ? 'spot_market_stats'
+        : 'market_stats'
       return [{ channel: `${prefix}/${market.id}`, needsAuth: false }]
     }
     if (sub.channel === 'orderbook') {

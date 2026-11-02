@@ -10,6 +10,7 @@ import {
   isActiveOrderStatus,
   isDecimalString,
   isDecimalStringZero,
+  isSpotCategory,
   type MarketRegistry,
   PerpsError,
   type PerpsSDKClient,
@@ -52,7 +53,6 @@ import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
-  SPOT_MARKET_ID,
 } from '../constants.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
 import type {
@@ -336,7 +336,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       const market = registry.requireActive(sub.marketId)
       if (
         sub.channel === 'availableToTrade' &&
-        market.categoryId === SPOT_MARKET_ID
+        isSpotCategory(market.categoryId)
       ) {
         const error = new PerpsError(
           PerpsErrorCode.ValidationError,
@@ -888,7 +888,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private spotMarketIdBySacKey(): Map<string, string> {
     const map = new Map<string, string>()
     for (const market of this.registry?.activeMarkets ?? []) {
-      if (market.categoryId !== SPOT_MARKET_ID) {
+      if (!isSpotCategory(market.categoryId)) {
         continue
       }
       map.set(market.id, market.id)

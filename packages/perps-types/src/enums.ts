@@ -83,6 +83,12 @@ export enum OrderSide {
   SELL = 'SELL',
 }
 
+/**
+ * Direction label of an order: Buy or Sell on a spot market, Long or Short on
+ * a perp market. @public
+ */
+export type OrderSideLabel = 'Long' | 'Short' | 'Buy' | 'Sell'
+
 /** Supported regular and trigger order kinds, using provider wire values. @public */
 export enum OrderType {
   MARKET = 'MARKET',

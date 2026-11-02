@@ -55,6 +55,13 @@ export interface BaseMarket {
 }
 
 /**
+ * Category id of spot markets and spot balances on every provider.
+ *
+ * @public
+ */
+export const SPOT_CATEGORY_ID = 'spot'
+
+/**
  * Perpetual market metadata, including leverage and margin constraints.
  *
  * @public
