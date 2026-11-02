@@ -2,6 +2,7 @@ import {
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
+  isSpotCategory,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
@@ -12,7 +13,7 @@ import {
   OrderSide,
 } from '@lifi/perps-types'
 import { zeroHash } from 'viem'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
 import { isFillLiquidatingAccount } from './isFillLiquidatingAccount.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
@@ -74,7 +75,7 @@ export const mapFill = (
   const liquidation = mapFillLiquidation(fill, address)
 
   return {
-    ...(market.categoryId === SPOT_MARKET_ID
+    ...(isSpotCategory(market.categoryId)
       ? { realizedPnl: fill.closedPnl }
       : { realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl }),
     id: String(fill.tid),
@@ -100,12 +101,11 @@ export const mapFill = (
       ExplorerChainId.HYPERLIQUID,
       fill.hash === zeroHash ? undefined : fill.hash
     ),
-    classification:
-      market.categoryId === SPOT_MARKET_ID
-        ? side === OrderSide.BUY
-          ? FillClassification.SPOT_BUY
-          : FillClassification.SPOT_SELL
-        : classifyFillFromPosition(fill.startPosition, side, size),
+    classification: isSpotCategory(market.categoryId)
+      ? side === OrderSide.BUY
+        ? FillClassification.SPOT_BUY
+        : FillClassification.SPOT_SELL
+      : classifyFillFromPosition(fill.startPosition, side, size),
     createdAt,
     ...(liquidation === undefined ? {} : { liquidation }),
   }

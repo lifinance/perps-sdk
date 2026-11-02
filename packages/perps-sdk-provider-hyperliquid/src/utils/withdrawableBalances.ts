@@ -5,7 +5,8 @@ import {
   subtractDecimalString,
   unknownToDecimalString,
 } from '@lifi/perps-sdk'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { SPOT_CATEGORY_ID } from '@lifi/perps-types'
+import { PROVIDER_KEY } from '../constants.js'
 import type {
   HlAbstractionMode,
   HlClearinghouseState,
@@ -69,7 +70,7 @@ export const hyperliquidWithdrawableBalances = (
         const assetId = String(balance.token)
         const row = {
           assetId,
-          categoryId: SPOT_MARKET_ID,
+          categoryId: SPOT_CATEGORY_ID,
           available: spot,
           ...feeFor(assetId),
         }

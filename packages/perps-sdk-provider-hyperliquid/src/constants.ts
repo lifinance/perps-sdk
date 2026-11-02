@@ -1,4 +1,4 @@
-import { type FeeTier, SPOT_CATEGORY_ID } from '@lifi/perps-types'
+import type { FeeTier } from '@lifi/perps-types'
 
 /**
  * Hyperliquid provider key (exported from the package index as
@@ -57,5 +57,3 @@ export const FILL_ROWS_CAP = 2000
 export const MAIN_DEX_NAME = ''
 /** @internal */
 export const MAIN_MARKET_ID = 'hyperliquid'
-/** @internal */
-export const SPOT_MARKET_ID = SPOT_CATEGORY_ID

@@ -1,6 +1,7 @@
 import type {
   MarketDisplay,
   Order,
+  OrderSideLabel,
   RegularOrder,
   TriggerOrder,
   TwapOrder,
@@ -100,7 +101,7 @@ export function isActiveOrderStatus(status: OrderStatus): boolean {
 export function orderSideLabel(
   side: OrderSide,
   market: Pick<MarketDisplay, 'categoryId'>
-): 'Long' | 'Short' | 'Buy' | 'Sell' {
+): OrderSideLabel {
   const buy = side === OrderSide.BUY
   if (isSpotCategory(market.categoryId)) {
     return buy ? 'Buy' : 'Sell'

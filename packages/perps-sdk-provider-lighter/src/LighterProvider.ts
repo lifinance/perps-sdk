@@ -12,6 +12,7 @@ import {
   getProviders,
   isActiveOrderStatus,
   isDecimalStringGreaterThan,
+  isSpotCategory,
   localStorageAdapter,
   numberToDecimalString,
   PerpsError,
@@ -78,6 +79,7 @@ import {
   ActivityType,
   MarginMode,
   PerpsErrorCode,
+  SPOT_CATEGORY_ID,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import {
@@ -96,7 +98,6 @@ import {
   LIGHTER_HISTORY_PAGE_SIZE,
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
-  LIGHTER_SPOT_CATEGORY_ID,
   type LighterDeployment,
 } from './constants.js'
 import { lighterDepositFlow } from './depositFlow.js'
@@ -1147,7 +1148,7 @@ export const createLighterProvider = (
       )
       const spotPrices = spotPriceByAssetId(
         registry.markets,
-        LIGHTER_SPOT_CATEGORY_ID,
+        SPOT_CATEGORY_ID,
         prices,
         new Set(
           [...heldAssets, ...marginAssets]
@@ -1212,7 +1213,7 @@ export const createLighterProvider = (
         if (isPooled(a)) {
           const units = pooledSettlementUnits(a)
           return {
-            ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), units),
+            ...toBalance(a, SPOT_CATEGORY_ID, registryAsset(a), units),
             transferable: calculateTransferable(
               pooledSettlementSpendable(a, availableBalance),
               units
@@ -1225,7 +1226,7 @@ export const createLighterProvider = (
           providerKey
         )
         return {
-          ...toBalance(a, LIGHTER_SPOT_CATEGORY_ID, registryAsset(a), balance),
+          ...toBalance(a, SPOT_CATEGORY_ID, registryAsset(a), balance),
           transferable: calculateTransferable(
             subtractDecimalString(
               balance,
@@ -1395,7 +1396,7 @@ export const createLighterProvider = (
       const registry = getMarketRegistry(requireClient(), providerKey)
       await registry.sync()
       const market = registry.require(params.marketId)
-      if (market.categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+      if (isSpotCategory(market.categoryId)) {
         return undefined
       }
       const account = await plugin.getAccount({ address: params.address }, opts)
@@ -1428,7 +1429,7 @@ export const createLighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<MarketSettings> {
       const { marketId, categoryId } = params.market
-      if (categoryId === LIGHTER_SPOT_CATEGORY_ID) {
+      if (isSpotCategory(categoryId)) {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
           `Lighter market '${marketId}' is a spot market and carries no leverage setting`

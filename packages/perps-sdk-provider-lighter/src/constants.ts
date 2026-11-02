@@ -1,9 +1,5 @@
 import { ExplorerChainId } from '@lifi/perps-sdk'
-import {
-  type FeeTier,
-  type LighterProviderKey,
-  SPOT_CATEGORY_ID,
-} from '@lifi/perps-types'
+import type { FeeTier, LighterProviderKey } from '@lifi/perps-types'
 import { LT_ASSET_ID_USDC } from './types/action.js'
 
 /**
@@ -19,17 +15,6 @@ export const LIGHTER_PROVIDER_KEY = 'lighter'
  * @public
  */
 export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
-
-/**
- * Category id for Lighter spot token holdings, matching the backend's Lighter
- * spot asset category. Every Lighter call site, REST and WebSocket, uses this
- * constant for the spot category. The perps category id is not a constant:
- * `LighterProvider.getAccount` reads it from the `/providers` category whose
- * `quoteAsset` is not null.
- *
- * @public
- */
-export const LIGHTER_SPOT_CATEGORY_ID = SPOT_CATEGORY_ID
 
 /**
  * Default mainnet REST and WS base URL for Lighter.

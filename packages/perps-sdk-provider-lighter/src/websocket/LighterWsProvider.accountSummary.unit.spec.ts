@@ -274,7 +274,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
   })
 
   // Both paths price spot assets by the markets that carry
-  // LIGHTER_SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
+  // SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
   it('streams the REST portfolioValue when /providers names a different spot category id', async () => {
     stubFetch('0', 'cash')
     const client = backendClient()
