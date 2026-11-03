@@ -14,7 +14,7 @@ Lighter provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mint
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-lighter
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-lighter viem@2.57.11
 ```
 
 ## Quick start

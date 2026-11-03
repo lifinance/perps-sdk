@@ -14,7 +14,7 @@ Hyperliquid provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.57.11
 ```
 
 ## Quick start
