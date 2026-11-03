@@ -23,8 +23,12 @@ Core of the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/) — a Typ
 Install the core SDK plus the provider plugin(s) for the DEX(es) you target:
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.57.11
 ```
+
+`viem` is a peer dependency of each SDK package, so your app installs the one
+`viem` copy that the SDK uses. The packages accept only `viem` 2.57.11, because
+`viem` 2.57.12 and later reject the Hyperliquid EIP-712 type names.
 
 | Package | Install for |
 | --- | --- |

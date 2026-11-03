@@ -16,7 +16,7 @@ Ondo authenticates in two stages, both completed client-side. A SIWE (ERC-4361) 
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-ondo
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-ondo viem@2.57.11
 ```
 
 ## Quick start
