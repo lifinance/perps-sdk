@@ -199,6 +199,13 @@ const lighterProvider: Provider = {
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
 }
 
+const lighterRobinhoodProvider: Provider = {
+  ...lighterProvider,
+  key: 'lighter-rh',
+  name: 'Lighter Robinhood',
+  shortName: 'Lighter RH',
+}
+
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
 // but the type carries no provider-specific naming.
 const warnNotice: TradeNotice = {
@@ -504,6 +511,11 @@ type _ReferralCodeIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'referralCode'>, never>
 >
 
+type _ShortNameShape = Expect<Equals<Provider['shortName'], string | undefined>>
+type _ShortNameIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'shortName'>, never>
+>
+
 // `ProviderAction` keys: the three core fields plus the optional
 // presentation, ordering, and gating hints. Catches an accidental
 // rename / addition.
@@ -589,6 +601,7 @@ export const _fixtures = {
   lighterAccountTypeSetup,
   hyperliquidProvider,
   lighterProvider,
+  lighterRobinhoodProvider,
   warnNotice,
   infoNotice,
   categoryWithWarnNotice,
@@ -639,6 +652,8 @@ export type _TypeAssertions = [
   _ChainIdIsOptional,
   _ReferralCodeShape,
   _ReferralCodeIsOptional,
+  _ShortNameShape,
+  _ShortNameIsOptional,
   _ProviderActionKeys,
   _DocsUrlShape,
   _DocsUrlIsOptional,
@@ -762,6 +777,18 @@ describe('Provider.referralCode', () => {
 
   it('is optional for providers without referral attribution', () => {
     expect(providerWithNoDescriptors.referralCode).toBeUndefined()
+  })
+})
+
+describe('Provider.shortName', () => {
+  it('carries a compact label next to the full name', () => {
+    expect(lighterRobinhoodProvider.name).toBe('Lighter Robinhood')
+    expect(lighterRobinhoodProvider.shortName).toBe('Lighter RH')
+  })
+
+  it('is optional for providers whose name is already compact', () => {
+    expect(hyperliquidProvider.shortName).toBeUndefined()
+    expect(lighterProvider.shortName).toBeUndefined()
   })
 })
 
