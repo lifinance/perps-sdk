@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 27.0.0
+
+### Major Changes
+
+- [#686](https://github.com/lifinance/perps-sdk/pull/686) [`13dcf3c`](https://github.com/lifinance/perps-sdk/commit/13dcf3c7cec2aa660d7545b2ae37d6942a417d47) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext` has a required `provider` field, because a `marketId` is unique only within one provider. The Hyperliquid, Lighter, and Ondo WS providers set `provider` to the provider key of the instance on each `marketsContext` and `marketContext` emit. The `mapMarketContext` functions of the Hyperliquid and Lighter providers take the provider key as their first argument.
+
 ## 26.1.0
 
 ### Minor Changes
