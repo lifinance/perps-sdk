@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-hyperliquid",
-  "version": "31.0.3",
+  "version": "32.0.0",
   "description": "Hyperliquid provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
@@ -63,11 +63,11 @@
   },
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
-    "big.js": "^7.0.1",
-    "viem": "^2.55.18"
+    "big.js": "^7.0.1"
   },
   "peerDependencies": {
-    "@lifi/perps-sdk": "workspace:^"
+    "@lifi/perps-sdk": "workspace:^",
+    "viem": ">=2.57.11 <2.57.12"
   },
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:^",
@@ -75,6 +75,7 @@
     "@vitest/coverage-v8": "^2.1.8",
     "madge": "^8.0.0",
     "typescript": "^5.9.2",
+    "viem": "2.57.11",
     "vitest": "^2.1.8"
   },
   "publishConfig": {

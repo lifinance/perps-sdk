@@ -9,3 +9,4 @@ minimumReleaseAgeExclude:
   - '@lifi/*'
 overrides:
   ws@8: 8.21.1
+  viem: 2.57.11

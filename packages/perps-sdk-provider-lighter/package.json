@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-lighter",
-  "version": "43.0.0",
+  "version": "44.0.0",
   "description": "Lighter provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
@@ -62,11 +62,11 @@
   },
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
-    "big.js": "^7.0.1",
-    "viem": "^2.55.18"
+    "big.js": "^7.0.1"
   },
   "peerDependencies": {
-    "@lifi/perps-sdk": "workspace:^"
+    "@lifi/perps-sdk": "workspace:^",
+    "viem": ">=2.57.11 <2.57.12"
   },
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:^",
@@ -75,6 +75,7 @@
     "madge": "^8.0.0",
     "playwright": "1.63.0",
     "typescript": "^5.9.2",
+    "viem": "2.57.11",
     "vitest": "^2.1.8"
   },
   "publishConfig": {

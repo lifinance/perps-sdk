@@ -16,7 +16,13 @@ import type { Address } from 'viem'
 export interface ProviderWithdrawableBalance {
   /** Provider-native `Asset.id`; never a display symbol. */
   assetId: string
-  /** The provider category the row draws from; the same value as `Balance.categoryId`. */
+  /**
+   * The withdrawal route: the provider category that a withdrawal from this row
+   * names. On a pooled account, a row can name a category that has no `Balance`
+   * row of the same asset. For example, a pooled collateral asset is one `spot`
+   * `Balance` row, but its withdrawable row names a `perps` or `hyperliquid`
+   * route. Do not join a withdrawable row to a `Balance` row by this value.
+   */
   categoryId: string
   /** Withdrawable amount in the asset's own units. Always greater than zero. */
   available: DecimalString
@@ -49,7 +55,13 @@ export interface ProviderWithdrawableBalance {
  */
 export interface WithdrawableBalance {
   asset: Asset
-  /** The provider category the row draws from; the same value as `Balance.categoryId`. */
+  /**
+   * The withdrawal route: the provider category that a withdrawal from this row
+   * names. On a pooled account, a row can name a category that has no `Balance`
+   * row of the same asset. For example, a pooled collateral asset is one `spot`
+   * `Balance` row, but its withdrawable row names a `perps` or `hyperliquid`
+   * route. Do not join a withdrawable row to a `Balance` row by this value.
+   */
   categoryId: string
   /** Withdrawable amount in the asset's own units. */
   available: DecimalString
