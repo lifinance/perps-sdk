@@ -8,9 +8,6 @@ import { describe, expect, it } from 'vitest'
 import {
   calculateAverageFillPrice,
   classifyFillFromPosition,
-  formatFillAmountSign,
-  formatFillCardLabel,
-  formatFillTableLabel,
   isClosingFillClassification,
   isLongSideFillClassification,
 } from './fills.js'
@@ -127,127 +124,26 @@ interface TaxonomyCase {
   c: FillClassification
   closing: boolean
   long: boolean
-  card: string
-  table: string
-  sign: '+' | '-' | ''
 }
 
 const taxonomy: TaxonomyCase[] = [
-  {
-    c: FillClassification.OPENED_LONG,
-    closing: false,
-    long: true,
-    card: 'Opened long',
-    table: 'Open long',
-    sign: '',
-  },
-  {
-    c: FillClassification.INCREASED_LONG,
-    closing: false,
-    long: true,
-    card: 'Increased long',
-    table: 'Increase long',
-    sign: '+',
-  },
-  {
-    c: FillClassification.REDUCED_LONG,
-    closing: true,
-    long: true,
-    card: 'Reduced long',
-    table: 'Reduce long',
-    sign: '-',
-  },
-  {
-    c: FillClassification.CLOSED_LONG,
-    closing: true,
-    long: true,
-    card: 'Closed long',
-    table: 'Close long',
-    sign: '',
-  },
-  {
-    c: FillClassification.SWITCHED_LONG,
-    closing: true,
-    long: true,
-    card: 'Switched to long',
-    table: 'Switch to long',
-    sign: '',
-  },
-  {
-    c: FillClassification.OPENED_SHORT,
-    closing: false,
-    long: false,
-    card: 'Opened short',
-    table: 'Open short',
-    sign: '',
-  },
-  {
-    c: FillClassification.INCREASED_SHORT,
-    closing: false,
-    long: false,
-    card: 'Increased short',
-    table: 'Increase short',
-    sign: '+',
-  },
-  {
-    c: FillClassification.REDUCED_SHORT,
-    closing: true,
-    long: false,
-    card: 'Reduced short',
-    table: 'Reduce short',
-    sign: '-',
-  },
-  {
-    c: FillClassification.CLOSED_SHORT,
-    closing: true,
-    long: false,
-    card: 'Closed short',
-    table: 'Close short',
-    sign: '',
-  },
-  {
-    c: FillClassification.SWITCHED_SHORT,
-    closing: true,
-    long: false,
-    card: 'Switched to short',
-    table: 'Switch to short',
-    sign: '',
-  },
-  {
-    c: FillClassification.SPOT_BUY,
-    closing: false,
-    long: true,
-    card: 'Bought',
-    table: 'Buy',
-    sign: '',
-  },
-  {
-    c: FillClassification.SPOT_SELL,
-    closing: false,
-    long: false,
-    card: 'Sold',
-    table: 'Sell',
-    sign: '',
-  },
-  {
-    c: FillClassification.BUY,
-    closing: false,
-    long: true,
-    card: 'Bought',
-    table: 'Buy',
-    sign: '',
-  },
-  {
-    c: FillClassification.SELL,
-    closing: false,
-    long: false,
-    card: 'Sold',
-    table: 'Sell',
-    sign: '',
-  },
+  { c: FillClassification.OPENED_LONG, closing: false, long: true },
+  { c: FillClassification.INCREASED_LONG, closing: false, long: true },
+  { c: FillClassification.REDUCED_LONG, closing: true, long: true },
+  { c: FillClassification.CLOSED_LONG, closing: true, long: true },
+  { c: FillClassification.SWITCHED_LONG, closing: true, long: true },
+  { c: FillClassification.OPENED_SHORT, closing: false, long: false },
+  { c: FillClassification.INCREASED_SHORT, closing: false, long: false },
+  { c: FillClassification.REDUCED_SHORT, closing: true, long: false },
+  { c: FillClassification.CLOSED_SHORT, closing: true, long: false },
+  { c: FillClassification.SWITCHED_SHORT, closing: true, long: false },
+  { c: FillClassification.SPOT_BUY, closing: false, long: true },
+  { c: FillClassification.SPOT_SELL, closing: false, long: false },
+  { c: FillClassification.BUY, closing: false, long: true },
+  { c: FillClassification.SELL, closing: false, long: false },
 ]
 
-describe('fill taxonomy helpers', () => {
+describe('fill taxonomy predicates', () => {
   it('covers every FillClassification member', () => {
     expect(taxonomy.map((row) => row.c).sort()).toEqual(
       Object.values(FillClassification).sort()
@@ -266,18 +162,6 @@ describe('fill taxonomy helpers', () => {
     long,
   }) => {
     expect(isLongSideFillClassification(c)).toBe(long)
-  })
-
-  it.each(taxonomy)('formatFillCardLabel($c) is "$card"', ({ c, card }) => {
-    expect(formatFillCardLabel(c)).toBe(card)
-  })
-
-  it.each(taxonomy)('formatFillTableLabel($c) is "$table"', ({ c, table }) => {
-    expect(formatFillTableLabel(c)).toBe(table)
-  })
-
-  it.each(taxonomy)('formatFillAmountSign($c) is "$sign"', ({ c, sign }) => {
-    expect(formatFillAmountSign(c)).toBe(sign)
   })
 })
 

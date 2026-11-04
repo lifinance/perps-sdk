@@ -82,9 +82,6 @@ export {
   calculateAverageFillPrice,
   classifyFillFromPosition,
   FillClassification,
-  formatFillAmountSign,
-  formatFillCardLabel,
-  formatFillTableLabel,
   isClosingFillClassification,
   isLongSideFillClassification,
 } from './math/fills.js'
