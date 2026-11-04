@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 33.0.0
+
+### Major Changes
+
+- [#688](https://github.com/lifinance/perps-sdk/pull/688) [`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `viem` is now a required peer dependency, limited to `>=2.57.11 <2.57.12`. Install `viem@2.57.11` in your app. `viem` 2.57.12 and later reject the Hyperliquid `HyperliquidTransaction:*` EIP-712 type names, so user-signed Hyperliquid actions fail before the wallet signs.
+
+### Patch Changes
+
+- Updated dependencies [[`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0)]:
+  - @lifi/perps-sdk@30.0.0
+
 ## 32.0.0
 
 ### Minor Changes
