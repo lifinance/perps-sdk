@@ -208,10 +208,30 @@ export const UNIFIED_SNAPSHOT: RecordedSnapshot = {
 
 /** Spot mids recorded alongside {@link UNIFIED_SNAPSHOT}, as `MarketContext` rows. */
 export const UNIFIED_PRICES: MarketContext[] = [
-  { marketId: '@219', midPrice: '0.032788', markPrice: '0.032788' },
-  { marketId: '@107', midPrice: '95.6955', markPrice: '95.6955' },
-  { marketId: '@305', midPrice: '0.06657', markPrice: '0.06657' },
-  { marketId: '@591', midPrice: '0.0000002', markPrice: '0.0000002' },
+  {
+    provider: 'hyperliquid',
+    marketId: '@219',
+    midPrice: '0.032788',
+    markPrice: '0.032788',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@107',
+    midPrice: '95.6955',
+    markPrice: '95.6955',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@305',
+    midPrice: '0.06657',
+    markPrice: '0.06657',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@591',
+    midPrice: '0.0000002',
+    markPrice: '0.0000002',
+  },
 ]
 
 export const UNIFIED_WITHDRAWABLE =
@@ -337,9 +357,24 @@ export const STANDARD_SNAPSHOT: RecordedSnapshot = {
 
 /** Spot mids recorded alongside {@link STANDARD_SNAPSHOT}, as `MarketContext` rows. */
 export const STANDARD_PRICES: MarketContext[] = [
-  { marketId: '@219', midPrice: '0.03372', markPrice: '0.03372' },
-  { marketId: '@107', midPrice: '95.037', markPrice: '95.037' },
-  { marketId: '@591', midPrice: '0.0000002', markPrice: '0.0000002' },
+  {
+    provider: 'hyperliquid',
+    marketId: '@219',
+    midPrice: '0.03372',
+    markPrice: '0.03372',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@107',
+    midPrice: '95.037',
+    markPrice: '95.037',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@591',
+    midPrice: '0.0000002',
+    markPrice: '0.0000002',
+  },
 ]
 
 export const STANDARD_WITHDRAWABLE =
@@ -588,8 +623,18 @@ export const PM_SNAPSHOT: RecordedSnapshot = {
  * `0` through the SDK's documented missing-price fallback.
  */
 export const PM_PRICES: MarketContext[] = [
-  { marketId: '@107', midPrice: '94.919', markPrice: '94.919' },
-  { marketId: '@591', midPrice: '0.0000002', markPrice: '0.0000002' },
+  {
+    provider: 'hyperliquid',
+    marketId: '@107',
+    midPrice: '94.919',
+    markPrice: '94.919',
+  },
+  {
+    provider: 'hyperliquid',
+    marketId: '@591',
+    midPrice: '0.0000002',
+    markPrice: '0.0000002',
+  },
 ]
 
 export const PM_WITHDRAWABLE = PM_SNAPSHOT.clearinghouseState.withdrawable

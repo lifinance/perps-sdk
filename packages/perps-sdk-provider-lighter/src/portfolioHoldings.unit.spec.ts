@@ -87,8 +87,18 @@ async function setup(
       if (url.includes('/marketsContext')) {
         return respond({
           prices: [
-            { marketId: '2048', midPrice: '2000', markPrice: '2000' },
-            { marketId: '2049', midPrice: '1', markPrice: '1' },
+            {
+              provider: 'lighter',
+              marketId: '2048',
+              midPrice: '2000',
+              markPrice: '2000',
+            },
+            {
+              provider: 'lighter',
+              marketId: '2049',
+              midPrice: '1',
+              markPrice: '1',
+            },
           ],
         })
       }

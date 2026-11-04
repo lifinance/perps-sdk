@@ -125,8 +125,9 @@ describe('PerpsMarketDisplay', () => {
 })
 
 describe('MarketContext', () => {
-  it('carries mid/mark/oracle plus the live stats fields for a perp market', () => {
+  it('carries the provider, mid/mark/oracle and the live stats fields for a perp market', () => {
     const ctx: MarketContext = {
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '60000',
       markPrice: '60010',
@@ -138,6 +139,7 @@ describe('MarketContext', () => {
       openInterest: '1000',
       funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
     }
+    expect(ctx.provider).toBe('hyperliquid')
     expect(ctx.marketId).toBe('BTC')
     expect(ctx.midPrice).toBe('60000')
     expect(ctx.markPrice).toBe('60010')
@@ -149,6 +151,7 @@ describe('MarketContext', () => {
 
   it('omits oracle and the perp-only fields for a spot market', () => {
     const ctx: MarketContext = {
+      provider: 'hyperliquid',
       marketId: '@142',
       midPrice: '0.5',
       markPrice: '0.5',

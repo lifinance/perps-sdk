@@ -1512,6 +1512,7 @@ describe('HyperliquidWsProvider', () => {
       const event = listener.mock.calls.at(-1)?.[0]
       expect(event.channel).toBe('marketsContext')
       expect(event.data.BTC).toMatchObject({
+        provider: providerKey,
         marketId: 'BTC',
         midPrice: '95001',
         markPrice: '95000',
@@ -1550,6 +1551,7 @@ describe('HyperliquidWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95001',
           markPrice: '95000',
@@ -1632,6 +1634,7 @@ describe('HyperliquidWsProvider', () => {
 
       expect(listener).toHaveBeenCalledOnce()
       expect(listener.mock.calls[0][0].data).toMatchObject({
+        provider: providerKey,
         marketId: 'BTC',
         midPrice: '95000',
         markPrice: '95000',
@@ -1672,6 +1675,7 @@ describe('HyperliquidWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.11',
           markPrice: '0.1',
@@ -1805,6 +1809,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95001',
           prevDayPrice: '95001',
@@ -1830,6 +1835,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95101',
           markPrice: '95100',
@@ -1837,6 +1843,7 @@ describe('HyperliquidWsProvider', () => {
           openInterest: '9510000',
         })
         expect(event.data.ETH).toMatchObject({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3410',
           markPrice: '3401',
@@ -1855,6 +1862,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95101',
           markPrice: '95100',
@@ -1942,6 +1950,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data['PURR/USDC']).toMatchObject({
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.1',
           markPrice: '0.1',
@@ -2070,6 +2079,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95500',
           markPrice: '95480',
@@ -2097,6 +2107,7 @@ describe('HyperliquidWsProvider', () => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.channel).toBe('marketsContext')
         expect(event.data.ETH).toEqual({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3411',
           markPrice: '3412',
@@ -2130,6 +2141,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.SOL).toEqual({
+          provider: providerKey,
           marketId: 'SOL',
           midPrice: '150',
           markPrice: '151',
@@ -2165,11 +2177,13 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toEqual({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95500',
           markPrice: '95001',
         })
         expect(event.data['xyz:NVDA']).toEqual({
+          provider: providerKey,
           marketId: 'xyz:NVDA',
           midPrice: '145.2',
           markPrice: '145.3',
@@ -2237,6 +2251,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.ETH).toEqual({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3400',
           markPrice: '3400',
@@ -2293,11 +2308,106 @@ describe('HyperliquidWsProvider', () => {
         expect(second.data).not.toBe(first.data)
         expect(second.data.BTC).toBe(first.data.BTC)
         expect(second.data['PURR/USDC']).toMatchObject({
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.11',
           markPrice: '0.1',
         })
       })
+    })
+
+    it.each([
+      'hyperliquid',
+      'hyperliquid-testnet',
+    ])('stamps the %s provider key on every emitted market context', async (key) => {
+      const spotMarket: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      marketsFetchMock.mockResolvedValue({
+        markets: [...HL_MARKETS, spotMarket],
+      })
+      const provider = new HyperliquidWsProvider(
+        'wss://api.hyperliquid.xyz/ws',
+        key,
+        freshClient()
+      )
+      const allListener = vi.fn()
+      const perpListener = vi.fn()
+      const spotListener = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: key },
+        allListener
+      )
+      await provider.subscribe(
+        { channel: 'marketContext', dex: key, marketId: 'BTC' },
+        perpListener
+      )
+      await provider.subscribe(
+        { channel: 'marketContext', dex: key, marketId: 'PURR/USDC' },
+        spotListener
+      )
+
+      seedMids({ BTC: '95001' })
+      await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          }),
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              midPx: 95001,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeSpotAssetCtx',
+          data: {
+            coin: 'PURR/USDC',
+            ctx: {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          },
+        })
+      )
+
+      await vi.waitFor(() => {
+        const data = allListener.mock.calls.at(-1)?.[0].data
+        expect(data?.BTC?.provider).toBe(key)
+        expect(data?.ETH?.provider).toBe(key)
+        expect(data?.['PURR/USDC']?.provider).toBe(key)
+      })
+      expect(perpListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
+      expect(spotListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
     })
 
     it('emits orderbook event for compact l2 snapshot frames', async () => {

@@ -2030,10 +2030,30 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
   // spot asset_id, so a price it carries must not reach the BTC spot row.
   const CONTEXT: PricesResponse = {
     prices: [
-      { marketId: '2048', midPrice: '2714.1', markPrice: '2714.1' },
-      { marketId: '2049', midPrice: 'n/a', markPrice: 'n/a' },
-      { marketId: '2050', midPrice: 'n/a', markPrice: 'n/a' },
-      { marketId: '0', midPrice: '50000', markPrice: '50000' },
+      {
+        provider: 'lighter',
+        marketId: '2048',
+        midPrice: '2714.1',
+        markPrice: '2714.1',
+      },
+      {
+        provider: 'lighter',
+        marketId: '2049',
+        midPrice: 'n/a',
+        markPrice: 'n/a',
+      },
+      {
+        provider: 'lighter',
+        marketId: '2050',
+        midPrice: 'n/a',
+        markPrice: 'n/a',
+      },
+      {
+        provider: 'lighter',
+        marketId: '0',
+        midPrice: '50000',
+        markPrice: '50000',
+      },
     ],
   }
   const ACCOUNT_WITH_SPOT = {

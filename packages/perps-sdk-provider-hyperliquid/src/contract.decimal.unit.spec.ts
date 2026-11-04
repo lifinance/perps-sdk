@@ -143,6 +143,7 @@ const SPOT_STATE: HlSpotClearinghouseState = {
 
 /** `@142` priced at `5e-7`, the sub-micro mark the spot balances value against. */
 const SPOT_PRICE: MarketContext = {
+  provider: 'hyperliquid',
   marketId: '@142',
   midPrice: '0.0000005',
   markPrice: '0.0000005',
@@ -333,12 +334,15 @@ describe('hyperliquid emits a DecimalString on every typed field', () => {
   it.each(
     MARKET_CONTEXT_PATHS
   )('spells mapMarketContext %s as a decimal', (path) => {
-    expectDecimalsAt(mapMarketContext('BTC', SUB_MICRO_CTX), path)
+    expectDecimalsAt(
+      mapMarketContext('hyperliquid', 'BTC', SUB_MICRO_CTX),
+      path
+    )
   })
 
   it('spells a computed sub-micro open-interest notional in plain notation', () => {
-    expect(mapMarketContext('BTC', SUB_MICRO_CTX).openInterest).toBe(
-      '0.00000125'
-    )
+    expect(
+      mapMarketContext('hyperliquid', 'BTC', SUB_MICRO_CTX).openInterest
+    ).toBe('0.00000125')
   })
 })

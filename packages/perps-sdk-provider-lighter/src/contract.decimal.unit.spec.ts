@@ -479,16 +479,18 @@ describe('lighter emits a DecimalString on every typed field', () => {
   it.each(
     MARKET_CONTEXT_PATHS
   )('spells mapMarketContext %s as a decimal', (path) => {
-    expectDecimalsAt(mapMarketContext(SUB_MICRO_STATS), path)
+    expectDecimalsAt(mapMarketContext('lighter', SUB_MICRO_STATS), path)
   })
 
   it('spells a sub-micro daily change and volume in plain notation', () => {
-    const context = mapMarketContext(SUB_MICRO_STATS)
+    const context = mapMarketContext('lighter', SUB_MICRO_STATS)
     expect(context.priceChange24h).toBe('0.0000001')
     expect(context.volume24h).toBe('0.0000005')
   })
 
   it('spells a sub-micro percent funding rate as a plain-notation fraction', () => {
-    expect(mapMarketContext(SUB_MICRO_STATS).funding?.rate).toBe('0.000000001')
+    expect(mapMarketContext('lighter', SUB_MICRO_STATS).funding?.rate).toBe(
+      '0.000000001'
+    )
   })
 })
