@@ -30,6 +30,7 @@ import {
   PerpsErrorCode,
   PerpsSigner,
   SigningMethod,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
@@ -494,7 +495,8 @@ export class PerpsClient {
    * Submit `signed` to `/executeAction` when every step the plugin executed
    * while signing was acknowledged, then resolve explorer links and notify the
    * plugin. Resolves to the full report: `executed`, then the `/executeAction`
-   * results. An empty report means nothing executed.
+   * results, with `retry` set when the plugin asked for one more attempt. An
+   * empty report means nothing executed.
    *
    * @throws {PerpsExecutionError} When the submission or the plugin callback
    *   throws after a result is known.
@@ -505,7 +507,7 @@ export class PerpsClient {
     action: ActionType,
     signerAddress: Address | undefined,
     { signed, executed }: SignActionsResult
-  ): Promise<ActionResult[]> {
+  ): Promise<{ results: ActionResult[]; retry: boolean }> {
     let results = executed
     if (signed.length > 0 && executed.every(isSubmittedOrAccepted)) {
       try {
@@ -524,31 +526,34 @@ export class PerpsClient {
       }
     }
     if (results.length === 0) {
-      return results
+      return { results, retry: false }
     }
 
+    let retry = false
     try {
       results = this.resolveExplorerLinks(provider, results)
-      await this.notifyExecuteResults(provider, address, results)
+      retry = await this.notifyExecuteResults(provider, address, results)
     } catch (error) {
       rethrowWithKnownResults(results, error)
     }
-    return results
+    return { results, retry }
   }
 
   /**
    * Let the plugin observe an execution report before the core returns it —
-   * e.g. to evict a locally stored credential the venue refused.
+   * e.g. to evict a locally stored credential the venue refused. Resolves
+   * `true` when the plugin asks for one more attempt.
    */
   private async notifyExecuteResults(
     provider: string,
     address: Address,
     results: ActionResult[]
-  ): Promise<void> {
+  ): Promise<boolean> {
     const plugin = this.requireProvider(provider)
-    if (typeof plugin.onExecuteResults === 'function') {
-      await plugin.onExecuteResults(address, results)
+    if (typeof plugin.onExecuteResults !== 'function') {
+      return false
     }
+    return (await plugin.onExecuteResults(address, results)) === 'retry'
   }
 
   /**
@@ -692,13 +697,14 @@ export class PerpsClient {
     } catch (error) {
       rethrowWithKnownResults(signResult.executed, error)
     }
-    return this.submitSignedActions(
+    const { results } = await this.submitSignedActions(
       provider,
       address,
       step.action,
       signerAddress,
       signResult
     )
+    return results
   }
 
   /**
@@ -1629,7 +1635,11 @@ export class PerpsClient {
     return { results }
   }
 
-  /** {@link execute}, also returning the steps `createAction` staged. */
+  /**
+   * {@link execute}, also returning the steps `createAction` staged. Runs the
+   * action once more when the plugin asks for it and nothing took effect; the
+   * second attempt's report is the answer.
+   */
   private async runAction<T extends ActionType>(params: {
     provider: string
     address: Address
@@ -1637,6 +1647,27 @@ export class PerpsClient {
     params: ActionParamsMap[T]
     onProgress?: (progress: SignActionProgress) => void
   }): Promise<{ staged: ActionStep[]; results: ActionResult[] }> {
+    const first = await this.attemptAction(params)
+    const nothingApplied = first.results.every(
+      (result) => result.status === UserActionStatus.Failed
+    )
+    const { staged, results } =
+      first.retry && nothingApplied ? await this.attemptAction(params) : first
+    return { staged, results }
+  }
+
+  /** Create, sign and submit `action` once. */
+  private async attemptAction<T extends ActionType>(params: {
+    provider: string
+    address: Address
+    action: T
+    params: ActionParamsMap[T]
+    onProgress?: (progress: SignActionProgress) => void
+  }): Promise<{
+    staged: ActionStep[]
+    results: ActionResult[]
+    retry: boolean
+  }> {
     const { provider, address, action, onProgress } = params
     const metadata = await this.getProviderMetadata(provider)
     const descriptor = findActionDescriptor(metadata, action)
@@ -1663,14 +1694,14 @@ export class PerpsClient {
       onProgress
     )
 
-    const results = await this.submitSignedActions(
+    const { results, retry } = await this.submitSignedActions(
       provider,
       address,
       action,
       signerAddress,
       signResult
     )
-    return { staged: actions, results }
+    return { staged: actions, results, retry }
   }
 
   /**

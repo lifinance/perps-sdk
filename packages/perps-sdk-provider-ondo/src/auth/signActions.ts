@@ -43,6 +43,7 @@ import {
   isOndoApiKey,
   type OndoApiKeyStore,
 } from './OndoApiKeyStore.js'
+import type { OndoClockDrift } from './OndoClockDrift.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 import { requireOndoSessionToken } from './sessionToken.js'
 
@@ -51,6 +52,7 @@ export interface OndoSignActionsDeps {
   client: OndoApiClient
   tokenStore: OndoTokenStore
   apiKeyStore: OndoApiKeyStore
+  clockDrift: OndoClockDrift
 }
 
 const ONDO_API_KEY_LIMIT = 10
@@ -273,8 +275,10 @@ async function executeSessionRequest(
  *
  * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
  * from the client-held API key (creating one on first use), attaching the
- * `hmac` material. The signed step rides the normal `executeAction` path; the
- * API secret itself never leaves the client.
+ * `hmac` material. The timestamp is the device clock corrected by
+ * `OndoClockDrift`, which measures the drift after Ondo refuses a timestamp. The
+ * signed step rides the normal `executeAction` path; the API secret itself
+ * never leaves the client.
  *
  * @public
  */
@@ -320,8 +324,7 @@ export async function ondoSignActions(
               `Ondo received a step without a request ('${step.action}') under the hmac signing method.`
             )
           }
-          // Stamped immediately before executeAction; Ondo enforces a 30s window.
-          const timestampMs = Date.now()
+          const timestampMs = await deps.clockDrift.nowMs()
           const signature = await hmacSignRequest(apiKey.apiSecret, {
             timestampMs,
             method: step.request.method,

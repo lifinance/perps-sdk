@@ -31,6 +31,7 @@ import {
 } from '../utils/apiClient.js'
 import { hmacSignRequest } from './hmac.js'
 import { OndoApiKeyStore } from './OndoApiKeyStore.js'
+import { OndoClockDrift } from './OndoClockDrift.js'
 import { OndoTokenStore } from './OndoTokenStore.js'
 import { ondoSignActions } from './signActions.js'
 
@@ -172,10 +173,20 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-const makeDeps = (fetchImpl: typeof fetch) => ({
+// The default drift reads `/status` through the deps transport, so a status
+// read during signing shows up in that transport's calls.
+const makeDeps = (
+  fetchImpl: typeof fetch,
+  clockDrift = new OndoClockDrift(
+    createMemoryStorage(),
+    BASE_URL,
+    () => new OndoApiClient(BASE_URL, { fetchImpl })
+  )
+) => ({
   client: new OndoApiClient(BASE_URL, { fetchImpl }),
   tokenStore: new OndoTokenStore(createMemoryStorage(), BASE_URL),
   apiKeyStore: new OndoApiKeyStore(createMemoryStorage(), BASE_URL),
+  clockDrift,
 })
 
 describe('ondoSignActions — SIWE', () => {
@@ -343,7 +354,8 @@ describe('ondoSignActions — SIWE', () => {
 
 describe('ondoSignActions — HMAC', () => {
   it('signs each request step with the stored API key and attaches the hmac material', async () => {
-    const deps = makeDeps(vi.fn<typeof fetch>())
+    const fetchImpl = vi.fn<typeof fetch>()
+    const deps = makeDeps(fetchImpl)
     const apiKey = apiKeyFixture()
     await deps.apiKeyStore.set(account.address, apiKey)
 
@@ -366,6 +378,7 @@ describe('ondoSignActions — HMAC', () => {
     const { timestampMs } = step.hmac
     expect(timestampMs).toBeGreaterThanOrEqual(before)
     expect(timestampMs).toBeLessThanOrEqual(after)
+    expect(fetchImpl).not.toHaveBeenCalled()
 
     const expected = await hmacSignRequest(apiKey.apiSecret, {
       timestampMs,
@@ -374,6 +387,45 @@ describe('ondoSignActions — HMAC', () => {
       body: PLACE_ORDER_STEP.request.body,
     })
     expect(step.hmac.signature).toBe(expected)
+  })
+
+  it('stamps the device clock moved by the measured drift when the device clock runs 10s ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const clockDrift = new OndoClockDrift(
+        createMemoryStorage(),
+        BASE_URL,
+        () =>
+          new OndoApiClient(BASE_URL, {
+            fetchImpl: async () =>
+              jsonResponse({
+                success: true,
+                result: {
+                  marketStatus: 'open',
+                  serverTime: Date.now() - 10_000,
+                },
+              }),
+          })
+      )
+      await clockDrift.measure()
+      const fetchImpl = vi.fn<typeof fetch>()
+      const deps = makeDeps(fetchImpl, clockDrift)
+      await deps.apiKeyStore.set(account.address, apiKeyFixture())
+
+      const signed = (
+        await ondoSignActions(
+          deps,
+          SigningMethod.HMAC,
+          [PLACE_ORDER_STEP],
+          account.address
+        )
+      ).signed as HmacSignedActionStep[]
+
+      expect(signed[0].hmac.timestampMs).toBe(Date.now() - 10_000)
+      expect(fetchImpl).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('lists an empty registry before it creates and stores a JWT-authorized API key', async () => {

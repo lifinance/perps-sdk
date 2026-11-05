@@ -1,6 +1,6 @@
 /** @internal */
 export interface OndoHmacRequest {
-  /** Milliseconds since epoch; Ondo enforces a 30-second signing window. */
+  /** Milliseconds since epoch; Ondo rejects more than 10s behind or 1s ahead of its clock. */
   timestampMs: number
   method: string
   /** Venue-relative path including any query string. */

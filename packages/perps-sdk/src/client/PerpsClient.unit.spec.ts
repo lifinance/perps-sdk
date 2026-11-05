@@ -5567,6 +5567,94 @@ describe('PerpsClient', () => {
         },
       ])
     })
+
+    const TIMESTAMP_REFUSED: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Failed,
+      error: 'Ondo rejected the request',
+      errorCode: PerpsErrorCode.NonceExpired,
+    }
+    const PLACED: ActionResult = {
+      action: ActionType.PLACE_ORDER,
+      status: UserActionStatus.Submitted,
+      orderId: 'placed',
+    }
+
+    // Answers each `/executeAction` with the next report; counts `/createAction`.
+    function useExecuteReports(...reports: ActionResult[][]) {
+      const calls = { create: 0, execute: 0 }
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [...mockProviders.providers, ondoProviderMetadata],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, () => {
+          calls.create += 1
+          return HttpResponse.json({
+            actions: [hmacStep],
+          } satisfies CreateActionResponse)
+        }),
+        http.post(`${BASE_URL}/executeAction`, () => {
+          const results = reports[calls.execute] ?? []
+          calls.execute += 1
+          return HttpResponse.json({ results } satisfies ExecuteActionResponse)
+        })
+      )
+      return calls
+    }
+
+    function withVerdict(verdict: 'retry' | undefined) {
+      const ondo = createHmacProvider()
+      ondo.onExecuteResults = vi.fn(async () => verdict)
+      return ondo
+    }
+
+    const placeOndoOrder = (plugin: PerpsProviderPlugin) =>
+      createOndoClient(plugin).execute({
+        provider: 'ondo',
+        address: ondoAddress,
+        action: ActionType.PLACE_ORDER,
+        params: orderParams,
+      })
+
+    it('creates, signs and executes once more when the plugin asks for a retry and nothing applied', async () => {
+      const calls = useExecuteReports([TIMESTAMP_REFUSED], [PLACED])
+      const ondo = withVerdict('retry')
+
+      const result = await placeOndoOrder(ondo)
+
+      expect(calls).toEqual({ create: 2, execute: 2 })
+      expect(ondo.signActions).toHaveBeenCalledTimes(2)
+      expect(result.results).toEqual([PLACED])
+    })
+
+    it('returns the first report when the plugin asks for no retry', async () => {
+      const calls = useExecuteReports([TIMESTAMP_REFUSED], [PLACED])
+
+      const result = await placeOndoOrder(withVerdict(undefined))
+
+      expect(calls).toEqual({ create: 1, execute: 1 })
+      expect(result.results).toEqual([TIMESTAMP_REFUSED])
+    })
+
+    it('does not retry when a step in the report took effect', async () => {
+      const calls = useExecuteReports([PLACED, TIMESTAMP_REFUSED], [PLACED])
+
+      const result = await placeOndoOrder(withVerdict('retry'))
+
+      expect(calls).toEqual({ create: 1, execute: 1 })
+      expect(result.results).toEqual([PLACED, TIMESTAMP_REFUSED])
+    })
+
+    it('retries at most once and returns the second refusal', async () => {
+      const calls = useExecuteReports([TIMESTAMP_REFUSED], [TIMESTAMP_REFUSED])
+
+      const result = await placeOndoOrder(withVerdict('retry'))
+
+      expect(calls).toEqual({ create: 2, execute: 2 })
+      expect(result.results).toEqual([TIMESTAMP_REFUSED])
+    })
   })
 
   describe('switchChain — SDK-owned wallet chain switching', () => {

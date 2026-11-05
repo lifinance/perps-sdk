@@ -435,3 +435,10 @@ export interface OndoRestMarkPrice {
   lastExternalPrice: string
   lastUpdatedTime: string
 }
+
+/** Mirrors Ondo's `StatusResult` (the `/status` result). @public */
+export interface OndoStatus {
+  marketStatus: string
+  /** Ondo's clock, in Unix milliseconds. */
+  serverTime: number
+}

@@ -758,9 +758,14 @@ export interface PerpsProviderPlugin {
    * Observe the execution report of each `execute` call: the results of the
    * steps the plugin executed while signing, then the `/executeAction`
    * results. Lets a provider react to structured statuses — e.g. evicting a
-   * locally stored credential the venue refused.
+   * locally stored credential the venue refused. Resolve to `'retry'` to have
+   * core create, sign and execute the action once more; core retries at most
+   * once per `execute`, and only when every result is `Failed`.
    */
-  onExecuteResults?(address: Address, results: ActionResult[]): Promise<void>
+  onExecuteResults?(
+    address: Address,
+    results: ActionResult[]
+  ): Promise<'retry' | void>
 
   /**
    * Resolve a venue transaction hash to a block-explorer URL. Core calls it for
