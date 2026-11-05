@@ -22,7 +22,6 @@ import { type Address, getAddress } from 'viem'
 import {
   ONDO_API_KEY_NAME,
   ONDO_API_KEY_SCOPES,
-  ONDO_HMAC_TIMESTAMP_LAG_MS,
   ONDO_PRIVACY_VERSION,
   ONDO_TERMS_VERSION,
   ONDO_WITHDRAWAL_ADDRESS_LABEL,
@@ -44,7 +43,7 @@ import {
   isOndoApiKey,
   type OndoApiKeyStore,
 } from './OndoApiKeyStore.js'
-import type { OndoServerClock } from './OndoServerClock.js'
+import type { OndoClockDrift } from './OndoClockDrift.js'
 import type { OndoTokenStore } from './OndoTokenStore.js'
 import { requireOndoSessionToken } from './sessionToken.js'
 
@@ -53,7 +52,7 @@ export interface OndoSignActionsDeps {
   client: OndoApiClient
   tokenStore: OndoTokenStore
   apiKeyStore: OndoApiKeyStore
-  serverClock: OndoServerClock
+  clockDrift: OndoClockDrift
 }
 
 const ONDO_API_KEY_LIMIT = 10
@@ -276,8 +275,8 @@ async function executeSessionRequest(
  *
  * `HMAC` computes a per-request HMAC-SHA256 signature over each request step
  * from the client-held API key (creating one on first use), attaching the
- * `hmac` material. The timestamp follows Ondo's clock through `OndoServerClock`,
- * so a client clock that runs ahead does not fail the signing window. The
+ * `hmac` material. The timestamp is the device clock corrected by
+ * `OndoClockDrift`, which measures the drift after Ondo refuses a timestamp. The
  * signed step rides the normal `executeAction` path; the API secret itself
  * never leaves the client.
  *
@@ -317,7 +316,6 @@ export async function ondoSignActions(
 
     case SigningMethod.HMAC: {
       const apiKey = await ensureApiKey(deps, address)
-      await deps.serverClock.sync()
       const signed = await Promise.all(
         steps.map(async (step): Promise<HmacSignedActionStep> => {
           if (!hasRequest(step)) {
@@ -326,8 +324,7 @@ export async function ondoSignActions(
               `Ondo received a step without a request ('${step.action}') under the hmac signing method.`
             )
           }
-          const timestampMs =
-            deps.serverClock.estimateServerTimeMs() - ONDO_HMAC_TIMESTAMP_LAG_MS
+          const timestampMs = await deps.clockDrift.nowMs()
           const signature = await hmacSignRequest(apiKey.apiSecret, {
             timestampMs,
             method: step.request.method,

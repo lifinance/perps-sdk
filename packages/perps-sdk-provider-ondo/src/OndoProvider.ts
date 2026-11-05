@@ -83,7 +83,7 @@ import { type Address, getAddress } from 'viem'
 import { projectOndoConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import { hasOndoApiKeyScopes, OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
-import { OndoServerClock } from './auth/OndoServerClock.js'
+import { OndoClockDrift } from './auth/OndoClockDrift.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
 import {
   ondoSessionRejectedError,
@@ -222,7 +222,7 @@ export const ondoProvider = (
     })
   }
 
-  const serverClock = new OndoServerClock(apiClient)
+  const clockDrift = new OndoClockDrift(storage, apiUrl, apiClient)
 
   const marketRegistry = () =>
     getMarketRegistry(requireClient(), ONDO_PROVIDER_KEY)
@@ -1203,7 +1203,7 @@ export const ondoProvider = (
     ): Promise<SignActionsResult> {
       try {
         return await ondoSignActions(
-          { client: apiClient(), tokenStore, apiKeyStore, serverClock },
+          { client: apiClient(), tokenStore, apiKeyStore, clockDrift },
           method,
           steps,
           address,
@@ -1222,10 +1222,13 @@ export const ondoProvider = (
     // locally stored API key is dead (deleted or descoped venue-side); evict
     // it so REGISTER_API_KEY re-stages instead of every action failing. An
     // indeterminate or unverified result proves nothing about the key.
+    // NonceExpired is Ondo refusing the HMAC timestamp: the device clock
+    // drifted, so measure the drift and have core run the action again. A
+    // failed measurement leaves the original refusal as the answer.
     async onExecuteResults(
       address: Address,
       results: ActionResult[]
-    ): Promise<void> {
+    ): Promise<'retry' | undefined> {
       const unauthorized = results.some(
         (result) =>
           result.status === UserActionStatus.Failed &&
@@ -1234,6 +1237,15 @@ export const ondoProvider = (
       if (unauthorized) {
         await apiKeyStore.remove(address)
       }
+      const timestampRefused = results.some(
+        (result) =>
+          result.status === UserActionStatus.Failed &&
+          result.errorCode === PerpsErrorCode.NonceExpired
+      )
+      if (timestampRefused && (await clockDrift.measure())) {
+        return 'retry'
+      }
+      return undefined
     },
   }
 }

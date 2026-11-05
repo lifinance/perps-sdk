@@ -11,6 +11,7 @@ import {
 } from '@lifi/perps-sdk'
 import type {
   AccountResponse,
+  ActionResult,
   HmacActionStep,
   HmacSignedActionStep,
   OndoAccountBalance,
@@ -46,7 +47,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
-import { ONDO_HMAC_TIMESTAMP_LAG_MS, ONDO_PROVIDER_KEY } from './constants.js'
+import { ONDO_PROVIDER_KEY } from './constants.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
@@ -403,8 +404,8 @@ let maxOrderSizeResponse: { body: unknown; status: number }
 let leverageResponse: { body: unknown; status: number }
 /** `GET /v1/perps/mark_prices` response body and HTTP status. */
 let markPricesResponse: { body: unknown; status: number }
-/** How far the `GET /status` `serverTime` sits from the client clock. */
-let serverTimeOffsetMs: number
+/** `GET /status` answer: `serverTime` is the client clock moved by `offsetMs`. */
+let statusAnswer: { offsetMs: number; status: number }
 
 const PORTFOLIO_GRAPH_RESULT: OndoPortfolioGraphPoint[] = [
   {
@@ -460,7 +461,7 @@ beforeEach(() => {
   maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
   leverageResponse = { body: envelope(LEVERAGE_RESULT), status: 200 }
   markPricesResponse = { body: envelope(MARK_PRICES_RESULT), status: 200 }
-  serverTimeOffsetMs = 0
+  statusAnswer = { offsetMs: 0, status: 200 }
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('backend.test/v1/perps/markets')) {
@@ -474,12 +475,17 @@ beforeEach(() => {
     }
     recorded.push({ url: u, init })
     if (u === `${API_URL}/status`) {
-      return respond(
-        envelope({
-          marketStatus: 'open',
-          serverTime: Date.now() + serverTimeOffsetMs,
-        })
-      )
+      return statusAnswer.status === 200
+        ? respond(
+            envelope({
+              marketStatus: 'open',
+              serverTime: Date.now() + statusAnswer.offsetMs,
+            })
+          )
+        : respond(
+            { success: false, error: 'bad request', error_code: 'unknown' },
+            statusAnswer.status
+          )
     }
     if (u.includes('/v1/perps/balance')) {
       return respond(envelope(balanceResult))
@@ -3084,16 +3090,16 @@ describe('OndoProvider — projectConfig', () => {
   })
 })
 
-describe('OndoProvider — write-action surface', () => {
-  const PLACE_ORDER_STEP: HmacActionStep = {
-    action: ActionType.PLACE_ORDER,
-    request: {
-      method: 'POST',
-      path: '/v1/perps/orders',
-      body: '{"market":"AAPL-USD.P","side":"buy","size":"1","type":"market"}',
-    },
-  }
+const PLACE_ORDER_STEP: HmacActionStep = {
+  action: ActionType.PLACE_ORDER,
+  request: {
+    method: 'POST',
+    path: '/v1/perps/orders',
+    body: '{"market":"AAPL-USD.P","side":"buy","size":"1","type":"market"}',
+  },
+}
 
+describe('OndoProvider — write-action surface', () => {
   it('exposes no explorer hook — Ondo settles offchain, so execute results carry no tx link', () => {
     expect(ondoProvider().resolveExplorerLink).toBeUndefined()
   })
@@ -3125,10 +3131,9 @@ describe('OndoProvider — write-action surface', () => {
     expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('signActions(HMAC) stamps the Ondo status clock minus the lag when the client clock runs 10s ahead', async () => {
+  it('signActions(HMAC) stamps the client clock and reads no status while Ondo accepts timestamps', async () => {
     const { provider, storage } = await loggedInProvider()
     await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
-    serverTimeOffsetMs = -10_000
 
     const before = Date.now()
     const result = await provider.signActions?.(
@@ -3139,10 +3144,9 @@ describe('OndoProvider — write-action surface', () => {
     const after = Date.now()
 
     const [step] = (result?.signed ?? []) as HmacSignedActionStep[]
-    const lagMs = 10_000 + ONDO_HMAC_TIMESTAMP_LAG_MS
-    expect(step.hmac.timestampMs).toBeGreaterThanOrEqual(before - lagMs)
-    expect(step.hmac.timestampMs).toBeLessThanOrEqual(after - lagMs)
-    expect(recorded.map((r) => r.url)).toContain(`${API_URL}/status`)
+    expect(step.hmac.timestampMs).toBeGreaterThanOrEqual(before)
+    expect(step.hmac.timestampMs).toBeLessThanOrEqual(after)
+    expect(recorded.map((r) => r.url)).not.toContain(`${API_URL}/status`)
   })
 
   it('signActions(HMAC) lists keys before it creates a JWT-authorized key', async () => {
@@ -3316,6 +3320,98 @@ describe('OndoProvider — onExecuteResults key eviction', () => {
     ])
 
     await expect(keyStore.get(ADDRESS)).resolves.toEqual(API_KEY)
+  })
+})
+
+describe('OndoProvider — onExecuteResults clock drift', () => {
+  const TIMESTAMP_REFUSED: ActionResult = {
+    action: ActionType.PLACE_ORDER,
+    status: UserActionStatus.Failed,
+    error:
+      'Ondo rejected the request — its signature timestamp is outside the signing window: Timestamp too far in the future',
+    errorCode: PerpsErrorCode.NonceExpired,
+  }
+
+  const signTimestampMs = async (
+    provider: PerpsProviderPlugin
+  ): Promise<number> => {
+    const result = await provider.signActions?.(
+      SigningMethod.HMAC,
+      [PLACE_ORDER_STEP],
+      ADDRESS
+    )
+    const [step] = (result?.signed ?? []) as HmacSignedActionStep[]
+    return step.hmac.timestampMs
+  }
+
+  it('measures the drift after a NonceExpired refusal, asks for a retry, and signs the retry on the Ondo clock', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+    statusAnswer = { offsetMs: -10_000, status: 200 }
+
+    const verdict = await provider.onExecuteResults?.(ADDRESS, [
+      TIMESTAMP_REFUSED,
+    ])
+    const before = Date.now()
+    const timestampMs = await signTimestampMs(provider)
+    const after = Date.now()
+
+    expect(verdict).toBe('retry')
+    expect(timestampMs).toBeGreaterThanOrEqual(before - 10_000 - 1_000)
+    expect(timestampMs).toBeLessThanOrEqual(after - 10_000)
+    expect(recorded.filter((r) => r.url === `${API_URL}/status`)).toHaveLength(
+      1
+    )
+  })
+
+  it('keeps the drift for a new provider instance on the same storage', async () => {
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+    statusAnswer = { offsetMs: 12_000, status: 200 }
+    await provider.onExecuteResults?.(ADDRESS, [TIMESTAMP_REFUSED])
+
+    const reloaded = ondoProvider({ apiUrl: API_URL, storage })
+    reloaded.bind(STUB_CLIENT)
+    const before = Date.now()
+    const timestampMs = await signTimestampMs(reloaded)
+    const after = Date.now()
+
+    expect(timestampMs).toBeGreaterThanOrEqual(before + 12_000 - 1_000)
+    expect(timestampMs).toBeLessThanOrEqual(after + 12_000)
+  })
+
+  it('returns the original refusal, with no retry and no drift, when the status read fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { provider, storage } = await loggedInProvider()
+    await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
+    statusAnswer = { offsetMs: -10_000, status: 400 }
+
+    const verdict = await provider.onExecuteResults?.(ADDRESS, [
+      TIMESTAMP_REFUSED,
+    ])
+    const before = Date.now()
+    const timestampMs = await signTimestampMs(provider)
+    const after = Date.now()
+
+    expect(verdict).toBeUndefined()
+    expect(timestampMs).toBeGreaterThanOrEqual(before)
+    expect(timestampMs).toBeLessThanOrEqual(after)
+  })
+
+  it('reads no status for other failures', async () => {
+    const { provider } = await loggedInProvider()
+
+    const verdict = await provider.onExecuteResults?.(ADDRESS, [
+      {
+        action: ActionType.PLACE_ORDER,
+        status: UserActionStatus.Failed,
+        error: 'insufficient margin',
+        errorCode: PerpsErrorCode.InsufficientMargin,
+      },
+    ])
+
+    expect(verdict).toBeUndefined()
+    expect(recorded.map((r) => r.url)).not.toContain(`${API_URL}/status`)
   })
 })
 
