@@ -82,6 +82,8 @@ export {
   calculateAverageFillPrice,
   classifyFillFromPosition,
   FillClassification,
+  isClosingFillClassification,
+  isLongSideFillClassification,
 } from './math/fills.js'
 export type { ExpectedPnl } from './math/order.js'
 export {
