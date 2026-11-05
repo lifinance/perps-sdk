@@ -72,3 +72,12 @@ export const ONDO_PRIVACY_VERSION = 1
  * @public
  */
 export const ONDO_WITHDRAWAL_ADDRESS_LABEL = 'LI.FI'
+
+/**
+ * How far behind the estimated Ondo clock the SDK stamps HMAC timestamps. Ondo
+ * accepts 10s behind its clock but only 1s ahead, so the lag absorbs clock
+ * estimate error on the strict side.
+ *
+ * @public
+ */
+export const ONDO_HMAC_TIMESTAMP_LAG_MS = 500

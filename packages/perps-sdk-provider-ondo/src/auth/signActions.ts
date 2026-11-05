@@ -22,6 +22,7 @@ import { type Address, getAddress } from 'viem'
 import {
   ONDO_API_KEY_NAME,
   ONDO_API_KEY_SCOPES,
+  ONDO_HMAC_TIMESTAMP_LAG_MS,
   ONDO_PRIVACY_VERSION,
   ONDO_TERMS_VERSION,
   ONDO_WITHDRAWAL_ADDRESS_LABEL,
@@ -325,7 +326,8 @@ export async function ondoSignActions(
               `Ondo received a step without a request ('${step.action}') under the hmac signing method.`
             )
           }
-          const timestampMs = deps.serverClock.estimateServerTimeMs()
+          const timestampMs =
+            deps.serverClock.estimateServerTimeMs() - ONDO_HMAC_TIMESTAMP_LAG_MS
           const signature = await hmacSignRequest(apiKey.apiSecret, {
             timestampMs,
             method: step.request.method,

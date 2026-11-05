@@ -83,6 +83,19 @@ describe('OndoServerClock', () => {
     expect(clock.estimateServerTimeMs()).toBe(SERVER_TIME_MS)
   })
 
+  it('anchors the server time at the round-trip midpoint', async () => {
+    const clock = clockWith(
+      vi.fn<typeof fetch>().mockImplementation(async () => {
+        vi.setSystemTime(CLIENT_NOW_MS + 2_000)
+        return statusResponse(SERVER_TIME_MS)
+      })
+    )
+
+    await clock.sync()
+
+    expect(clock.estimateServerTimeMs()).toBe(SERVER_TIME_MS + 1_000)
+  })
+
   it('reuses a measurement for one minute, then measures again', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()

@@ -46,7 +46,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
-import { ONDO_PROVIDER_KEY } from './constants.js'
+import { ONDO_HMAC_TIMESTAMP_LAG_MS, ONDO_PROVIDER_KEY } from './constants.js'
 import { ondoProvider } from './OndoProvider.js'
 import type { OndoApiKey, OndoAuthToken } from './types/auth.js'
 import type {
@@ -3125,21 +3125,23 @@ describe('OndoProvider — write-action surface', () => {
     expect(JSON.stringify(step.hmac)).not.toContain(API_KEY.apiSecret)
   })
 
-  it('signActions(HMAC) stamps the Ondo status clock when the client clock runs 10s ahead', async () => {
+  it('signActions(HMAC) stamps the Ondo status clock minus the lag when the client clock runs 10s ahead', async () => {
     const { provider, storage } = await loggedInProvider()
     await new OndoApiKeyStore(storage, API_URL).set(ADDRESS, API_KEY)
     serverTimeOffsetMs = -10_000
 
+    const before = Date.now()
     const result = await provider.signActions?.(
       SigningMethod.HMAC,
       [PLACE_ORDER_STEP],
       ADDRESS
     )
-    const serverNowMs = Date.now() - 10_000
+    const after = Date.now()
 
     const [step] = (result?.signed ?? []) as HmacSignedActionStep[]
-    expect(step.hmac.timestampMs).toBeLessThanOrEqual(serverNowMs)
-    expect(serverNowMs - step.hmac.timestampMs).toBeLessThan(1_000)
+    const lagMs = 10_000 + ONDO_HMAC_TIMESTAMP_LAG_MS
+    expect(step.hmac.timestampMs).toBeGreaterThanOrEqual(before - lagMs)
+    expect(step.hmac.timestampMs).toBeLessThanOrEqual(after - lagMs)
     expect(recorded.map((r) => r.url)).toContain(`${API_URL}/status`)
   })
 

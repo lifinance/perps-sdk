@@ -41,6 +41,7 @@ export class OndoServerClock {
   }
 
   private async measure(): Promise<void> {
+    const sentAtMs = Date.now()
     let status: OndoStatus
     try {
       status = await this.client().get<typeof status>('/status')
@@ -54,9 +55,9 @@ export class OndoServerClock {
       this.warnOnce('time', `${SYNC_FAILED}: invalid serverTime`)
       return
     }
-    // Against the receive time the offset errs behind the server, the side
-    // Ondo's window tolerates.
-    this.offsetMs = serverTimeMs - receivedAtMs
+    // Ondo stamps serverTime mid-flight, so the round-trip midpoint keeps the
+    // latency error centered on zero.
+    this.offsetMs = Math.round(serverTimeMs - (sentAtMs + receivedAtMs) / 2)
     this.syncedAtMs = receivedAtMs
   }
 }

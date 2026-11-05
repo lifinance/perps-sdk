@@ -22,7 +22,7 @@ import { createWalletClient, http, verifyMessage } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
-import { ONDO_PROVIDER_KEY } from '../constants.js'
+import { ONDO_HMAC_TIMESTAMP_LAG_MS, ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoApiKey, OndoAuthToken } from '../types/auth.js'
 import type { OndoApiKeyInfo, OndoCreatedApiKey } from '../types/wire.js'
 import {
@@ -381,8 +381,10 @@ describe('ondoSignActions — HMAC', () => {
     expect(step.hmac.keyId).toBe(apiKey.keyId)
 
     const { timestampMs } = step.hmac
-    expect(timestampMs).toBeGreaterThanOrEqual(before)
-    expect(timestampMs).toBeLessThanOrEqual(after)
+    expect(timestampMs).toBeGreaterThanOrEqual(
+      before - ONDO_HMAC_TIMESTAMP_LAG_MS
+    )
+    expect(timestampMs).toBeLessThanOrEqual(after - ONDO_HMAC_TIMESTAMP_LAG_MS)
 
     const expected = await hmacSignRequest(apiKey.apiSecret, {
       timestampMs,
@@ -393,23 +395,27 @@ describe('ondoSignActions — HMAC', () => {
     expect(step.hmac.signature).toBe(expected)
   })
 
-  it('stamps the Ondo clock, not the client clock, when the client clock runs 10s ahead', async () => {
-    const deps = makeDeps(vi.fn<typeof fetch>(), serverClockAt(-10_000))
-    await deps.apiKeyStore.set(account.address, apiKeyFixture())
+  it('stamps the Ondo clock minus the lag, not the client clock, when the client clock runs 10s ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const deps = makeDeps(vi.fn<typeof fetch>(), serverClockAt(-10_000))
+      await deps.apiKeyStore.set(account.address, apiKeyFixture())
 
-    const signed = (
-      await ondoSignActions(
-        deps,
-        SigningMethod.HMAC,
-        [PLACE_ORDER_STEP],
-        account.address
+      const signed = (
+        await ondoSignActions(
+          deps,
+          SigningMethod.HMAC,
+          [PLACE_ORDER_STEP],
+          account.address
+        )
+      ).signed as HmacSignedActionStep[]
+
+      expect(signed[0].hmac.timestampMs).toBe(
+        Date.now() - 10_000 - ONDO_HMAC_TIMESTAMP_LAG_MS
       )
-    ).signed as HmacSignedActionStep[]
-    const serverNowMs = Date.now() - 10_000
-
-    const { timestampMs } = signed[0].hmac
-    expect(timestampMs).toBeLessThanOrEqual(serverNowMs)
-    expect(serverNowMs - timestampMs).toBeLessThan(1_000)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('signs with the client clock when the clock sync fails', async () => {
@@ -437,8 +443,10 @@ describe('ondoSignActions — HMAC', () => {
     const after = Date.now()
 
     const { timestampMs } = signed[0].hmac
-    expect(timestampMs).toBeGreaterThanOrEqual(before)
-    expect(timestampMs).toBeLessThanOrEqual(after)
+    expect(timestampMs).toBeGreaterThanOrEqual(
+      before - ONDO_HMAC_TIMESTAMP_LAG_MS
+    )
+    expect(timestampMs).toBeLessThanOrEqual(after - ONDO_HMAC_TIMESTAMP_LAG_MS)
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })
