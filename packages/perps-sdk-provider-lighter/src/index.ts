@@ -34,7 +34,6 @@ export {
   LIGHTER_RH_REST_URL,
   LIGHTER_RH_SIGNER_CHAIN_ID,
   LIGHTER_RH_WS_URL,
-  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 export { lighterDepositFlow } from './depositFlow.js'
 export type {

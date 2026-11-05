@@ -388,5 +388,11 @@ export const mapOrder = (
     default:
       throw venueError(`Unknown Hyperliquid time in force: ${o.tif}`)
   }
-  return { ...base, type, price: o.limitPx, timeInForce }
+  return {
+    ...base,
+    type,
+    price: o.limitPx,
+    timeInForce,
+    ...(o.tif === 'LiquidationMarket' ? { isLiquidation: true } : {}),
+  }
 }

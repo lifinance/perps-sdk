@@ -9,6 +9,7 @@ import {
   PerpsError,
   type PerpsSDKClient,
   type ProviderSetup,
+  ROBINHOOD_NATIVE_GAS,
   ROBINHOOD_USDG,
   type StorageAdapter,
   safeSnapOrderPrice,
@@ -31,6 +32,7 @@ import {
   PositionMarginAdjustment,
   type PricesResponse,
   SigningMethod,
+  SPOT_CATEGORY_ID,
   type WasmBlobActionStep,
   type WasmBlobSignedActionStep,
   WithdrawalType,
@@ -50,7 +52,6 @@ import {
   LIGHTER_RH_DEPLOYMENT,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_REST_URL,
-  LIGHTER_SPOT_CATEGORY_ID,
 } from './constants.js'
 import {
   type LighterPerpsProvider,
@@ -61,6 +62,7 @@ import {
 import { seedReadOnlyToken as seedStoredReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type {
   LtAccountPnL,
+  LtAccountPosition,
   LtLiqTrade,
   LtLiquidationInfo,
   LtPnLEntry,
@@ -70,6 +72,7 @@ import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from './types/index.js'
+import { mapPosition } from './utils/mapPosition.js'
 
 // The provider builds its own `LighterSigner`, so the Go runtime is the only
 // seam left for tests: this fake records the deployment facts each instance
@@ -705,8 +708,74 @@ describe('LighterProvider — order formatting and liquidation surface', () => {
       entryPrice: '50000',
       leverage: '10',
       isLong: true,
+      marginMode: MarginMode.ISOLATED,
     })
     expect(liq).toBe('45546.5587044534412955465587044534412955465587')
+  })
+
+  it('gives no liquidation estimate for a cross order', () => {
+    expect(
+      lighterProvider().estimateLiquidationPrice(btcMarket, {
+        entryPrice: '50000',
+        leverage: '10',
+        isLong: true,
+        marginMode: MarginMode.CROSS,
+      })
+    ).toBeUndefined()
+  })
+
+  describe('with an open position', () => {
+    const row = (overrides: Partial<LtAccountPosition>): LtAccountPosition => ({
+      market_id: 1,
+      symbol: 'BTC',
+      initial_margin_fraction: '10.00',
+      open_order_count: 0,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '1.00000',
+      avg_entry_price: '90000.0',
+      position_value: '100000.000000',
+      unrealized_pnl: '10000.000000',
+      realized_pnl: '0.000000',
+      liquidation_price: '81970.0',
+      total_funding_paid_out: '0',
+      margin_mode: LT_MARGIN_MODE_ISOLATED,
+      allocated_margin: '9000.000000',
+      total_discount: '0',
+      ...overrides,
+    })
+    const estimate = (position: LtAccountPosition, isLong = true) =>
+      lighterProvider().estimateLiquidationPrice(btcMarket, {
+        entryPrice: '100000',
+        leverage: '10',
+        isLong,
+        marginMode: MarginMode.ISOLATED,
+        size: '1',
+        position: mapPosition(position, btcMarket),
+      })
+
+    it('blends an isolated add with allocated_margin as the collateral', () => {
+      // allocated_margin excludes the unrealized PnL
+      // equity at 100000 = 9000 + 1 × (100000 − 90000) + 100000 ÷ 10 = 29000
+      // margin available = 29000 − 0.012 × 2 × 100000 = 26600, per unit 13300
+      // liq = 100000 − 13300 / 0.988
+      expect(estimate(row({}))).toBe(
+        '86538.4615384615384615384615384615384615384615'
+      )
+    })
+
+    it('gives no estimate for a cross position', () => {
+      expect(
+        estimate(
+          row({ margin_mode: LT_MARGIN_MODE_CROSS, allocated_margin: '0' })
+        )
+      ).toBeUndefined()
+    })
+
+    it('gives no estimate for an order against the side of the position', () => {
+      expect(estimate(row({}), false)).toBeUndefined()
+    })
   })
 })
 
@@ -1216,13 +1285,13 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '1',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '0.00609091',
         max: '0.00609091',
       },
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '10.9886',
         max: '10.9886',
       },
@@ -1277,7 +1346,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
@@ -1302,7 +1371,7 @@ describe('LighterProvider — getWithdrawableBalances', () => {
     ).resolves.toEqual([
       {
         assetId: '3',
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: '103.00085138124',
         max: '103.00085138124',
       },
@@ -1400,7 +1469,7 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     stubFast()
 
     await expect(withdrawalTypes()).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       {
         source: { categoryId: 'lighter', asset: { id: '3' } },
         options: [
@@ -1420,7 +1489,7 @@ describe('LighterProvider — getWithdrawalTypes', () => {
           },
         ],
       },
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
   })
 
@@ -1479,9 +1548,9 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     stubFast(info, fee)
 
     await expect(withdrawalTypes()).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       standardOnly('lighter', '3', '60'),
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
   })
 
@@ -1493,9 +1562,9 @@ describe('LighterProvider — getWithdrawalTypes', () => {
     await expect(
       provider.getWithdrawalTypes!({ address: ADDRESS })
     ).resolves.toEqual([
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '3', '10'),
+      standardOnly(SPOT_CATEGORY_ID, '3', '10'),
       standardOnly('lighter', '3', '60'),
-      standardOnly(LIGHTER_SPOT_CATEGORY_ID, '0', '2'),
+      standardOnly(SPOT_CATEGORY_ID, '0', '2'),
     ])
     expect(fastInfoCalls()).toHaveLength(0)
   })
@@ -1961,10 +2030,30 @@ describe('LighterProvider — getAccount spot balance pricing', () => {
   // spot asset_id, so a price it carries must not reach the BTC spot row.
   const CONTEXT: PricesResponse = {
     prices: [
-      { marketId: '2048', midPrice: '2714.1', markPrice: '2714.1' },
-      { marketId: '2049', midPrice: 'n/a', markPrice: 'n/a' },
-      { marketId: '2050', midPrice: 'n/a', markPrice: 'n/a' },
-      { marketId: '0', midPrice: '50000', markPrice: '50000' },
+      {
+        provider: 'lighter',
+        marketId: '2048',
+        midPrice: '2714.1',
+        markPrice: '2714.1',
+      },
+      {
+        provider: 'lighter',
+        marketId: '2049',
+        midPrice: 'n/a',
+        markPrice: 'n/a',
+      },
+      {
+        provider: 'lighter',
+        marketId: '2050',
+        midPrice: 'n/a',
+        markPrice: 'n/a',
+      },
+      {
+        provider: 'lighter',
+        marketId: '0',
+        midPrice: '50000',
+        markPrice: '50000',
+      },
     ],
   }
   const ACCOUNT_WITH_SPOT = {
@@ -2320,7 +2409,7 @@ describe('LighterProvider — deployment-aware collateral display', () => {
 })
 
 describe('LighterProvider — getAccount balance categoryId', () => {
-  // The null-quote category id differs from LIGHTER_SPOT_CATEGORY_ID, so the
+  // The null-quote category id differs from SPOT_CATEGORY_ID, so the
   // spot assertion fails if getAccount reads the spot id from /providers.
   const PERPS_CATEGORY_ID = 'perps'
   const SPOT_CATEGORY_ID_FROM_METADATA = 'cash'
@@ -2408,14 +2497,14 @@ describe('LighterProvider — getAccount balance categoryId', () => {
     )
   })
 
-  it('labels spot token holdings with LIGHTER_SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
+  it('labels spot token holdings with SPOT_CATEGORY_ID, not the null-quote category id from /providers', async () => {
     const provider = lighterProvider()
     provider.bind(STUB_CLIENT)
     const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.balances.length).toBeGreaterThan(0)
     for (const balance of account.balances) {
-      expect(balance.categoryId).toBe(LIGHTER_SPOT_CATEGORY_ID)
+      expect(balance.categoryId).toBe(SPOT_CATEGORY_ID)
     }
   })
 })
@@ -3845,6 +3934,49 @@ describe('LighterProvider — getPositions keeps a row with a bad position_value
       )
     )
     warn.mockRestore()
+  })
+})
+
+describe('LighterProvider — getPositions without a liquidation price', () => {
+  it('leaves liquidationPrice absent for a cross row with liquidation_price "0"', async () => {
+    // Cross BTC row from live `GET /api/v1/account?by=index&value=7684`.
+    const crossRow = {
+      market_id: 0,
+      symbol: 'BTC',
+      initial_margin_fraction: '2.00',
+      open_order_count: 14,
+      pending_order_count: 0,
+      position_tied_order_count: 0,
+      sign: 1,
+      position: '0.56759',
+      avg_entry_price: '84114.6',
+      position_value: '47898.579546',
+      unrealized_pnl: '155.946751',
+      realized_pnl: '0.000000',
+      liquidation_price: '0',
+      total_funding_paid_out: '-2.506444',
+      margin_mode: 0,
+      margin_set_flag: 1,
+      allocated_margin: '0.000000',
+    }
+    overrideFetch((url) =>
+      url.includes('/api/v1/account?')
+        ? respond({
+            ...ACCOUNT_PAYLOAD,
+            accounts: [
+              { ...ACCOUNT_PAYLOAD.accounts[0], positions: [crossRow] },
+            ],
+          })
+        : undefined
+    )
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions).toHaveLength(1)
+    expect(positions[0].marginMode).toBe(MarginMode.CROSS)
+    expect(positions[0]).not.toHaveProperty('liquidationPrice')
   })
 })
 
@@ -6229,7 +6361,7 @@ describe('LighterProvider — getDepositFlow', () => {
     await expect(
       provider.getDepositFlow!({ address: ADDRESS })
     ).resolves.toEqual({
-      kind: 'firstDepositPipeline',
+      kind: 'venueDepositPipeline',
       chainId: ETHEREUM_USDC.chainId,
       gasAsset: ETHEREUM_NATIVE_GAS,
       collateral: ETHEREUM_USDC,
@@ -6237,12 +6369,18 @@ describe('LighterProvider — getDepositFlow', () => {
     })
   })
 
-  it('resolves the Robinhood deployment against its own collateral', async () => {
+  it('deposits through the venue when the Robinhood account resolves', async () => {
     const provider = lighterRhProvider()
     provider.bind(STUB_CLIENT)
     await expect(
       provider.getDepositFlow!({ address: ADDRESS })
-    ).resolves.toEqual({ kind: 'lifiSwap', destination: ROBINHOOD_USDG })
+    ).resolves.toEqual({
+      kind: 'venueDepositPipeline',
+      chainId: ROBINHOOD_USDG.chainId,
+      gasAsset: ROBINHOOD_NATIVE_GAS,
+      collateral: ROBINHOOD_USDG,
+      bridgeAction: ActionType.DEPOSIT,
+    })
   })
 
   it('propagates a non-account-not-found probe error', async () => {

@@ -2,7 +2,7 @@ import {
   safeIsDecimalStringGreaterThan,
   safeMultiplyDecimalString,
 } from '@lifi/perps-sdk'
-import type { MarketContext } from '@lifi/perps-types'
+import type { MarketContext, ProviderId } from '@lifi/perps-types'
 import type { HlWsFastAssetCtx, HlWsPerpAssetCtx } from '../types/index.js'
 
 const NEXT_FUNDING_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -31,6 +31,7 @@ const toOpenInterestNotional = (
  * @public
  */
 export const mapMarketContext = (
+  providerKey: ProviderId,
   marketId: string,
   ctx: HlWsPerpAssetCtx,
   fast?: HlWsFastAssetCtx
@@ -41,6 +42,7 @@ export const mapMarketContext = (
   const markPrice = fast?.markPx != null ? fast.markPx : ctx.markPx
 
   return {
+    provider: providerKey,
     marketId,
     midPrice: fast?.midPx != null ? fast.midPx : (ctx.midPx ?? ctx.markPx),
     markPrice,

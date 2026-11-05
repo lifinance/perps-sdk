@@ -4,6 +4,7 @@ import {
   createSafeFunction,
   getMarketRegistry,
   isDecimalStringGreaterThan,
+  isSpotCategory,
   type MarketRegistry,
   numberToDecimalString,
   PerpsError,
@@ -41,7 +42,6 @@ import {
   LIGHTER_COLLATERAL_ASSETS,
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
-  LIGHTER_SPOT_CATEGORY_ID,
 } from '../constants.js'
 import type { LighterPerpsProvider } from '../LighterProvider.js'
 import type {
@@ -73,6 +73,7 @@ import {
   mapPosition,
 } from '../utils/index.js'
 import { spotPriceByAssetId, spotValuation } from '../utils/spotPrice.js'
+import { resolveTradePrice } from '../utils/tradePrice.js'
 import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
@@ -207,7 +208,6 @@ const heldPortfolioValue = (
     .filter(([, balance]) => isDecimalStringGreaterThan(balance, '0'))
   const spotPrices = spotPriceByAssetId(
     markets,
-    LIGHTER_SPOT_CATEGORY_ID,
     contexts,
     new Set(
       held
@@ -526,10 +526,9 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         )
       }
       const market = this.registry.require(sub.marketId)
-      const prefix =
-        market.categoryId === LIGHTER_SPOT_CATEGORY_ID
-          ? 'spot_market_stats'
-          : 'market_stats'
+      const prefix = isSpotCategory(market.categoryId)
+        ? 'spot_market_stats'
+        : 'market_stats'
       return [{ channel: `${prefix}/${market.id}`, needsAuth: false }]
     }
     if (sub.channel === 'orderbook') {
@@ -1027,7 +1026,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     const channelMarketId = this.marketIdFromChannel(channel, prefix)
     if (channelMarketId !== null) {
       for (const entry of entries) {
-        const ctx = mapMarketContext(entry)
+        const ctx = mapMarketContext(this.providerKey, entry)
         if (ctx.marketId === String(channelMarketId)) {
           this.emit(`marketContext:${ctx.marketId}`, {
             channel: 'marketContext',
@@ -1038,7 +1037,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       return
     }
     for (const entry of entries) {
-      const ctx = mapMarketContext(entry)
+      const ctx = mapMarketContext(this.providerKey, entry)
       this.marketsContext[ctx.marketId] = ctx
     }
     this.emit('marketsContext', {
@@ -1097,7 +1096,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       data: trades.map((t) => ({
         provider: this.providerKey,
         marketId: assetId,
-        price: t.price,
+        price: resolveTradePrice(t),
         size: t.size,
         timestamp: t.timestamp,
         side: t.is_maker_ask ? 'buy' : 'sell',

@@ -18,8 +18,11 @@ export type HlPosition = {
   entryPx: string
   /** Position notional value as a decimal string. */
   positionValue: string
-  /** Estimated liquidation price; may be an empty string when unavailable. */
-  liquidationPx: string
+  /**
+   * Estimated liquidation price. `null` when no price liquidates the
+   * position, which Hyperliquid reports for a cross position.
+   */
+  liquidationPx: string | null
   /** Unrealized PnL in quote-asset units. */
   unrealizedPnl: string
   /** Margin currently assigned to this position. */

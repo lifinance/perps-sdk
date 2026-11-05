@@ -29,6 +29,7 @@ describe('getMarketsContext', () => {
     expect(marketIds).toBeNull()
     expect(result).toEqual(mockPrices)
     expect(result.prices[0]).toMatchObject({
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '95000.00',
       markPrice: '95010.00',

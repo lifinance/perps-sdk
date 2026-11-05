@@ -2,31 +2,63 @@ import {
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
+  isSpotCategory,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
-import type { Fill, MarketDisplay } from '@lifi/perps-types'
+import type { Fill, FillLiquidation, MarketDisplay } from '@lifi/perps-types'
 import {
   FillClassification,
+  LiquidationMethod,
   LiquidityRole,
   OrderSide,
-  OrderType,
 } from '@lifi/perps-types'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { zeroHash } from 'viem'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HlUserFill } from '../types/index.js'
+import { isFillLiquidatingAccount } from './isFillLiquidatingAccount.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /** Re-export the shared fill-position classifier used by Hyperliquid mappings. @public */
 export { classifyFillFromPosition }
 
-/**
- * Spot-ness comes from the resolved market's category, not the coin string —
- * HL's canonical spot pair 0 is addressed as `PURR/USDC`, not `@0`. A fill with
- * an invalid time gives `undefined`.
+const mapLiquidationMethod = (
+  method: string
+): LiquidationMethod | undefined => {
+  switch (method) {
+    case 'market':
+      return LiquidationMethod.MARKET
+    case 'backstop':
+      return LiquidationMethod.BACKSTOP
+    default:
+      return undefined
+  }
+}
+
+// Hyperliquid attaches `liquidation` to the fills of both parties.
+const mapFillLiquidation = (
+  fill: HlUserFill,
+  address: string
+): FillLiquidation | undefined => {
+  const { liquidation } = fill
+  if (liquidation === undefined || !isFillLiquidatingAccount(fill, address)) {
+    return undefined
+  }
+  const method = mapLiquidationMethod(liquidation.method)
+  return {
+    ...(method === undefined ? {} : { method }),
+    markPrice: liquidation.markPx,
+  }
+}
+
+/** Maps a fill using the market category; the order type stays absent.
+ * Invalid times return `undefined`. The venue does not report the order type.
+ * @param address - Fill owner; only the liquidated account carries `liquidation`.
  * @public
  */
 export const mapFill = (
   fill: HlUserFill,
-  market: MarketDisplay
+  market: MarketDisplay,
+  address: string
 ): Fill | undefined => {
   const size = fill.sz
   const createdAt = rowTimestampToIsoStringOrUndefined(fill.time)
@@ -40,9 +72,10 @@ export const mapFill = (
   // HL charges the builder portion in the same token as the total fee.
   const feeAsset = fill.feeToken ?? market.quoteAsset.displaySymbol
   const side = fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL
+  const liquidation = mapFillLiquidation(fill, address)
 
   return {
-    ...(market.categoryId === SPOT_MARKET_ID
+    ...(isSpotCategory(market.categoryId)
       ? { realizedPnl: fill.closedPnl }
       : { realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl }),
     id: String(fill.tid),
@@ -50,11 +83,6 @@ export const mapFill = (
     clientOrderId: fill.cloid,
     market,
     side,
-    // HL fills don't carry the originating order type. A maker fill (crossed:
-    // false) can only come from a resting order, so it's necessarily a limit;
-    // a taker fill (crossed: true) may be a market OR an aggressive limit order,
-    // which the payload can't distinguish, so the type is left undefined.
-    type: fill.crossed ? undefined : OrderType.LIMIT,
     size,
     price: fill.px,
     liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
@@ -68,13 +96,17 @@ export const mapFill = (
         ? undefined
         : { amount: fill.builderFee, asset: feeAsset },
     startPosition: fill.startPosition,
-    explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, fill.hash),
-    classification:
-      market.categoryId === SPOT_MARKET_ID
-        ? side === OrderSide.BUY
-          ? FillClassification.SPOT_BUY
-          : FillClassification.SPOT_SELL
-        : classifyFillFromPosition(fill.startPosition, side, size),
+    // A TWAP slice fill carries the zero hash: no venue transaction to link.
+    explorerLink: explorerTxUrl(
+      ExplorerChainId.HYPERLIQUID,
+      fill.hash === zeroHash ? undefined : fill.hash
+    ),
+    classification: isSpotCategory(market.categoryId)
+      ? side === OrderSide.BUY
+        ? FillClassification.SPOT_BUY
+        : FillClassification.SPOT_SELL
+      : classifyFillFromPosition(fill.startPosition, side, size),
     createdAt,
+    ...(liquidation === undefined ? {} : { liquidation }),
   }
 }

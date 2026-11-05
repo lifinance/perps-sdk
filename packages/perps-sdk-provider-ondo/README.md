@@ -16,7 +16,7 @@ Ondo authenticates in two stages, both completed client-side. A SIWE (ERC-4361) 
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-ondo
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-ondo viem@2.57.11
 ```
 
 ## Quick start
@@ -108,6 +108,15 @@ lookup returns `order_not_found`, it checks `/v1/perps/twap/order/{orderID}`.
 WebSocket `orderUpdates.data.orders` includes terminal rows.
 `orderUpdates.data.terminated` also contains their ids.
 Fills carry no lifecycle status.
+
+An order with a non-empty `liquidationId` maps to a `RegularOrder` with
+`isLiquidation: true`. The Ondo liquidation engine places these orders for the
+liquidated account.
+
+Ondo fills do not name the liquidated party, so `Fill.liquidation` stays
+absent on Ondo. The venue `isADL` flag marks an auto-deleveraging fill, but it
+does not tell which party the venue liquidated. To find the fills of a
+liquidation order, match `Fill.orderId` to an order with `isLiquidation`.
 
 ## Activity coverage
 

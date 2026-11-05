@@ -9,6 +9,7 @@ import {
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import type {
+  HlTwapSliceFill,
   HlUserFills,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
@@ -25,7 +26,8 @@ const context = () => ({
 function installHistory(
   fills: HlUserFills = [],
   funding: HlUserFunding = [],
-  ledger: HlUserNonFundingLedgerUpdates = []
+  ledger: HlUserNonFundingLedgerUpdates = [],
+  sliceFills: HlTwapSliceFill[] = []
 ) {
   installInfoFetchMock({}, HL_MARKETS)
   const referenceFetch = vi.mocked(fetch).getMockImplementation()!
@@ -39,26 +41,31 @@ function installHistory(
       return Response.json({ userExists: true, fee: '0.0' })
     }
     requests.push(body)
-    const rows =
+    const rows: { time: number; row: unknown }[] =
       body.type === 'userFunding'
-        ? funding
+        ? funding.map((row) => ({ time: row.time, row }))
         : body.type === 'userNonFundingLedgerUpdates'
-          ? ledger
-          : fills.slice(-10000)
+          ? ledger.map((row) => ({ time: row.time, row }))
+          : body.type === 'userTwapSliceFills' ||
+              body.type === 'userTwapSliceFillsByTime'
+            ? sliceFills.map((row) => ({ time: row.fill.time, row }))
+            : fills.slice(-10000).map((row) => ({ time: row.time, row }))
     const cap =
       body.type === 'userFunding' || body.type === 'userNonFundingLedgerUpdates'
         ? 500
         : 2000
     const sorted = rows
       .filter(
-        (row) =>
-          row.time >= Number(body.startTime ?? 0) &&
-          row.time <= Number(body.endTime ?? Date.now())
+        ({ time }) =>
+          time >= Number(body.startTime ?? 0) &&
+          time <= Number(body.endTime ?? Date.now())
       )
       .sort((a, b) => a.time - b.time)
     const page =
-      body.type === 'userFills' ? sorted.slice(-cap) : sorted.slice(0, cap)
-    return new Response(JSON.stringify(page), {
+      body.type === 'userFills' || body.type === 'userTwapSliceFills'
+        ? sorted.slice(-cap)
+        : sorted.slice(0, cap)
+    return new Response(JSON.stringify(page.map(({ row }) => row)), {
       headers: { 'Content-Type': 'application/json' },
     })
   })
@@ -138,7 +145,50 @@ describe('Hyperliquid capped history pagination', () => {
     expect(
       requests.filter((request) => request.type === 'userFills')
     ).toHaveLength(bounded ? 0 : 1)
-    expect(requests.length).toBeLessThan(100)
+    expect(requests.length).toBeLessThan(200)
+  })
+
+  it.each([
+    false,
+    true,
+  ])('returns interleaved regular and TWAP slice fills newest-first across pages beyond the 2000-row cap (bounded=%s)', async (bounded) => {
+    const regular = fillRows(2305)
+    const slices: HlTwapSliceFill[] = fillRows(2305).map((fill, index) => ({
+      twapId: 1 + (index % 2),
+      fill: { ...fill, tid: 10_000 + index, oid: 20_000 + index },
+    }))
+    const requests = installHistory(regular, [], [], slices)
+    const ctx = context()
+    const bounds = bounded ? { startTime: 1000, endTime: 2000 } : {}
+    const seen: string[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < 40; page++) {
+      const result = await getFills(ctx, {
+        address: ADDRESS,
+        limit: 200,
+        ...bounds,
+        cursor,
+      })
+      expect(result.items.length).toBeLessThanOrEqual(200)
+      seen.push(...result.items.map((item) => item.id))
+      if (!result.pagination.hasMore) {
+        break
+      }
+      cursor = result.pagination.cursor
+    }
+    const expected = [...regular, ...slices.map(({ fill }) => fill)]
+      .sort((a, b) => b.time - a.time || b.tid - a.tid)
+      .map((row) => String(row.tid))
+    expect(seen).toEqual(expected)
+    expect(new Set(seen).size).toBe(4610)
+    expect(
+      requests.filter((request) => request.type === 'userTwapSliceFillsByTime')
+        .length
+    ).toBeGreaterThan(0)
+    expect(
+      requests.filter((request) => request.type === 'userTwapSliceFills')
+    ).toHaveLength(bounded ? 0 : 1)
+    expect(requests.length).toBeLessThan(200)
   })
 
   it.each([
@@ -459,7 +509,7 @@ describe('Hyperliquid capped history pagination', () => {
     const controller = new AbortController()
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const response = await historyFetch(input, init)
-      if (requests.length === 1) {
+      if (requests.length === 2) {
         controller.abort()
       }
       return response
@@ -471,7 +521,7 @@ describe('Hyperliquid capped history pagination', () => {
         { signal: controller.signal }
       )
     ).rejects.toMatchObject({ name: 'AbortError' })
-    expect(requests).toHaveLength(1)
+    expect(requests).toHaveLength(2)
   })
 
   it.each([

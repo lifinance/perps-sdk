@@ -92,6 +92,7 @@ const MARKETS_RESPONSE = {
 
 const MARKETS_CONTEXT_RESPONSE = {
   prices: SPOT_MARKS.map((m) => ({
+    provider: 'lighter',
     marketId: m.marketId,
     midPrice: m.mid,
     markPrice: m.mid,
@@ -274,7 +275,7 @@ describe('LighterWsProvider accountSummary parity with REST getAccountSummary', 
   })
 
   // Both paths price spot assets by the markets that carry
-  // LIGHTER_SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
+  // SPOT_CATEGORY_ID, whatever the /providers null-quote category id is.
   it('streams the REST portfolioValue when /providers names a different spot category id', async () => {
     stubFetch('0', 'cash')
     const client = backendClient()

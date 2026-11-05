@@ -151,10 +151,30 @@ function setup(live: LiveAccount) {
       if (url.includes('/marketsContext')) {
         return respond({
           prices: [
-            { marketId: '1', midPrice: '84600', markPrice: '84600' },
-            { marketId: '2048', midPrice: '2000', markPrice: '2000' },
-            { marketId: '2049', midPrice: '1', markPrice: '1' },
-            { marketId: '2050', midPrice: '4000', markPrice: '4000' },
+            {
+              provider: 'lighter',
+              marketId: '1',
+              midPrice: '84600',
+              markPrice: '84600',
+            },
+            {
+              provider: 'lighter',
+              marketId: '2048',
+              midPrice: '2000',
+              markPrice: '2000',
+            },
+            {
+              provider: 'lighter',
+              marketId: '2049',
+              midPrice: '1',
+              markPrice: '1',
+            },
+            {
+              provider: 'lighter',
+              marketId: '2050',
+              midPrice: '4000',
+              markPrice: '4000',
+            },
           ],
         })
       }

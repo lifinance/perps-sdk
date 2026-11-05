@@ -10,6 +10,7 @@ import {
   isActiveOrderStatus,
   isDecimalString,
   isDecimalStringZero,
+  isSpotCategory,
   type MarketRegistry,
   PerpsError,
   type PerpsSDKClient,
@@ -44,6 +45,7 @@ import type {
   OrderbookLevel,
   OrderbookResponse,
   Position,
+  ProviderId,
   Subscription,
 } from '@lifi/perps-types'
 import { PerpsErrorCode } from '@lifi/perps-types'
@@ -52,7 +54,6 @@ import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
-  SPOT_MARKET_ID,
 } from '../constants.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
 import type {
@@ -81,6 +82,7 @@ import type {
   HlWsSpotStateData,
   HlWsTrade,
   HlWsUserFillsData,
+  HlWsUserTwapSliceFillsData,
 } from '../types/index.js'
 import { HlAbstractionMode } from '../types/index.js'
 import {
@@ -335,7 +337,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       const market = registry.requireActive(sub.marketId)
       if (
         sub.channel === 'availableToTrade' &&
-        market.categoryId === SPOT_MARKET_ID
+        isSpotCategory(market.categoryId)
       ) {
         const error = new PerpsError(
           PerpsErrorCode.ValidationError,
@@ -361,37 +363,17 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     // Markets context aggregates slower asset-context feeds with fast mid/mark
     // ticks from `fastAssetCtxs`.
     if (sub.channel === 'marketsContext') {
-      const epoch = this.spotWireEpoch
-      const entries = this.getMarketsContextSubEntries()
-      let acquired = 0
-      const release = () => {
-        if (epoch !== this.spotWireEpoch) {
-          return
-        }
-        for (let index = 0; index < acquired; index++) {
-          const { subKey, payload } = entries[index]
-          this.unregisterSub(subKey)
-          this.rws.send(
-            JSON.stringify({ method: 'unsubscribe', subscription: payload })
-          )
-        }
+      return this.openWireEntries(this.getMarketsContextSubEntries(), () => {
         this.perpCtxBySubDex.clear()
         this.spotCtxByMarketId = {}
         this.fastCtxByMarketId = {}
         this.marketsContextByMarketId = {}
-        acquired = 0
-      }
-      try {
-        for (const { subKey, payload } of entries) {
-          await this.registerSub(subKey, payload)
-          acquired++
-        }
-        await this.rws.ready()
-        return release
-      } catch (error) {
-        release()
-        throw error
-      }
+      })
+    }
+
+    // `fills` merges the regular and the TWAP slice fill feeds of one address.
+    if (sub.channel === 'fills') {
+      return this.openWireEntries(this.getFillsSubEntries(sub.address))
     }
 
     // The spot wire is shared between the public spotBalances channel and
@@ -529,6 +511,58 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     ]
   }
 
+  /** Sub-key + payload pairs of the `fills` channel: regular and TWAP slice fills. */
+  private getFillsSubEntries(
+    address: string
+  ): Array<{ subKey: string; payload: object }> {
+    const user = normalizeHlAddress(address)
+    return [
+      { subKey: `userFills:${user}`, payload: { type: 'userFills', user } },
+      {
+        subKey: `userTwapSliceFills:${user}`,
+        payload: { type: 'userTwapSliceFills', user },
+      },
+    ]
+  }
+
+  /**
+   * Register each wire entry in order and return a release that unregisters
+   * the acquired ones. A failed register releases the acquired entries first.
+   * A release after `close()` sends no frame.
+   */
+  private async openWireEntries(
+    entries: Array<{ subKey: string; payload: object }>,
+    onRelease?: () => void
+  ): Promise<() => void> {
+    const epoch = this.spotWireEpoch
+    let acquired = 0
+    const release = () => {
+      if (epoch !== this.spotWireEpoch) {
+        return
+      }
+      for (let index = 0; index < acquired; index++) {
+        const { subKey, payload } = entries[index]
+        this.unregisterSub(subKey)
+        this.rws.send(
+          JSON.stringify({ method: 'unsubscribe', subscription: payload })
+        )
+      }
+      acquired = 0
+      onRelease?.()
+    }
+    try {
+      for (const { subKey, payload } of entries) {
+        await this.registerSub(subKey, payload)
+        acquired++
+      }
+      await this.rws.ready()
+      return release
+    } catch (error) {
+      release()
+      throw error
+    }
+  }
+
   private registerOrderbook(marketId: string, orderbookKey: string): void {
     let activeKeys = this.orderbookKeysByMarketId.get(marketId)
     if (activeKeys === undefined) {
@@ -603,7 +637,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       case 'orderUpdates':
         return `orderUpdates:${sub.address.toLowerCase()}`
       case 'fills':
-        return `userFills:${sub.address.toLowerCase()}`
+        return `fills:${sub.address.toLowerCase()}`
       case 'positions':
         return `positions:${sub.address.toLowerCase()}`
       case 'accountSummary':
@@ -683,6 +717,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       case 'orderUpdates':
         return { type: 'orderUpdates', user: normalizeHlAddress(sub.address) }
       case 'fills':
+        // Handled via getFillsSubEntries in openChannel; never reaches
+        // toHlPayload, but TS requires an exhaustive switch.
         return { type: 'userFills', user: normalizeHlAddress(sub.address) }
       case 'positions':
       case 'accountSummary':
@@ -764,6 +800,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           break
         case 'userFills':
           this.handleUserFills(msg.data as HlWsUserFillsData)
+          break
+        case 'userTwapSliceFills':
+          this.handleUserTwapSliceFills(msg.data as HlWsUserTwapSliceFillsData)
           break
         case 'allDexsClearinghouseState':
           this.handleAllDexsClearinghouseState(
@@ -850,7 +889,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   private spotMarketIdBySacKey(): Map<string, string> {
     const map = new Map<string, string>()
     for (const market of this.registry?.activeMarkets ?? []) {
-      if (market.categoryId !== SPOT_MARKET_ID) {
+      if (!isSpotCategory(market.categoryId)) {
         continue
       }
       map.set(market.id, market.id)
@@ -927,7 +966,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     const fast = this.fastCtxByMarketId[marketId]
     const spotCtx = this.spotCtxByMarketId[marketId]
     if (spotCtx !== undefined) {
-      const context = mapSpotMarketContext(marketId, spotCtx, fast)
+      const context = mapSpotMarketContext(
+        this.providerKey,
+        marketId,
+        spotCtx,
+        fast
+      )
       if (context !== undefined) {
         return context
       }
@@ -937,12 +981,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       perpCtx = byMarketId[marketId] ?? perpCtx
     }
     if (perpCtx !== undefined) {
-      return mapMarketContext(marketId, perpCtx, fast)
+      return mapMarketContext(this.providerKey, marketId, perpCtx, fast)
     }
     const midPrice = fast?.midPx ?? fast?.markPx
     const markPrice = fast?.markPx ?? fast?.midPx
     if (midPrice != null && markPrice != null) {
-      return { marketId, midPrice, markPrice }
+      return { provider: this.providerKey, marketId, midPrice, markPrice }
     }
     return undefined
   }
@@ -958,7 +1002,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     }
     this.emit(`marketContext:${data.coin}`, {
       channel: 'marketContext',
-      data: mapMarketContext(data.coin, ctx),
+      data: mapMarketContext(this.providerKey, data.coin, ctx),
     })
   }
 
@@ -966,7 +1010,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     if (assetIsOutcome(data.coin)) {
       return
     }
-    const context = mapSpotMarketContext(data.coin, data.ctx)
+    const context = mapSpotMarketContext(this.providerKey, data.coin, data.ctx)
     if (context === undefined) {
       return
     }
@@ -1231,22 +1275,38 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleUserFills(data: HlWsUserFillsData) {
+    this.emitFills(data.user, data.isSnapshot, data.fills)
+  }
+
+  private handleUserTwapSliceFills(data: HlWsUserTwapSliceFillsData) {
+    this.emitFills(
+      data.user,
+      data.isSnapshot,
+      data.twapSliceFills.map(({ fill }) => fill)
+    )
+  }
+
+  private emitFills(
+    user: string,
+    isSnapshot: boolean | undefined,
+    fills: HlUserFill[]
+  ) {
     // The snapshot frame carries up to ~2000 historical fills and is replayed
     // on every reconnect via `replaySubs`; emitting them would surface old
     // fills as live events on each network blip. Suppress it to an empty event
     // (fill history is available via REST `getFills`) so only live fills are
     // delivered as events.
-    const items = data.isSnapshot
+    const items = isSnapshot
       ? []
-      : data.fills.flatMap((f) => {
+      : fills.flatMap((f) => {
           if (assetIsOutcome(f.coin)) {
             return []
           }
           const market = this.registry?.get(f.coin)
-          const mapped = market && mapFill(f as HlUserFill, market)
+          const mapped = market && mapFill(f, market, user)
           return mapped ? [mapped] : []
         })
-    this.emit(`userFills:${data.user.toLowerCase()}`, {
+    this.emit(`fills:${user.toLowerCase()}`, {
       channel: 'fills',
       data: items,
     })
@@ -1776,6 +1836,7 @@ function activePerpAssetCtx(
 }
 
 function mapSpotMarketContext(
+  providerKey: ProviderId,
   marketId: string,
   ctx: HlWsSpotAssetCtx,
   fast?: HlWsFastAssetCtx
@@ -1788,6 +1849,7 @@ function mapSpotMarketContext(
 
   const emittedMarkPrice = fast?.markPx != null ? fast.markPx : markPrice
   return {
+    provider: providerKey,
     marketId,
     midPrice: fast?.midPx != null ? fast.midPx : midPrice,
     markPrice: emittedMarkPrice,
@@ -1924,6 +1986,8 @@ function isValidHlFrame(channel: string, data: unknown): boolean {
       return Array.isArray(data)
     case 'userFills':
       return typeof data.user === 'string' && Array.isArray(data.fills)
+    case 'userTwapSliceFills':
+      return typeof data.user === 'string' && Array.isArray(data.twapSliceFills)
     case 'allDexsClearinghouseState':
       return (
         typeof data.user === 'string' && Array.isArray(data.clearinghouseStates)

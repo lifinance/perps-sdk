@@ -6,7 +6,8 @@ import {
   subtractDecimalString,
   unknownToDecimalString,
 } from '@lifi/perps-sdk'
-import { LIGHTER_PROVIDER_KEY, LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
+import { SPOT_CATEGORY_ID } from '@lifi/perps-types'
+import { LIGHTER_PROVIDER_KEY } from '../constants.js'
 import type { LtAccount } from '../types/account.js'
 
 /**
@@ -45,7 +46,7 @@ export const lighterWithdrawableBalances = (
     if (isDecimalStringGreaterThan(spot, '0')) {
       rows.push({
         assetId,
-        categoryId: LIGHTER_SPOT_CATEGORY_ID,
+        categoryId: SPOT_CATEGORY_ID,
         available: spot,
         max: calculateWithdrawMax({ available: spot }),
       })

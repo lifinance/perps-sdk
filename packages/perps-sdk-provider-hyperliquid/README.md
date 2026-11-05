@@ -14,7 +14,7 @@ Hyperliquid provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.57.11
 ```
 
 ## Quick start
@@ -162,6 +162,26 @@ the original upper time bound, preventing subsequent pages from regrouping an
 order using newly arriving fills. Funding/ledger-only activity and ordinary fill
 pages use bounded newest-first windows instead of repeatedly downloading full history.
 
+### TWAP slice fills
+
+Hyperliquid reports the executions of a TWAP on separate feeds. The regular
+feeds (`userFills` and `userFillsByTime`) omit them. `getFills` reads
+`userTwapSliceFills` or `userTwapSliceFillsByTime` next to the regular feed
+of each window, and merges both into one newest-first page. A slice fill
+appears regardless of the lifecycle state of its parent TWAP. The cap of 2,000
+rows applies to each feed: a window that saturates either feed narrows. A
+failed request on either feed rejects the read.
+
+A slice fill maps with the same fields as a regular fill. `Fill.orderId` is
+the child order ID of the slice, not the TWAP ID. The venue gives a slice fill
+the zero transaction hash, so the row carries no `explorerLink`.
+
+One `fills` WebSocket subscription opens both the `userFills` and the
+`userTwapSliceFills` venue channels. Listeners share the pair, the last
+release closes both, and a reconnect replays both. The snapshot frame of each
+channel emits an empty event. A live `userTwapSliceFills` frame can omit
+`isSnapshot`.
+
 ## Order reads
 
 `getOrders` returns `{ provider, orders, pagination }`. Each `Order` carries a
@@ -224,6 +244,10 @@ When the filter includes an active status or FILLED, `getOrders` reads
 slice fills of its `twapId`.
 `getOrder` reads `orderStatus` and uses the same mapper. For a running TWAP,
 `getOrder` also reads `userTwapSliceFills`.
+`userTwapSliceFills` holds only the 2,000 newest slice fills of the account.
+When it is full and its oldest row is not newer than the start of a running
+TWAP, both reads also read `userTwapSliceFillsByTime`. This read covers the
+time from the earliest running TWAP start to the oldest row.
 Both reads reject a failed required slice-fill request instead of reporting
 activation-time totals as current execution. Caller cancellation also rejects
 the read.
@@ -239,6 +263,23 @@ The `orderUpdates` WebSocket feed omits execution metadata. The provider reads
 `orderStatus` for each update, then retains the stream's status and quantities.
 The provider emits frames in stream order after these HTTP reads finish.
 Unavailable metadata reports a decode failure instead of inventing an order type.
+
+## Liquidations
+
+Hyperliquid closes a liquidated position with a `LiquidationMarket` order or
+with a backstop takeover.
+
+- A `LiquidationMarket` order maps to a `MARKET` `RegularOrder` with
+  `isLiquidation: true`. Its `price` is the order limit, not the execution price.
+- Hyperliquid attaches a `liquidation` block to the fills of both parties.
+  `getFills` and the `fills` WebSocket stream set `Fill.liquidation` only when
+  `liquidatedUser` is the requested address.
+- `Fill.liquidation.method` is `MARKET` for the venue `market` method and
+  `BACKSTOP` for `backstop`. An unknown method leaves `method` absent.
+- `Fill.liquidation.markPrice` is the venue `markPx`. `Fill.price` stays the
+  execution price.
+- A fill of the liquidated account has no `type`. A backstop takeover fills
+  that account as the maker, but no resting limit order exists.
 
 ## Documentation
 

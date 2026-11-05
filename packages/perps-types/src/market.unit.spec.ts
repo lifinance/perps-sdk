@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { Asset } from './asset.js'
 import { PositionMarginAdjustment } from './enums.js'
-import type {
-  BaseMarket,
-  MarketContext,
-  MarketDisplay,
-  OhlcvInterval,
-  OhlcvResponse,
-  PerpsMarket,
-  PerpsMarketDisplay,
-  SpotMarket,
+import {
+  type BaseMarket,
+  type MarketContext,
+  type MarketDisplay,
+  type OhlcvInterval,
+  type OhlcvResponse,
+  type PerpsMarket,
+  type PerpsMarketDisplay,
+  SPOT_CATEGORY_ID,
+  type SpotMarket,
 } from './market.js'
 
 const btc: Asset = {
@@ -124,8 +125,9 @@ describe('PerpsMarketDisplay', () => {
 })
 
 describe('MarketContext', () => {
-  it('carries mid/mark/oracle plus the live stats fields for a perp market', () => {
+  it('carries the provider, mid/mark/oracle and the live stats fields for a perp market', () => {
     const ctx: MarketContext = {
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '60000',
       markPrice: '60010',
@@ -137,6 +139,7 @@ describe('MarketContext', () => {
       openInterest: '1000',
       funding: { rate: '0.0001', nextFundingTime: 1_700_000_000_000 },
     }
+    expect(ctx.provider).toBe('hyperliquid')
     expect(ctx.marketId).toBe('BTC')
     expect(ctx.midPrice).toBe('60000')
     expect(ctx.markPrice).toBe('60010')
@@ -148,6 +151,7 @@ describe('MarketContext', () => {
 
   it('omits oracle and the perp-only fields for a spot market', () => {
     const ctx: MarketContext = {
+      provider: 'hyperliquid',
       marketId: '@142',
       midPrice: '0.5',
       markPrice: '0.5',
@@ -185,6 +189,12 @@ describe('OhlcvResponse', () => {
     }
     expect(response.interval).toBe('1h')
     expect(response.candles).toHaveLength(1)
+  })
+})
+
+describe('SPOT_CATEGORY_ID', () => {
+  it('is the stable string "spot"', () => {
+    expect(SPOT_CATEGORY_ID).toBe('spot')
   })
 })
 

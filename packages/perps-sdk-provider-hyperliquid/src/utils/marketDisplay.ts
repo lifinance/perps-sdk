@@ -1,10 +1,6 @@
+import { isSpotCategory } from '@lifi/perps-sdk'
 import type { Asset, Market } from '@lifi/perps-types'
-import {
-  MAIN_DEX_NAME,
-  MAIN_MARKET_ID,
-  PROVIDER_KEY,
-  SPOT_MARKET_ID,
-} from '../constants.js'
+import { MAIN_DEX_NAME, MAIN_MARKET_ID, PROVIDER_KEY } from '../constants.js'
 import { applyLogoOverride } from './assetLogo.js'
 
 /**
@@ -37,7 +33,7 @@ export const coinAsset = (coin: string): Asset =>
 export const perpsDexNames = (markets: readonly Market[]): string[] => {
   const hasLiveMarket = new Map<string, boolean>()
   for (const m of markets) {
-    if (m.categoryId === SPOT_MARKET_ID) {
+    if (isSpotCategory(m.categoryId)) {
       continue
     }
     const name = m.categoryId === MAIN_MARKET_ID ? MAIN_DEX_NAME : m.categoryId

@@ -1,5 +1,6 @@
 import {
   isDecimalStringGreaterThan,
+  isSpotCategory,
   multiplyDecimalString,
   unknownToDecimalString,
 } from '@lifi/perps-sdk'
@@ -18,7 +19,6 @@ import { LIGHTER_PROVIDER_KEY } from '../constants.js'
  */
 export const spotPriceByAssetId = (
   markets: readonly Market[],
-  spotCategoryId: string,
   contexts: readonly MarketContext[],
   assetIds: ReadonlySet<string>
 ): Map<string, string> => {
@@ -27,7 +27,7 @@ export const spotPriceByAssetId = (
   for (const market of markets) {
     const mark = markByMarketId.get(market.id)
     if (
-      market.categoryId !== spotCategoryId ||
+      !isSpotCategory(market.categoryId) ||
       mark === undefined ||
       !assetIds.has(market.baseAsset.id) ||
       priceByAssetId.has(market.baseAsset.id)

@@ -4,8 +4,9 @@ import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Market, Subscription } from '@lifi/perps-types'
+import type { Fill, Market, Subscription } from '@lifi/perps-types'
 import {
+  LiquidationMethod,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -18,6 +19,7 @@ import {
   HL_DELISTED_MARKET,
   HL_MARKETS,
   HL_SPOT_MARKET,
+  HL_TWAP_SLICE_FILL_REFERENCE,
   USDC_ASSET,
 } from '../../test/fixtures.js'
 import type {
@@ -1285,7 +1287,7 @@ describe('HyperliquidWsProvider', () => {
       }
     })
 
-    it('should map fills subscription to userFills payload', async () => {
+    it('subscribes fills to the userFills and userTwapSliceFills feeds', async () => {
       const provider = createProvider()
 
       await provider.subscribe(
@@ -1293,10 +1295,76 @@ describe('HyperliquidWsProvider', () => {
         vi.fn()
       )
 
-      expect(JSON.parse(getMockRwsInstance().sent[0])).toEqual({
-        method: 'subscribe',
-        subscription: { type: 'userFills', user: '0xabc' },
-      })
+      expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'userFills', user: '0xabc' },
+        },
+        {
+          method: 'subscribe',
+          subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+        },
+      ])
+    })
+
+    it('shares both fill feeds between listeners and unsubscribes both when the last listener releases', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const sub: Subscription = {
+          channel: 'fills',
+          dex: 'hyperliquid',
+          address: '0xabc',
+        }
+
+        const unsubFirst = await provider.subscribe(sub, vi.fn())
+        const unsubSecond = await provider.subscribe(sub, vi.fn())
+        expect(getMockRwsInstance().sent).toHaveLength(2)
+
+        getMockRwsInstance().sent = []
+        unsubFirst()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent).toEqual([])
+
+        unsubSecond()
+        vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+        expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'userFills', user: '0xabc' },
+          },
+          {
+            method: 'unsubscribe',
+            subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+          },
+        ])
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('replays both fill feeds on reconnect', async () => {
+      const provider = createProvider()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xabc' },
+        vi.fn()
+      )
+      getMockRwsInstance().sent = []
+
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+
+      expect(getMockRwsInstance().sent.map((s) => JSON.parse(s))).toEqual([
+        {
+          method: 'subscribe',
+          subscription: { type: 'userFills', user: '0xabc' },
+        },
+        {
+          method: 'subscribe',
+          subscription: { type: 'userTwapSliceFills', user: '0xabc' },
+        },
+      ])
     })
 
     it('sends a single allDexsClearinghouseState subscribe for positions', async () => {
@@ -1444,6 +1512,7 @@ describe('HyperliquidWsProvider', () => {
       const event = listener.mock.calls.at(-1)?.[0]
       expect(event.channel).toBe('marketsContext')
       expect(event.data.BTC).toMatchObject({
+        provider: providerKey,
         marketId: 'BTC',
         midPrice: '95001',
         markPrice: '95000',
@@ -1482,6 +1551,7 @@ describe('HyperliquidWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95001',
           markPrice: '95000',
@@ -1564,6 +1634,7 @@ describe('HyperliquidWsProvider', () => {
 
       expect(listener).toHaveBeenCalledOnce()
       expect(listener.mock.calls[0][0].data).toMatchObject({
+        provider: providerKey,
         marketId: 'BTC',
         midPrice: '95000',
         markPrice: '95000',
@@ -1604,6 +1675,7 @@ describe('HyperliquidWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.11',
           markPrice: '0.1',
@@ -1737,6 +1809,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95001',
           prevDayPrice: '95001',
@@ -1762,6 +1835,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95101',
           markPrice: '95100',
@@ -1769,6 +1843,7 @@ describe('HyperliquidWsProvider', () => {
           openInterest: '9510000',
         })
         expect(event.data.ETH).toMatchObject({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3410',
           markPrice: '3401',
@@ -1787,6 +1862,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95101',
           markPrice: '95100',
@@ -1874,6 +1950,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data['PURR/USDC']).toMatchObject({
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.1',
           markPrice: '0.1',
@@ -2002,6 +2079,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toMatchObject({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95500',
           markPrice: '95480',
@@ -2029,6 +2107,7 @@ describe('HyperliquidWsProvider', () => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.channel).toBe('marketsContext')
         expect(event.data.ETH).toEqual({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3411',
           markPrice: '3412',
@@ -2062,6 +2141,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.SOL).toEqual({
+          provider: providerKey,
           marketId: 'SOL',
           midPrice: '150',
           markPrice: '151',
@@ -2097,11 +2177,13 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.BTC).toEqual({
+          provider: providerKey,
           marketId: 'BTC',
           midPrice: '95500',
           markPrice: '95001',
         })
         expect(event.data['xyz:NVDA']).toEqual({
+          provider: providerKey,
           marketId: 'xyz:NVDA',
           midPrice: '145.2',
           markPrice: '145.3',
@@ -2169,6 +2251,7 @@ describe('HyperliquidWsProvider', () => {
       await vi.waitFor(() => {
         const event = listener.mock.calls.at(-1)?.[0]
         expect(event.data.ETH).toEqual({
+          provider: providerKey,
           marketId: 'ETH',
           midPrice: '3400',
           markPrice: '3400',
@@ -2225,11 +2308,106 @@ describe('HyperliquidWsProvider', () => {
         expect(second.data).not.toBe(first.data)
         expect(second.data.BTC).toBe(first.data.BTC)
         expect(second.data['PURR/USDC']).toMatchObject({
+          provider: providerKey,
           marketId: 'PURR/USDC',
           midPrice: '0.11',
           markPrice: '0.1',
         })
       })
+    })
+
+    it.each([
+      'hyperliquid',
+      'hyperliquid-testnet',
+    ])('stamps the %s provider key on every emitted market context', async (key) => {
+      const spotMarket: Market = {
+        ...HL_SPOT_MARKET,
+        id: 'PURR/USDC',
+        baseAsset: {
+          ...HL_SPOT_MARKET.baseAsset,
+          id: '142',
+          displaySymbol: 'PURR',
+        },
+      }
+      marketsFetchMock.mockResolvedValue({
+        markets: [...HL_MARKETS, spotMarket],
+      })
+      const provider = new HyperliquidWsProvider(
+        'wss://api.hyperliquid.xyz/ws',
+        key,
+        freshClient()
+      )
+      const allListener = vi.fn()
+      const perpListener = vi.fn()
+      const spotListener = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: key },
+        allListener
+      )
+      await provider.subscribe(
+        { channel: 'marketContext', dex: key, marketId: 'BTC' },
+        perpListener
+      )
+      await provider.subscribe(
+        { channel: 'marketContext', dex: key, marketId: 'PURR/USDC' },
+        spotListener
+      )
+
+      seedMids({ BTC: '95001' })
+      await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'sac',
+          data: await encodeCompressed({
+            'PURR/USDC': {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          }),
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeAssetCtx',
+          data: {
+            coin: 'BTC',
+            ctx: {
+              funding: 0.0001,
+              openInterest: 100,
+              dayNtlVlm: 1000000,
+              prevDayPx: 94000,
+              markPx: 95000,
+              midPx: 95001,
+              oraclePx: 94998,
+            },
+          },
+        })
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'activeSpotAssetCtx',
+          data: {
+            coin: 'PURR/USDC',
+            ctx: {
+              prevDayPx: '0.09',
+              dayNtlVlm: '2',
+              markPx: '0.1',
+              midPx: '0.11',
+            },
+          },
+        })
+      )
+
+      await vi.waitFor(() => {
+        const data = allListener.mock.calls.at(-1)?.[0].data
+        expect(data?.BTC?.provider).toBe(key)
+        expect(data?.ETH?.provider).toBe(key)
+        expect(data?.['PURR/USDC']?.provider).toBe(key)
+      })
+      expect(perpListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
+      expect(spotListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
     })
 
     it('emits orderbook event for compact l2 snapshot frames', async () => {
@@ -2987,6 +3165,50 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('marks a live liquidation fill only for the liquidated subscriber', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      const liquidationFill = (tid: number, liquidatedUser: string) => ({
+        tid,
+        coin: 'BTC',
+        side: 'A',
+        px: '94000',
+        sz: '0.1',
+        dir: 'Close Long',
+        fee: '4.70',
+        closedPnl: '-12',
+        crossed: true,
+        time: 1704067200000,
+        startPosition: '0.1',
+        liquidation: { liquidatedUser, markPx: '94100', method: 'market' },
+      })
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            fills: [
+              liquidationFill(556, '0xuser1'),
+              liquidationFill(557, '0xother'),
+            ],
+          },
+        })
+      )
+
+      const [own, counterparty] = listener.mock.calls[0][0].data
+      expect(own.liquidation).toEqual({
+        method: LiquidationMethod.MARKET,
+        markPrice: '94100',
+      })
+      expect(counterparty).not.toHaveProperty('liquidation')
+    })
+
     it('suppresses the isSnapshot history and emits only the subsequent live fill', async () => {
       const provider = createEnrichingProvider()
       const listener = vi.fn()
@@ -3086,6 +3308,113 @@ describe('HyperliquidWsProvider', () => {
       for (const call of listener.mock.calls) {
         expect(call[0].data).toHaveLength(0)
       }
+    })
+
+    it('emits a live userTwapSliceFills frame without isSnapshot on the fills channel', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: {
+            user: '0xuser1',
+            twapSliceFills: [HL_TWAP_SLICE_FILL_REFERENCE],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.channel).toBe('fills')
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).toMatchObject({
+        id: '648473049019291',
+        orderId: '590716607007',
+        market: { id: 'ETH' },
+        side: OrderSide.SELL,
+        size: '0.0161',
+        price: '3101.5',
+        fee: { amount: '0.022455', asset: 'USDC' },
+        realizedPnl: '1.288',
+        createdAt: '2026-10-29T18:55:20.247Z',
+      })
+      expect(event.data[0].explorerLink).toBeUndefined()
+    })
+
+    it('suppresses the userTwapSliceFills snapshot and emits only the subsequent live slice', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+
+      const snapshotFrame = JSON.stringify({
+        channel: 'userTwapSliceFills',
+        data: {
+          isSnapshot: true,
+          user: '0xuser1',
+          twapSliceFills: [HL_TWAP_SLICE_FILL_REFERENCE],
+        },
+      })
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+      getMockRwsInstance().simulateOpen()
+      await flushMicrotasks()
+      getMockRwsInstance().simulateMessage(snapshotFrame)
+
+      expect(listener).toHaveBeenCalledTimes(2)
+      for (const call of listener.mock.calls) {
+        expect(call[0]).toMatchObject({ channel: 'fills', data: [] })
+      }
+
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: {
+            isSnapshot: false,
+            user: '0xuser1',
+            twapSliceFills: [
+              {
+                ...HL_TWAP_SLICE_FILL_REFERENCE,
+                fill: { ...HL_TWAP_SLICE_FILL_REFERENCE.fill, tid: 999 },
+              },
+            ],
+          },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledTimes(3)
+      expect(
+        listener.mock.calls[2][0].data.map((fill: Fill) => fill.id)
+      ).toEqual(['999'])
+    })
+
+    it('skips a userTwapSliceFills frame without a twapSliceFills array', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warn = vi.spyOn(wsLog, 'parseFailure').mockImplementation(() => {})
+
+      await provider.subscribe(
+        { channel: 'fills', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      getMockRwsInstance().simulateMessage(
+        JSON.stringify({
+          channel: 'userTwapSliceFills',
+          data: { user: '0xuser1' },
+        })
+      )
+
+      expect(listener).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledOnce()
+      warn.mockRestore()
     })
 
     it('delivers fills when the venue echoes the user address in checksummed form', async () => {

@@ -2,6 +2,7 @@ import {
   type ActionSignerContribution,
   type DepositFlow,
   HYPERLIQUID_USDC,
+  isSpotCategory,
   isSubmittedOrAccepted,
   type LiquidationEstimateParams,
   PerpsError,
@@ -60,7 +61,6 @@ import {
   DEFAULT_HYPERLIQUID_API_URL,
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
-  SPOT_MARKET_ID,
 } from './constants.js'
 import { HyperliquidContextRef } from './context.js'
 import { getAccount } from './services/getAccount.js'
@@ -481,7 +481,7 @@ export function hyperliquidProvider(
       snapOrderPrice(
         price,
         market.szDecimals,
-        market.categoryId === SPOT_MARKET_ID ? 'spot' : undefined
+        isSpotCategory(market.categoryId) ? 'spot' : undefined
       ),
 
     snapOrderSize: (market: Market, size: DecimalString): DecimalString =>
@@ -493,12 +493,7 @@ export function hyperliquidProvider(
       market: PerpsMarket,
       params: LiquidationEstimateParams
     ): string | undefined =>
-      calculateLiquidationPrice(
-        params.entryPrice,
-        params.leverage,
-        params.isLong,
-        market.maxLeverage
-      ),
+      calculateLiquidationPrice(params, market.maxLeverage),
 
     positionRemovableMargin,
 

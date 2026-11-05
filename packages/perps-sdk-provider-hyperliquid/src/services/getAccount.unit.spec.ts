@@ -758,8 +758,18 @@ describe('getAccount', () => {
         spotMarket('@201', '197', 'UBTC'),
       ],
       [
-        { marketId: '@200', midPrice: '40', markPrice: '40' },
-        { marketId: '@201', midPrice: '100000', markPrice: '100000' },
+        {
+          provider: 'hyperliquid',
+          marketId: '@200',
+          midPrice: '40',
+          markPrice: '40',
+        },
+        {
+          provider: 'hyperliquid',
+          marketId: '@201',
+          midPrice: '100000',
+          markPrice: '100000',
+        },
       ]
     ))
 

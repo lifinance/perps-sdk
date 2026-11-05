@@ -159,6 +159,11 @@ export interface ProviderFunding {
 export interface Provider {
   key: string
   name: string
+  /**
+   * Compact display name for a narrow UI place, for example a venue tab or a
+   * badge. Absent means the client shows `name`.
+   */
+  shortName?: string
   logoURI: string
   /**
    * Public attribution code that `lifi-perps-backend` advertises on

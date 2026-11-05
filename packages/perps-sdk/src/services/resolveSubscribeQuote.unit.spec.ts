@@ -46,6 +46,7 @@ const BTC_PERP: PerpsMarket = {
 
 const PRICES: MarketContext[] = [
   {
+    provider: 'hyperliquid',
     marketId: 'BTC',
     midPrice: '100',
     markPrice: '100',
@@ -211,6 +212,7 @@ describe('resolveSubscribeQuote', () => {
     expect(onQuote.mock.calls[0][0].markPrice).toBe('100')
 
     const movedContext: MarketContext = {
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '100.5',
       markPrice: '100.5',

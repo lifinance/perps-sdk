@@ -33,6 +33,7 @@ const MARKETS = {
 const PRICES = {
   prices: [
     {
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '100',
       markPrice: '100',
