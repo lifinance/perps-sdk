@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 34.0.1
+
+### Patch Changes
+
+- [#667](https://github.com/lifinance/perps-sdk/pull/667) [`48c302f`](https://github.com/lifinance/perps-sdk/commit/48c302f5813d4c2b7166f5f976548c42e9134618) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `PerpsProviderPlugin.onExecuteResults` can resolve to `'retry'`. When every result is `Failed`, `PerpsClient` then creates, signs and executes the action one more time. It retries at most one time for each `execute` call.
+
+  Ondo HMAC signing stamps `Date.now() + driftMs`. After Ondo refuses a timestamp with `NonceExpired`, the Ondo provider reads `serverTime` from `GET /status`, stores the signed drift in the provider storage, and asks for one retry. If the read fails, the original refusal is the result. Thus Ondo accepts orders from a device clock that runs ahead of or behind the Ondo clock.
+
 ## 34.0.0
 
 ### Minor Changes
