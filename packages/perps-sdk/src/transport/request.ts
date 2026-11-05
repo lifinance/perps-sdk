@@ -86,12 +86,14 @@ export async function request<T>(
     finalOptions = await config.requestInterceptor(url, finalOptions)
   }
 
+  const signal = sdkOptions?.signal ?? finalOptions.signal ?? undefined
+
   try {
     const requestStartedAt = onResponse ? Date.now() : 0
     const response = await fetchWithRetry(url, finalOptions, {
       policy,
       fetchImpl: config.fetch,
-      signal: sdkOptions?.signal ?? finalOptions.signal ?? undefined,
+      signal,
     })
     const responseReceivedAt = onResponse ? Date.now() : 0
 
@@ -127,7 +129,7 @@ export async function request<T>(
       throw error
     }
 
-    if (isAbortError(error)) {
+    if (isAbortError(error) || (signal?.aborted && error === signal.reason)) {
       throw error
     }
 

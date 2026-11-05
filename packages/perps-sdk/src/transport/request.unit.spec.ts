@@ -257,6 +257,52 @@ describe('request — error rehydration', () => {
     ).rejects.toBe(abortError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    ['Error', new Error('user cancelled')],
+    ['TimeoutError', new DOMException('request timed out', 'TimeoutError')],
+  ])('preserves a custom %s abort before the request starts', async (_name, reason) => {
+    const controller = new AbortController()
+    controller.abort(reason)
+    const fetchImpl = vi.fn<typeof fetch>()
+
+    await expect(
+      request(
+        { ...client.config, fetch: fetchImpl },
+        url,
+        { retry: false },
+        {
+          signal: controller.signal,
+        }
+      )
+    ).rejects.toBe(reason)
+
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['Error', new Error('user cancelled')],
+    ['TimeoutError', new DOMException('request timed out', 'TimeoutError')],
+  ])('preserves a custom %s abort during the request', async (_name, reason) => {
+    const controller = new AbortController()
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(reason)
+      throw reason
+    })
+
+    await expect(
+      request(
+        { ...client.config, fetch: fetchImpl },
+        url,
+        { retry: false },
+        {
+          signal: controller.signal,
+        }
+      )
+    ).rejects.toBe(reason)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('request — header handling', () => {
