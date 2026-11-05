@@ -1,6 +1,6 @@
-import { createWarnOnce, getDefaultMarketId } from '@lifi/perps-sdk'
+import { createWarnOnce } from '@lifi/perps-sdk'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
-import type { OndoBookSnapshot } from '../types/ws.js'
+import type { OndoStatus } from '../types/wire.js'
 import type { OndoApiClient } from '../utils/apiClient.js'
 
 const ONDO_SERVER_CLOCK_TTL_MS = 60_000
@@ -41,21 +41,17 @@ export class OndoServerClock {
   }
 
   private async measure(): Promise<void> {
-    let snapshot: Pick<OndoBookSnapshot, 'time'>
+    let status: OndoStatus
     try {
-      // Ondo has no time endpoint, and browsers hide the cross-origin `Date`
-      // header, so the depth snapshot time is the server clock.
-      snapshot = await this.client().get<typeof snapshot>('/v1/perps/depth', {
-        params: { market: getDefaultMarketId(ONDO_PROVIDER_KEY), depth: 1 },
-      })
+      status = await this.client().get<typeof status>('/status')
     } catch (error) {
       this.warnOnce('request', `${SYNC_FAILED}: ${String(error)}`)
       return
     }
     const receivedAtMs = Date.now()
-    const serverTimeMs = Date.parse(snapshot.time)
+    const serverTimeMs = status.serverTime
     if (!Number.isFinite(serverTimeMs)) {
-      this.warnOnce('time', `${SYNC_FAILED}: invalid depth time`)
+      this.warnOnce('time', `${SYNC_FAILED}: invalid serverTime`)
       return
     }
     // Against the receive time the offset errs behind the server, the side

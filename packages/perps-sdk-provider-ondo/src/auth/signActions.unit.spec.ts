@@ -174,24 +174,17 @@ const jsonResponse = (body: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-// A `GET /v1/perps/depth` snapshot whose `time` is the client clock moved by
-// `offsetMs`: the venue clock the HMAC timestamp must follow.
-const depthResponse = (offsetMs: number): Response =>
-  jsonResponse({
-    success: true,
-    result: {
-      market: 'BTC-USD.P',
-      time: new Date(Date.now() + offsetMs).toISOString(),
-      asks: [['80958', '0.0293']],
-      bids: [['80931', '0.0123']],
-    },
-  })
-
+// The status `serverTime` is the client clock moved by `offsetMs`: the venue
+// clock the HMAC timestamp must follow.
 const serverClockAt = (offsetMs: number) =>
   new OndoServerClock(
     () =>
       new OndoApiClient(BASE_URL, {
-        fetchImpl: async () => depthResponse(offsetMs),
+        fetchImpl: async () =>
+          jsonResponse({
+            success: true,
+            result: { marketStatus: 'open', serverTime: Date.now() + offsetMs },
+          }),
       })
   )
 

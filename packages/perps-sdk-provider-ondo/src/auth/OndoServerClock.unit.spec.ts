@@ -7,20 +7,14 @@ const BASE_URL = 'https://api.ondoperps-sandbox.xyz'
 
 const CLIENT_NOW_MS = Date.parse('2026-10-28T12:00:10.000Z')
 
-// Ondo stamps the depth snapshot with nanoseconds. Live shape, 2026-10-28.
-const SERVER_TIME = '2026-10-28T12:00:00.000123456Z'
 const SERVER_TIME_MS = Date.parse('2026-10-28T12:00:00.000Z')
 
-const depthResponse = (time: string): Response =>
+// Live shape, 2026-11-05.
+const statusResponse = (serverTime: unknown): Response =>
   new Response(
     JSON.stringify({
       success: true,
-      result: {
-        market: 'BTC-USD.P',
-        time,
-        asks: [['80958', '0.0293']],
-        bids: [['80931', '0.0123']],
-      },
+      result: { marketStatus: 'open', serverTime },
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
   )
@@ -53,22 +47,22 @@ describe('OndoServerClock', () => {
     expect(clock.estimateServerTimeMs()).toBe(CLIENT_NOW_MS)
   })
 
-  it('reads the server time from a one-level depth snapshot of the default market', async () => {
+  it('reads the server time from the public status endpoint', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(depthResponse(SERVER_TIME))
+      .mockResolvedValue(statusResponse(SERVER_TIME_MS))
     const clock = clockWith(fetchImpl)
 
     await clock.sync()
 
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/v1/perps/depth?market=BTC-USD.P&depth=1`)
+    expect(url).toBe(`${BASE_URL}/status`)
     expect(init.method).toBe('GET')
   })
 
   it('estimates the server time when the client clock runs 10s ahead', async () => {
     const clock = clockWith(
-      vi.fn<typeof fetch>().mockResolvedValue(depthResponse(SERVER_TIME))
+      vi.fn<typeof fetch>().mockResolvedValue(statusResponse(SERVER_TIME_MS))
     )
 
     await clock.sync()
@@ -81,7 +75,7 @@ describe('OndoServerClock', () => {
   it('estimates the server time when the client clock runs behind', async () => {
     vi.setSystemTime(SERVER_TIME_MS - 20_000)
     const clock = clockWith(
-      vi.fn<typeof fetch>().mockResolvedValue(depthResponse(SERVER_TIME))
+      vi.fn<typeof fetch>().mockResolvedValue(statusResponse(SERVER_TIME_MS))
     )
 
     await clock.sync()
@@ -92,8 +86,10 @@ describe('OndoServerClock', () => {
   it('reuses a measurement for one minute, then measures again', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(depthResponse(SERVER_TIME))
-      .mockResolvedValueOnce(depthResponse('2026-10-28T12:01:05.123Z'))
+      .mockResolvedValueOnce(statusResponse(SERVER_TIME_MS))
+      .mockResolvedValueOnce(
+        statusResponse(Date.parse('2026-10-28T12:01:05.123Z'))
+      )
     const clock = clockWith(fetchImpl)
 
     await clock.sync()
@@ -112,7 +108,7 @@ describe('OndoServerClock', () => {
   it('shares one request between concurrent syncs', async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(depthResponse(SERVER_TIME))
+      .mockResolvedValue(statusResponse(SERVER_TIME_MS))
     const clock = clockWith(fetchImpl)
 
     await Promise.all([clock.sync(), clock.sync(), clock.sync()])
@@ -126,7 +122,7 @@ describe('OndoServerClock', () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(failedResponse())
       .mockResolvedValueOnce(failedResponse())
-      .mockResolvedValueOnce(depthResponse(SERVER_TIME))
+      .mockResolvedValueOnce(statusResponse(SERVER_TIME_MS))
     const clock = clockWith(fetchImpl)
 
     await expect(clock.sync()).resolves.toBeUndefined()
@@ -142,17 +138,17 @@ describe('OndoServerClock', () => {
     expect(clock.estimateServerTimeMs()).toBe(SERVER_TIME_MS)
   })
 
-  it('keeps the client clock and warns when the snapshot time is not a date', async () => {
+  it('keeps the client clock and warns when serverTime is not a number', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const clock = clockWith(
-      vi.fn<typeof fetch>().mockResolvedValue(depthResponse('not-a-time'))
+      vi.fn<typeof fetch>().mockResolvedValue(statusResponse(null))
     )
 
     await clock.sync()
 
     expect(clock.estimateServerTimeMs()).toBe(CLIENT_NOW_MS)
     expect(warn).toHaveBeenCalledWith(
-      '[ondo] clock sync failed, signing with the client clock: invalid depth time'
+      '[ondo] clock sync failed, signing with the client clock: invalid serverTime'
     )
   })
 
@@ -161,7 +157,7 @@ describe('OndoServerClock', () => {
     const clock = clockWith(
       vi
         .fn<typeof fetch>()
-        .mockResolvedValueOnce(depthResponse(SERVER_TIME))
+        .mockResolvedValueOnce(statusResponse(SERVER_TIME_MS))
         .mockResolvedValueOnce(failedResponse())
     )
 
