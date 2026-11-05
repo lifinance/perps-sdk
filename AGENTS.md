@@ -158,11 +158,14 @@ nvm use 24  # or whichever version satisfies the engines field
 pnpm build           # Build CJS + ESM + types
 pnpm test            # Run all tests (vitest)
 pnpm test:unit       # Unit tests only
+pnpm test:affected   # Fast loop: only tests affected since the last run
 pnpm check           # Biome lint/format check
 pnpm check:write     # Biome auto-fix
 pnpm check:types     # TypeScript type checking
 pnpm knip:check      # Unused deps/exports check
 ```
+
+Use `pnpm test:affected` for the fast loop. Run the full `pnpm test` before you push.
 
 ## Conventions
 

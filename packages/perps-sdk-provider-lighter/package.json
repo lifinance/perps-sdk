@@ -56,6 +56,7 @@
     "check:types:spec": "tsc --noEmit -p tsconfig.spec.json",
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "test": "vitest --run",
+    "test:affected": "vitest run --since-last-run",
     "test:cov": "vitest --run --coverage",
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
     "test:consumers": "pnpm node --experimental-vm-modules ./scripts/verify-consumer-bundlers.mjs"
@@ -71,12 +72,12 @@
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:^",
     "@types/big.js": "^7.0.0",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^5.1.0",
     "madge": "^8.0.0",
     "playwright": "1.63.0",
     "typescript": "^5.9.2",
     "viem": "2.57.11",
-    "vitest": "^2.1.8"
+    "vitest": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"
