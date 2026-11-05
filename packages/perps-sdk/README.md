@@ -88,6 +88,29 @@ so either disables registry-level reuse and request coalescing. Such hooks still
 run on every `sync()`. This cache applies only to reference registries, not account,
 price, or authenticated trading responses.
 
+## Platform notices
+
+`getMeta(client)` returns the API `version` and the `notices` that the backend
+serves. The scope of a `Notice` comes from `providerKeys`:
+
+- A notice without `providerKeys` is global. It applies to all users.
+- A notice with `providerKeys` applies only to the listed providers. An
+  imported provider notice always lists one or more providers.
+
+All `Notice` times are Unix epoch milliseconds. The visibility interval is
+`[validFrom, validTo)`: it includes `validFrom` and excludes `validTo`. An
+absent bound has no limit. The visibility bounds do not describe a maintenance
+window. `startsAt`, `endsAt`, and `resolvedAt` describe the event. An absent
+`endsAt` means that the end is not known, and a scheduled `endsAt` does not
+prove recovery.
+
+`id` identifies a notice across polls. `revision` is an opaque value that
+changes when the user-facing content changes. `lastCheckedAt` is the last
+successful observation of the source, not the last poll attempt.
+
+The SDK returns the notices as the backend serves them. It does not filter
+them by visibility, scope, or acknowledgement. The caller does that work.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
