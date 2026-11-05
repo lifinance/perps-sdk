@@ -41,6 +41,12 @@ export const HYPERLIQUID_FEE_TIER_FALLBACK: FeeTier = {
 export const DEFAULT_HISTORY_LIMIT = 50
 /** @internal */
 export const MAX_HISTORY_LIMIT = 200
+/**
+ * Row cap of `userFills`, `userFillsByTime`, `userTwapSliceFills`, and
+ * `userTwapSliceFillsByTime`.
+ * @internal
+ */
+export const FILL_ROWS_CAP = 2000
 
 /**
  * Main perps DEX uses an empty sub-dex name on the wire; surfaced as
@@ -51,5 +57,3 @@ export const MAX_HISTORY_LIMIT = 200
 export const MAIN_DEX_NAME = ''
 /** @internal */
 export const MAIN_MARKET_ID = 'hyperliquid'
-/** @internal */
-export const SPOT_MARKET_ID = 'spot'

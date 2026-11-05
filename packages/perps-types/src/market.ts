@@ -1,6 +1,7 @@
 import type { Asset } from './asset.js'
 import type { DecimalString } from './decimal.js'
 import type { PositionMarginAdjustment } from './enums.js'
+import type { ProviderId } from './primitives.js'
 
 /**
  * Current funding rate and next funding timestamp for a perpetual market.
@@ -53,6 +54,13 @@ export interface BaseMarket {
    */
   sizeIncrement?: DecimalString
 }
+
+/**
+ * Category id of spot markets and spot balances on every provider.
+ *
+ * @public
+ */
+export const SPOT_CATEGORY_ID = 'spot'
 
 /**
  * Perpetual market metadata, including leverage and margin constraints.
@@ -147,7 +155,9 @@ export interface MarketsResponse {
  * @public
  */
 export interface MarketContext {
-  /** Opaque provider market identifier for this context frame. */
+  /** Provider key that emitted this context. */
+  provider: ProviderId
+  /** Opaque provider market identifier, unique only within `provider`. */
   marketId: string
   /** Current order-book midpoint, as a decimal quote string. */
   midPrice: DecimalString

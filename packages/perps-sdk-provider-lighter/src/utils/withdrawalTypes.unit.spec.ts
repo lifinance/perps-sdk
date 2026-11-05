@@ -1,6 +1,5 @@
-import { WithdrawalType } from '@lifi/perps-types'
+import { SPOT_CATEGORY_ID, WithdrawalType } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
 import {
   type LighterFastWithdrawal,
   lighterFastWithdrawal,
@@ -55,7 +54,7 @@ describe('lighterWithdrawalTypes', () => {
   const ROWS = [
     {
       assetId: '3',
-      categoryId: LIGHTER_SPOT_CATEGORY_ID,
+      categoryId: SPOT_CATEGORY_ID,
       available: '10',
       max: '10',
     },
@@ -71,7 +70,7 @@ describe('lighterWithdrawalTypes', () => {
 
   it('offers FAST on the collateral perps row only', () => {
     expect(types(FAST)).toEqual([
-      [LIGHTER_SPOT_CATEGORY_ID, '3', [[WithdrawalType.STANDARD, '10']]],
+      [SPOT_CATEGORY_ID, '3', [[WithdrawalType.STANDARD, '10']]],
       [
         'perps',
         '3',

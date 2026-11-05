@@ -312,6 +312,7 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { positionValueUsd: '10000', marginUsd: '1000' },
   ],
   calculateExpectedPnl: ['0.77', '0.7', '3', true, '10'],
+  calculateInitialMarginRoe: ['50', '1', '100', '5'],
   calculateLiquidationDistance: [
     { liquidationPrice: '45000', currentPrice: '50000' },
   ],
@@ -335,7 +336,12 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
   estimateLiquidationPrice: [LIQUIDATION_INPUT],
   estimateLiquidationPriceAtMarketRate: [
     { ...MARKET, maintenanceMarginRate: '0.01' },
-    { entryPrice: '100', leverage: '10', isLong: true },
+    {
+      entryPrice: '100',
+      leverage: '10',
+      isLong: true,
+      marginMode: MarginMode.ISOLATED,
+    },
   ],
   estimateNewLeverage: [
     {
@@ -343,6 +349,18 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
       currentMargin: '100',
       addNotional: '500',
       addMargin: '50',
+    },
+  ],
+  estimateOrderLiquidationPrice: [
+    {
+      entryPrice: '100',
+      leverage: '10',
+      isLong: true,
+      marginMode: MarginMode.ISOLATED,
+    },
+    {
+      maintenanceMarginRate: () => '0.01',
+      positionCollateral: (position: Position) => position.marginUsed,
     },
   ],
   estimateRealizedPnl: [SELL_LIMIT, LONG_POSITION],

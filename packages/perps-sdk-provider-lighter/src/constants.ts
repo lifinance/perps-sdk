@@ -17,17 +17,6 @@ export const LIGHTER_PROVIDER_KEY = 'lighter'
 export const LIGHTER_RH_PROVIDER_KEY = 'lighter-rh'
 
 /**
- * Category id for Lighter spot token holdings, matching the backend's Lighter
- * spot asset category. Every Lighter call site, REST and WebSocket, uses this
- * constant for the spot category. The perps category id is not a constant:
- * `LighterProvider.getAccount` reads it from the `/providers` category whose
- * `quoteAsset` is not null.
- *
- * @public
- */
-export const LIGHTER_SPOT_CATEGORY_ID = 'spot'
-
-/**
  * Default mainnet REST and WS base URL for Lighter.
  *
  * @public

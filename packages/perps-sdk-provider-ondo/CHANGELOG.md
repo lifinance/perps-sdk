@@ -1,5 +1,40 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 34.0.0
+
+### Minor Changes
+
+- [#686](https://github.com/lifinance/perps-sdk/pull/686) [`13dcf3c`](https://github.com/lifinance/perps-sdk/commit/13dcf3c7cec2aa660d7545b2ae37d6942a417d47) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext` has a required `provider` field, because a `marketId` is unique only within one provider. The Hyperliquid, Lighter, and Ondo WS providers set `provider` to the provider key of the instance on each `marketsContext` and `marketContext` emit. The `mapMarketContext` functions of the Hyperliquid and Lighter providers take the provider key as their first argument.
+
+### Patch Changes
+
+- Updated dependencies [[`13dcf3c`](https://github.com/lifinance/perps-sdk/commit/13dcf3c7cec2aa660d7545b2ae37d6942a417d47)]:
+  - @lifi/perps-types@27.0.0
+  - @lifi/perps-sdk@31.0.0
+
+## 33.0.0
+
+### Major Changes
+
+- [#688](https://github.com/lifinance/perps-sdk/pull/688) [`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `viem` is now a required peer dependency, limited to `>=2.57.11 <2.57.12`. Install `viem@2.57.11` in your app. `viem` 2.57.12 and later reject the Hyperliquid `HyperliquidTransaction:*` EIP-712 type names, so user-signed Hyperliquid actions fail before the wallet signs.
+
+### Patch Changes
+
+- Updated dependencies [[`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0)]:
+  - @lifi/perps-sdk@30.0.0
+
+## 32.0.0
+
+### Minor Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+### Patch Changes
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b), [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41)]:
+  - @lifi/perps-types@26.0.0
+  - @lifi/perps-sdk@29.0.0
+
 ## 31.0.1
 
 ### Patch Changes

@@ -38,6 +38,7 @@ import {
   isVaultTransferDelta,
   isWithdrawDelta,
 } from '../types/index.js'
+import { isFillLiquidatingAccount } from './isFillLiquidatingAccount.js'
 import { rowTimestampToIsoStringOrUndefined } from './rowTimestamp.js'
 
 /**
@@ -371,11 +372,10 @@ export const mapLiquidationFills = (
   resolveMarket: (coin: string) => MarketDisplay | undefined,
   ledgerHashes: ReadonlySet<string>
 ): LiquidationActivity[] => {
-  const queried = queriedAddress.toLowerCase()
   const byOrder = new Map<number, HlUserFill[]>()
   for (const fill of fills) {
     if (
-      fill.liquidation?.liquidatedUser.toLowerCase() !== queried ||
+      !isFillLiquidatingAccount(fill, queriedAddress) ||
       (fill.hash !== undefined && ledgerHashes.has(fill.hash))
     ) {
       continue

@@ -111,6 +111,7 @@ export {
 } from './math/order.js'
 export {
   calculateEffectiveLeverage,
+  calculateInitialMarginRoe,
   calculateLiquidationDistance,
   calculateNotionalValue,
   calculateRealizedPnl,
@@ -121,10 +122,12 @@ export {
   estimateLiquidationPrice,
   estimateLiquidationPriceAtMarketRate,
   estimateNewLeverage,
+  estimateOrderLiquidationPrice,
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
   safeCalculateEffectiveLeverage,
+  safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
   safeCalculateNotionalValue,
   safeCalculateRealizedPnl,
@@ -135,6 +138,7 @@ export {
   safeEstimateLiquidationPrice,
   safeEstimateLiquidationPriceAtMarketRate,
   safeEstimateNewLeverage,
+  safeEstimateOrderLiquidationPrice,
   safeEstimateUnrealizedPnl,
   safeWouldImmediatelyLiquidate,
   wouldImmediatelyLiquidate,
@@ -263,9 +267,9 @@ export type {
 export type {
   DeclaredDepositAsset,
   DepositFlow,
-  DepositFlowFirstDepositPipeline,
   DepositFlowLifiSwap,
   DepositFlowSetupRequired,
+  DepositFlowVenueDepositPipeline,
 } from './types/deposit.js'
 export type {
   ActionSignerContribution,
@@ -318,6 +322,7 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
+export { isSpotCategory } from './utils/marketCategory.js'
 export {
   ACTIVE_ORDER_STATUSES,
   isActiveOrderStatus,
@@ -327,6 +332,7 @@ export {
   isTpSlOrder,
   isTriggerOrder,
   isTwapOrder,
+  orderSideLabel,
   triggerConditionFor,
 } from './utils/orderClassification.js'
 export {

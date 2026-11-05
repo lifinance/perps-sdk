@@ -1,4 +1,5 @@
 import {
+  isSpotCategory,
   numberToDecimalString,
   PerpsError,
   type SDKRequestOptions,
@@ -10,7 +11,7 @@ import {
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY, SPOT_MARKET_ID } from '../constants.js'
+import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import { hlInfoOptions } from '../utils/infoClient.js'
 import { fetchActiveAssetData } from './activeAssetData.js'
@@ -39,7 +40,7 @@ export const getMarketSettings = async (
   params: GetMarketSettingsParams,
   options?: SDKRequestOptions
 ): Promise<MarketSettings> => {
-  if (params.market.categoryId === SPOT_MARKET_ID) {
+  if (isSpotCategory(params.market.categoryId)) {
     const error = new PerpsError(
       PerpsErrorCode.ValidationError,
       `Hyperliquid market '${params.market.marketId}' is a spot market and carries no leverage setting`

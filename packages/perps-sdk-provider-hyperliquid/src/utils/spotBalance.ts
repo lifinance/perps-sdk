@@ -1,10 +1,11 @@
 import {
   isDecimalString,
   isDecimalStringGreaterThan,
+  isSpotCategory,
   multiplyDecimalString,
 } from '@lifi/perps-sdk'
 import type { Asset, Balance, DecimalString, Market } from '@lifi/perps-types'
-import { SPOT_MARKET_ID } from '../constants.js'
+import { SPOT_CATEGORY_ID } from '@lifi/perps-types'
 import type { HlSpotBalance } from '../types/index.js'
 import { spotLogoURI } from './assetLogo.js'
 import { coinAsset } from './marketDisplay.js'
@@ -21,7 +22,7 @@ export const spotPriceById = (
 ): Map<string, DecimalString> => {
   const map = new Map<string, DecimalString>()
   for (const m of markets) {
-    if (m.categoryId === SPOT_MARKET_ID) {
+    if (isSpotCategory(m.categoryId)) {
       const price = priceByMarketId.get(m.id)
       map.set(m.baseAsset.id, isDecimalString(price) ? price : '0')
     }
@@ -61,7 +62,7 @@ export const spotBalance = (
 ): Balance => {
   const price = priceById.get(asset.id) ?? '0'
   return {
-    categoryId: SPOT_MARKET_ID,
+    categoryId: SPOT_CATEGORY_ID,
     asset,
     units: total,
     valueUsd: multiplyDecimalString(total, price),

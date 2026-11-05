@@ -14,6 +14,7 @@ import { DECIMAL_PATTERN } from './decimal.js'
 import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
+import type { ProviderId } from './primitives.js'
 import type {
   Param,
   Provider,
@@ -196,6 +197,13 @@ const lighterProvider: Provider = {
   depositFeeUsd: '0',
   withdrawalFeeUsd: '1',
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
+}
+
+const lighterRobinhoodProvider: Provider = {
+  ...lighterProvider,
+  key: 'lighter-rh',
+  name: 'Lighter Robinhood',
+  shortName: 'Lighter RH',
 }
 
 // warn-level notice: the first producer is an HL HIP-3 sub-dex risk callout,
@@ -463,6 +471,12 @@ type _MarketContextHasNoFundingCadence = Expect<
     never
   >
 >
+type _MarketContextProviderShape = Expect<
+  Equals<MarketContext['provider'], ProviderId>
+>
+type _MarketContextProviderIsRequired = Expect<
+  Equals<Extract<RequiredKeys<MarketContext>, 'provider'>, 'provider'>
+>
 
 // `setup` is required on `Provider` — no implicit empty fallback.
 type RequiredKeys<T> = {
@@ -495,6 +509,11 @@ type _ReferralCodeShape = Expect<
 >
 type _ReferralCodeIsOptional = Expect<
   Equals<Extract<RequiredKeys<Provider>, 'referralCode'>, never>
+>
+
+type _ShortNameShape = Expect<Equals<Provider['shortName'], string | undefined>>
+type _ShortNameIsOptional = Expect<
+  Equals<Extract<RequiredKeys<Provider>, 'shortName'>, never>
 >
 
 // `ProviderAction` keys: the three core fields plus the optional
@@ -582,6 +601,7 @@ export const _fixtures = {
   lighterAccountTypeSetup,
   hyperliquidProvider,
   lighterProvider,
+  lighterRobinhoodProvider,
   warnNotice,
   infoNotice,
   categoryWithWarnNotice,
@@ -623,6 +643,8 @@ export type _TypeAssertions = [
   _ProviderFundingOptional,
   _ProviderFundingIsOptional,
   _MarketContextHasNoFundingCadence,
+  _MarketContextProviderShape,
+  _MarketContextProviderIsRequired,
   _SetupIsRequired,
   _SupportedIntervalsShape,
   _SupportedIntervalsIsRequired,
@@ -630,6 +652,8 @@ export type _TypeAssertions = [
   _ChainIdIsOptional,
   _ReferralCodeShape,
   _ReferralCodeIsOptional,
+  _ShortNameShape,
+  _ShortNameIsOptional,
   _ProviderActionKeys,
   _DocsUrlShape,
   _DocsUrlIsOptional,
@@ -753,6 +777,18 @@ describe('Provider.referralCode', () => {
 
   it('is optional for providers without referral attribution', () => {
     expect(providerWithNoDescriptors.referralCode).toBeUndefined()
+  })
+})
+
+describe('Provider.shortName', () => {
+  it('carries a compact label next to the full name', () => {
+    expect(lighterRobinhoodProvider.name).toBe('Lighter Robinhood')
+    expect(lighterRobinhoodProvider.shortName).toBe('Lighter RH')
+  })
+
+  it('is optional for providers whose name is already compact', () => {
+    expect(hyperliquidProvider.shortName).toBeUndefined()
+    expect(lighterProvider.shortName).toBeUndefined()
   })
 })
 

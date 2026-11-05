@@ -3,7 +3,7 @@ import { zeroAddress } from 'viem'
 import type { DeclaredDepositAsset } from '../types/deposit.js'
 
 /**
- * USDC on Ethereum mainnet — the collateral leg of Lighter's first-deposit
+ * USDC on Ethereum mainnet — the collateral leg of Lighter's venue-deposit
  * pipeline, and the token Ondo's provisioned deposit address is funded in.
  *
  * @public
@@ -15,7 +15,7 @@ export const ETHEREUM_USDC: DeclaredDepositAsset = {
 }
 
 /**
- * Ether on Ethereum mainnet, to broadcast the first-deposit pipeline's legs
+ * Ether on Ethereum mainnet, to broadcast the venue-deposit pipeline's legs
  * with.
  *
  * @public
@@ -65,7 +65,7 @@ export const ROBINHOOD_USDG: DeclaredDepositAsset = {
 }
 
 /**
- * Ether on Robinhood Chain, to broadcast the Robinhood first-deposit pipeline's
+ * Ether on Robinhood Chain, to broadcast the Robinhood venue-deposit pipeline's
  * legs with.
  *
  * @public

@@ -1,5 +1,5 @@
 import { numberToDecimalString } from '@lifi/perps-sdk'
-import type { MarketContext } from '@lifi/perps-types'
+import type { MarketContext, ProviderId } from '@lifi/perps-types'
 import type { LtWsMarketStats, LtWsSpotMarketStats } from '../types/index.js'
 import { fundingPercentToFraction } from './fundingRate.js'
 
@@ -53,11 +53,13 @@ const fundingInfo = (
  * @public
  */
 export const mapMarketContext = (
+  providerKey: ProviderId,
   stats: LtWsMarketStats | LtWsSpotMarketStats
 ): MarketContext => {
   const marketId = String(stats.market_id)
   if (isPerpStats(stats)) {
     return {
+      provider: providerKey,
       marketId,
       midPrice: stats.mid_price,
       markPrice: stats.mark_price,
@@ -68,6 +70,7 @@ export const mapMarketContext = (
     }
   }
   return {
+    provider: providerKey,
     marketId,
     midPrice: stats.mid_price,
     markPrice: stats.mid_price,

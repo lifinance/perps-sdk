@@ -1,5 +1,5 @@
+import { SPOT_CATEGORY_ID } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { LIGHTER_SPOT_CATEGORY_ID } from '../constants.js'
 import type { LtAccount } from '../types/account.js'
 import { LT_ASSET_ID_USDC } from '../types/action.js'
 import * as barrel from './index.js'
@@ -184,7 +184,7 @@ describe('lighterWithdrawableBalances', () => {
     ])
   })
 
-  it('labels perps rows with the given category id and spot rows with LIGHTER_SPOT_CATEGORY_ID', () => {
+  it('labels perps rows with the given category id and spot rows with SPOT_CATEGORY_ID', () => {
     expect(
       lighterWithdrawableBalances(
         MULTI_ASSET_ACCOUNT,
@@ -193,7 +193,7 @@ describe('lighterWithdrawableBalances', () => {
       )
     ).toEqual([
       row('1', 'lighter-rh', '0.00709091'),
-      row('2', LIGHTER_SPOT_CATEGORY_ID, '8.00004674'),
+      row('2', SPOT_CATEGORY_ID, '8.00004674'),
       row('3', 'lighter-rh', '13.891825'),
     ])
   })

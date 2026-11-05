@@ -221,6 +221,7 @@ export const mapOrder = (
         price: order.price,
         timeInForce: mapTimeInForce(order.time_in_force),
         ...(expiresAt === undefined ? {} : { expiresAt }),
+        ...(order.type === 'liquidation' ? { isLiquidation: true } : {}),
       }
   }
 }

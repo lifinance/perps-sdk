@@ -7,6 +7,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LIGHTER_COLLATERAL_ASSETS,
+  LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_WS_URL,
 } from '../constants.js'
@@ -777,6 +778,66 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    // Mainnet `trade/182` deleverage row in the live `subscribed/trade` frame
+    // shape. Lighter reports a zero `price`; `usd_amount` carries the notional.
+    const DELEVERAGE_WS_TRADE = {
+      trade_id: 36907412776,
+      trade_id_str: '36907412776',
+      tx_hash:
+        '00000020b3ee1c24000001a18376f25a000000000000000000000000000000000000000000000000',
+      type: 'deleverage',
+      market_id: 182,
+      market_symbol: 'H100',
+      market_kind: 'perps',
+      size: '445.00',
+      price: '0.0000',
+      usd_amount: '1315.774894',
+      ask_id: 0,
+      ask_id_str: '0',
+      bid_id: 0,
+      bid_id_str: '0',
+      ask_account_id: 281474976710654,
+      bid_account_id: 742436,
+      is_maker_ask: true,
+      block_height: 367909102,
+      timestamp: 1793206973018,
+      transaction_time: 1793206973026121,
+    }
+
+    const emittedTradePrice = (trade: Record<string, unknown>) => {
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'trades:182', listener)
+      const internals = p as unknown as LighterWsProviderInternals
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/trade',
+          channel: 'trade:182',
+          trades: [trade],
+        })
+      )
+      p.close()
+      return listener.mock.calls[0][0].data[0].price
+    }
+
+    it('prices a deleverage trade at usd_amount / size', () => {
+      expect(emittedTradePrice(DELEVERAGE_WS_TRADE)).toBe(
+        '2.9567975146067415730337078651685393258427'
+      )
+    })
+
+    it('keeps a non-zero venue price on a deleverage trade', () => {
+      expect(
+        emittedTradePrice({ ...DELEVERAGE_WS_TRADE, price: '2.9568' })
+      ).toBe('2.9568')
+    })
+
+    it('keeps a zero venue price on a trade that is not a deleverage', () => {
+      expect(emittedTradePrice({ ...DELEVERAGE_WS_TRADE, type: 'trade' })).toBe(
+        '0.0000'
+      )
+    })
+
     it('emits nothing for an empty trades batch', () => {
       const p = makeProvider()
       const listener = vi.fn()
@@ -1285,6 +1346,36 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('leaves liquidationPrice absent when the frame sends liquidation_price "0"', async () => {
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          { resolveAuthToken: async () => 'token' },
+          freshClient()
+        )
+      )
+      const listener = vi.fn()
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        listener
+      )
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': { ...RAW_POSITION, liquidation_price: '0' } },
+        })
+      )
+
+      expect(listener).toHaveBeenCalledOnce()
+      const event = listener.mock.calls[0][0]
+      expect(event.data).toHaveLength(1)
+      expect(event.data[0]).not.toHaveProperty('liquidationPrice')
+      p.close()
+    })
+
     it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)
@@ -1649,6 +1740,7 @@ describe('LighterWsProvider', () => {
       const perpEvent = listener.mock.calls[0][0]
       expect(perpEvent.channel).toBe('marketsContext')
       expect(perpEvent.data['0']).toMatchObject({
+        provider: 'lighter',
         marketId: '0',
         midPrice: '50001',
         markPrice: '50000',
@@ -1688,6 +1780,7 @@ describe('LighterWsProvider', () => {
       const spotEvent = listener.mock.calls[1][0]
       expect(Object.keys(spotEvent.data).sort()).toEqual(['0', '2048'])
       expect(spotEvent.data['2048']).toMatchObject({
+        provider: 'lighter',
         marketId: '2048',
         midPrice: '1814.34',
         markPrice: '1814.34',
@@ -1810,6 +1903,7 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: 'lighter',
           marketId: '0',
           midPrice: '50001',
           markPrice: '50000',
@@ -1866,6 +1960,7 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'marketContext',
         data: {
+          provider: 'lighter',
           marketId: '2048',
           midPrice: '1814.34',
           markPrice: '1814.34',
@@ -1877,6 +1972,56 @@ describe('LighterWsProvider', () => {
       expect(listener.mock.calls[0][0].data.funding).toBeUndefined()
       expect(listener.mock.calls[0][0].data.openInterest).toBeUndefined()
       provider.close()
+    })
+
+    it.each([
+      LIGHTER_PROVIDER_KEY,
+      LIGHTER_RH_PROVIDER_KEY,
+    ])('stamps the %s provider key on marketsContext and marketContext emits', (providerKey) => {
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          providerKey,
+          {},
+          freshClient()
+        )
+      )
+      const allListener = vi.fn()
+      const oneListener = vi.fn()
+      inject(p, 'marketsContext', allListener)
+      inject(p, 'marketContext:0', oneListener)
+      const stats = {
+        market_id: 0,
+        index_price: '49998',
+        mark_price: '50000',
+        mid_price: '50001',
+        open_interest: '12.5',
+        last_trade_price: '50002',
+        current_funding_rate: '0.0012',
+        funding_rate: '0.0001',
+        funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+        daily_base_token_volume: 10,
+        daily_quote_token_volume: 500000,
+        daily_price_change: 1.2,
+      }
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          market_stats: { '0': stats },
+        })
+      )
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/market_stats',
+          channel: 'market_stats/0',
+          market_stats: stats,
+        })
+      )
+
+      expect(allListener.mock.calls[0][0].data['0'].provider).toBe(providerKey)
+      expect(oneListener.mock.calls[0][0].data.provider).toBe(providerKey)
+      p.close()
     })
 
     it('routes a perps market with a high market id to the perps stats channel', async () => {

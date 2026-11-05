@@ -11,6 +11,7 @@ import type {
   AvailableToTrade,
   DecimalString,
   FillsResponse,
+  MarginMode,
   Market,
   MarketRef,
   MarketSettings,
@@ -160,7 +161,8 @@ export interface ActionSignerContribution {
 }
 
 /**
- * Inputs for {@link PerpsProviderPlugin.estimateLiquidationPrice}:
+ * Inputs for {@link PerpsProviderPlugin.estimateLiquidationPrice}: the order
+ * and, when the order adds to one, the open position on the market.
  * `leverage` is the user-selected leverage for the new position, `isLong`
  * carries direction.
  *
@@ -172,6 +174,14 @@ export interface LiquidationEstimateParams {
   leverage: string
   /** `true` for long, `false` for short. */
   isLong: boolean
+  marginMode: MarginMode
+  /**
+   * Order size in base-asset units. The estimate reads it only with
+   * `position`, to blend the order into that position.
+   */
+  size?: DecimalString
+  /** Open position on the market that the order joins. */
+  position?: Position
 }
 
 /**
@@ -633,16 +643,20 @@ export interface PerpsProviderPlugin {
   }
 
   /**
-   * Estimate the liquidation price of a new isolated position on `market`
-   * using the venue's margin model. A preview helper — for existing
+   * Estimate the liquidation price of the position that the order leaves on
+   * `market` using the venue's margin model: a new position, or the blend of
+   * the order into `params.position`. A preview helper — for existing
    * positions, prefer `Position.liquidationPrice` from the venue. Pure —
    * does no I/O.
    *
    * @returns The estimated liquidation price, or `undefined` when `market`
-   *   lacks the margin metadata the model needs or `leverage` leaves no
-   *   margin above the maintenance requirement.
+   *   lacks the margin metadata the model needs, `leverage` leaves no
+   *   margin above the maintenance requirement, or the venue model cannot
+   *   give a correct price for the margin mode and position, such as a cross
+   *   position whose liquidation depends on the whole account.
    * @throws {PerpsError} `ValidationError` when an input does not match the
-   *   decimal pattern or is degenerate, such as a zero leverage.
+   *   decimal pattern or is degenerate, such as a zero leverage or a
+   *   `position` without a `size`.
    */
   estimateLiquidationPrice(
     market: PerpsMarket,

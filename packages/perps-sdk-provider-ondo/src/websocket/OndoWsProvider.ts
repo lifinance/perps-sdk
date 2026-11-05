@@ -934,6 +934,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     for (const { market, markPrice, oraclePrice } of prices) {
       const context: MarketContext = {
         ...this.contexts[market],
+        provider: this.providerKey,
         marketId: market,
         // The mark price stands in until a two-sided top-of-book arrives.
         midPrice: this.bookMids.get(market) ?? markPrice,

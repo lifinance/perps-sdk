@@ -391,12 +391,14 @@ export const mockMarkets: MarketsResponse = {
 export const mockPrices: PricesResponse = {
   prices: [
     {
+      provider: 'hyperliquid',
       marketId: 'BTC',
       midPrice: '95000.00',
       markPrice: '95010.00',
       oraclePrice: '95005.00',
     },
     {
+      provider: 'hyperliquid',
       marketId: 'ETH',
       midPrice: '3400.00',
       markPrice: '3401.00',

@@ -83,6 +83,12 @@ export enum OrderSide {
   SELL = 'SELL',
 }
 
+/**
+ * Direction label of an order: Buy or Sell on a spot market, Long or Short on
+ * a perp market. @public
+ */
+export type OrderSideLabel = 'Long' | 'Short' | 'Buy' | 'Sell'
+
 /** Supported regular and trigger order kinds, using provider wire values. @public */
 export enum OrderType {
   MARKET = 'MARKET',
@@ -151,6 +157,16 @@ export enum OrderStatus {
 export enum LiquidityRole {
   MAKER = 'maker',
   TAKER = 'taker',
+}
+
+/** How a venue closed a liquidated position. @public */
+export enum LiquidationMethod {
+  /** A venue liquidation order traded on the order book: Hyperliquid `market`, Lighter partial liquidation. */
+  MARKET = 'MARKET',
+  /** A backstop liquidator took over the position: Hyperliquid `backstop`. */
+  BACKSTOP = 'BACKSTOP',
+  /** The venue took over the position or auto-deleveraged it against an opposite position: Lighter `deleverage`. */
+  DELEVERAGE = 'DELEVERAGE',
 }
 
 /**

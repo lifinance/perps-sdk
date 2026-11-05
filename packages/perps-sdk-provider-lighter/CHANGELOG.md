@@ -1,5 +1,75 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 45.0.0
+
+### Major Changes
+
+- [#686](https://github.com/lifinance/perps-sdk/pull/686) [`13dcf3c`](https://github.com/lifinance/perps-sdk/commit/13dcf3c7cec2aa660d7545b2ae37d6942a417d47) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext` has a required `provider` field, because a `marketId` is unique only within one provider. The Hyperliquid, Lighter, and Ondo WS providers set `provider` to the provider key of the instance on each `marketsContext` and `marketContext` emit. The `mapMarketContext` functions of the Hyperliquid and Lighter providers take the provider key as their first argument.
+
+### Patch Changes
+
+- Updated dependencies [[`13dcf3c`](https://github.com/lifinance/perps-sdk/commit/13dcf3c7cec2aa660d7545b2ae37d6942a417d47)]:
+  - @lifi/perps-types@27.0.0
+  - @lifi/perps-sdk@31.0.0
+
+## 44.0.0
+
+### Major Changes
+
+- [#688](https://github.com/lifinance/perps-sdk/pull/688) [`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `viem` is now a required peer dependency, limited to `>=2.57.11 <2.57.12`. Install `viem@2.57.11` in your app. `viem` 2.57.12 and later reject the Hyperliquid `HyperliquidTransaction:*` EIP-712 type names, so user-signed Hyperliquid actions fail before the wallet signs.
+
+### Patch Changes
+
+- Updated dependencies [[`71ba993`](https://github.com/lifinance/perps-sdk/commit/71ba993b7c25a6c36dacc3e08f92c5371ef288c0)]:
+  - @lifi/perps-sdk@30.0.0
+
+## 43.0.0
+
+### Major Changes
+
+- [#684](https://github.com/lifinance/perps-sdk/pull/684) [`59ceada`](https://github.com/lifinance/perps-sdk/commit/59ceada74d3183dff6775838f5d0a4fd482e647e) Thanks [@mmioana](https://github.com/mmioana)! - Add a shared spot category id and an order direction label.
+
+  - `@lifi/perps-types` exports `SPOT_CATEGORY_ID` and the type `OrderSideLabel`.
+  - `@lifi/perps-sdk` exports `isSpotCategory(categoryId)` and `orderSideLabel(side, market)`. `orderSideLabel` returns an `OrderSideLabel`: `'Buy'` or `'Sell'` on a spot market, and `'Long'` or `'Short'` on a perp market.
+  - The Hyperliquid and Lighter providers use `SPOT_CATEGORY_ID` and `isSpotCategory`.
+
+  Migration: `@lifi/perps-sdk-provider-lighter` does not export `LIGHTER_SPOT_CATEGORY_ID`. Replace `LIGHTER_SPOT_CATEGORY_ID` with `SPOT_CATEGORY_ID` from `@lifi/perps-types`.
+
+### Patch Changes
+
+- Updated dependencies [[`59ceada`](https://github.com/lifinance/perps-sdk/commit/59ceada74d3183dff6775838f5d0a4fd482e647e)]:
+  - @lifi/perps-types@26.1.0
+
+## 42.0.1
+
+### Patch Changes
+
+- [#677](https://github.com/lifinance/perps-sdk/pull/677) [`f853207`](https://github.com/lifinance/perps-sdk/commit/f853207cdee772e8b2cc17a8503193d66b30f3d2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A `deleverage` trade on the Lighter `trades` channel shows its execution price, `usd_amount` divided by `size`, in place of the zero `price` that Lighter sends. `LtWsTrade` declares the `type` and `usd_amount` fields of the venue frame.
+
+## 42.0.0
+
+### Major Changes
+
+- [#672](https://github.com/lifinance/perps-sdk/pull/672) [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - BREAKING: the `DepositFlow` kind `firstDepositPipeline` is now `venueDepositPipeline`, and the type `DepositFlowFirstDepositPipeline` is now `DepositFlowVenueDepositPipeline`. The name covers a venue `DEPOSIT` pipeline for an address with or without an account. Compare `flow.kind` with `'venueDepositPipeline'`, and import `DepositFlowVenueDepositPipeline`.
+
+### Minor Changes
+
+- [#664](https://github.com/lifinance/perps-sdk/pull/664) [`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Orders and fills keep venue liquidation data: `RegularOrder.isLiquidation` marks a venue liquidation order, and `Fill.liquidation` gives the `LiquidationMethod` and mark price on the fill of the liquidated account only. Hyperliquid `mapFill` now takes the account address as its third argument.
+
+### Patch Changes
+
+- [#669](https://github.com/lifinance/perps-sdk/pull/669) [`caafb92`](https://github.com/lifinance/perps-sdk/commit/caafb924b3bcbe53bfd2aa92bd10ff5094790748) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Lighter `deleverage` fill shows its execution price, `usd_amount` divided by `size`, in place of the zero `price` that Lighter reports. The fill's realized PnL uses this price.
+
+- [#670](https://github.com/lifinance/perps-sdk/pull/670) [`5fd0b78`](https://github.com/lifinance/perps-sdk/commit/5fd0b78228735eb18325fdd59790445dde14548d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - A Lighter `Fill` does not set `type`, because a Lighter trade row does not name the type of the originating order.
+
+- [#666](https://github.com/lifinance/perps-sdk/pull/666) [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `lighterDepositFlow` returns `venueDepositPipeline` for an existing Lighter Robinhood account. The venue `DEPOSIT` action then credits the USDG on Robinhood Chain to the account, and a USDG source needs no swap. The `DepositFlowVenueDepositPipeline` TSDoc describes this case.
+
+- [#673](https://github.com/lifinance/perps-sdk/pull/673) [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.liquidationPrice` is optional. An absent value means that the venue gives no liquidation price. The Lighter provider leaves it absent for a zero or empty `liquidation_price`, and does not give `'0'`.
+
+- Updated dependencies [[`c762ed9`](https://github.com/lifinance/perps-sdk/commit/c762ed9abbd33c97e24fc56b8c5d99a336d9e6bc), [`5dd8643`](https://github.com/lifinance/perps-sdk/commit/5dd8643c3a2298eaa9e7836750b98459df3e633c), [`5969841`](https://github.com/lifinance/perps-sdk/commit/59698419801029ae242b96b8530cd1a474a2d35a), [`7e36201`](https://github.com/lifinance/perps-sdk/commit/7e362012ac6f95297d481cd9b256506bbf68478f), [`f9352a7`](https://github.com/lifinance/perps-sdk/commit/f9352a7ef957a894f732d7c39fee436146326424), [`4b814fa`](https://github.com/lifinance/perps-sdk/commit/4b814fa0207bbdf51d27d04248d0d50027cb7d0b), [`a2d775d`](https://github.com/lifinance/perps-sdk/commit/a2d775ddd25053b26cc8cbb4d9a4148b00d56f41)]:
+  - @lifi/perps-types@26.0.0
+  - @lifi/perps-sdk@29.0.0
+
 ## 41.0.2
 
 ### Patch Changes
