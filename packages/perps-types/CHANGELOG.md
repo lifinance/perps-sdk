@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 27.1.0
+
+### Minor Changes
+
+- [#692](https://github.com/lifinance/perps-sdk/pull/692) [`5be5585`](https://github.com/lifinance/perps-sdk/commit/5be5585ca07fd411b5b524e206d18fdabace3709) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Provider` has an optional `shortName` field. A client shows `shortName` in a compact place, for example a venue tab. When `shortName` is absent, the client shows `name`.
+
 ## 27.0.0
 
 ### Major Changes
