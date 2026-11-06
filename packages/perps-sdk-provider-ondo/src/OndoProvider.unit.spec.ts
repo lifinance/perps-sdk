@@ -43,7 +43,15 @@ import {
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest'
 import { hmacSignRequest } from './auth/hmac.js'
 import { OndoApiKeyStore } from './auth/OndoApiKeyStore.js'
 import { OndoTokenStore } from './auth/OndoTokenStore.js'
@@ -384,7 +392,9 @@ interface Recorded {
 }
 
 let recorded: Recorded[] = []
-let fetchMock: ReturnType<typeof vi.fn>
+let fetchMock: Mock<
+  (url: string | URL, init?: RequestInit) => Promise<Response>
+>
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
 let referralResult: { code: string; rebate?: number } | null
 /** `GET /v1/account` result; its versions drive `termsAccepted`. */
@@ -839,7 +849,7 @@ describe('OndoProvider — data reads on an account with no rows', () => {
       async (url: string | URL, init?: RequestInit) =>
         EMPTY_FEEDS.some((path) => String(url).includes(path))
           ? respond({ success: true, result: [] })
-          : venue?.(url, init)
+          : venue!(url, init)
     )
     const { provider } = await loggedInProvider()
 

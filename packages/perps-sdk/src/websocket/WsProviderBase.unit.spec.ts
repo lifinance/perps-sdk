@@ -71,7 +71,8 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   onCloseSpy = vi.fn()
   sendSubscribeSpy = vi.fn()
   /** Overridable per test; defaults to a fresh teardown spy. */
-  openImpl: (sub: Subscription) => Promise<() => void> = async () => vi.fn()
+  openImpl: (sub: Subscription) => Promise<() => void> = async () =>
+    vi.fn<() => void>()
 
   constructor(rws: MockRws) {
     super(rws as unknown as ReconnectingWebSocket, 'test')
@@ -209,7 +210,7 @@ describe('WsProviderBase — open failure', () => {
     const rejected = expect(opening).rejects.toThrow('old open failed')
     p.close()
 
-    p.openImpl = async () => vi.fn()
+    p.openImpl = async () => vi.fn<() => void>()
     const listener = vi.fn()
     await p.subscribe(MARKETS_CONTEXT, listener)
     rejectOpen(new Error('old open failed'))
@@ -229,7 +230,7 @@ describe('WsProviderBase — open failure', () => {
       'open failed'
     )
 
-    p.openImpl = async () => vi.fn()
+    p.openImpl = async () => vi.fn<() => void>()
     const listener = vi.fn()
     await p.subscribe(MARKETS_CONTEXT, listener)
     expect(p.openCount).toBe(2)
@@ -463,7 +464,7 @@ describe('WsProviderBase — reconnect recovery', () => {
     const onStatus = vi.fn()
     p.openImpl = async () => {
       await p.register('marketsContext', { id: 'marketsContext' })
-      return vi.fn()
+      return vi.fn<() => void>()
     }
 
     await p.subscribe(MARKETS_CONTEXT, vi.fn(), onStatus)
@@ -485,7 +486,7 @@ describe('WsProviderBase — reconnect recovery', () => {
     const onStatus = vi.fn()
     p.openImpl = async () => {
       await p.register('marketsContext', { id: 'marketsContext' })
-      return vi.fn()
+      return vi.fn<() => void>()
     }
 
     await p.subscribe(MARKETS_CONTEXT, vi.fn(), onStatus)
@@ -510,7 +511,7 @@ describe('WsProviderBase — wire-sub registry & replay', () => {
     const p = new TestProvider(rws)
     p.openImpl = async () => {
       await p.register('marketsContext', { id: 'marketsContext' })
-      return vi.fn()
+      return vi.fn<() => void>()
     }
 
     await p.subscribe(MARKETS_CONTEXT, vi.fn())
@@ -676,7 +677,7 @@ describe('WsProviderBase — resubscribe replay races a concurrent subscribe', (
     // registerSub sends its frame inline.
     p.openImpl = async () => {
       await p.register('c', { id: 'c' })
-      return vi.fn()
+      return vi.fn<() => void>()
     }
     const subC = p.subscribe(CHANNEL_C, vi.fn())
     await flushAsync()
