@@ -102,6 +102,30 @@ describe('fetchWithRetry — abort handling', () => {
     expect(scheduledDelays()).toEqual([])
   })
 
+  it.each([
+    ['Error', new Error('user cancelled')],
+    ['TimeoutError', new DOMException('request timed out', 'TimeoutError')],
+  ])('does not classify a custom %s abort as a retry', async (_name, reason) => {
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn(async () => {
+      controller.abort(reason)
+      throw reason
+    })
+
+    await expect(
+      fetchWithRetry('https://x', undefined, {
+        policy: policy({ shouldRetry, baseDelayMs: 0, maxDelayMs: 0 }),
+        fetchImpl,
+        signal: controller.signal,
+      })
+    ).rejects.toBe(reason)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).not.toHaveBeenCalled()
+    expect(scheduledDelays()).toEqual([])
+  })
+
   it('rethrows a fetch abort even without a signal (name-based classification)', async () => {
     const abortError = new DOMException(
       'The operation was aborted',

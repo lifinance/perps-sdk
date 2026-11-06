@@ -57,7 +57,7 @@ export async function fetchWithRetry(
     try {
       response = await fetchImpl(input, mergedInit)
     } catch (error) {
-      if (isAbortError(error)) {
+      if (isAbortError(error) || (signal?.aborted && error === signal.reason)) {
         throw error
       }
       networkError = error
