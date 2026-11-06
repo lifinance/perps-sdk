@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 27.2.0
+
+### Minor Changes
+
+- [#695](https://github.com/lifinance/perps-sdk/pull/695) [`e0a0e16`](https://github.com/lifinance/perps-sdk/commit/e0a0e165d94d3f756dee4a19e1dd2c5e54a62f37) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional visibility, provider scope, lifecycle, severity, and source fields to `Notice`. A legacy `{ timestamp, title, message, link? }` notice stays valid.
+
 ## 27.1.0
 
 ### Minor Changes

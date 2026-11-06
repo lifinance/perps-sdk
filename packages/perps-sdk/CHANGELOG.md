@@ -1,5 +1,14 @@
 # @lifi/perps-sdk
 
+## 31.1.1
+
+### Patch Changes
+
+- [#695](https://github.com/lifinance/perps-sdk/pull/695) [`e0a0e16`](https://github.com/lifinance/perps-sdk/commit/e0a0e165d94d3f756dee4a19e1dd2c5e54a62f37) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Document global and provider-scoped notices on `getMeta`. `getMeta` returns the extended `Notice` contract through the existing entry point.
+
+- Updated dependencies [[`e0a0e16`](https://github.com/lifinance/perps-sdk/commit/e0a0e165d94d3f756dee4a19e1dd2c5e54a62f37)]:
+  - @lifi/perps-types@27.2.0
+
 ## 31.1.0
 
 ### Minor Changes
