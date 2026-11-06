@@ -27,7 +27,7 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 ## Development
 
-pnpm workspace — Node `>=24`, pnpm `11` (pinned via `packageManager`). From the repository root:
+pnpm workspace — Node `>=24.22.1` (the `engines` field of `package.json`), pnpm `11` (pinned via `packageManager`). CI reads the Node version from `.nvmrc`. From the repository root:
 
 | Command | Does |
 | --- | --- |
@@ -125,7 +125,7 @@ Scripts:
 | [`market-data.ts`](./examples/market-data.ts) | Fetching markets, assets, prices, orderbook, OHLCV |
 | [`account-data.ts`](./examples/account-data.ts) | Account state, positions, orders, fills |
 | [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
-| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes and retries |
+| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes |
 | [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
 | [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket prices, orderbook, multi-listener dedup, status |
 
