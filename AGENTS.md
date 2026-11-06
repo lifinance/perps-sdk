@@ -146,10 +146,10 @@ Read these two files before you start work:
 
 ## Node Version
 
-Before you run a command or start a sub-agent, use the correct Node version. Read the `engines` field in `package.json`. If the field does not exist, use Node 24.
+Before you run a command or start a sub-agent, use the correct Node version. Read the `engines` field in `package.json`. If the field does not exist, use Node 26.
 
 ```bash
-nvm use 24  # or whichever version satisfies the engines field
+nvm use 26  # or whichever version satisfies the engines field
 ```
 
 ## Commands
