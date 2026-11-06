@@ -4,9 +4,12 @@ import type { SDKRequestOptions } from '../types/config.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 
 /**
- * Get platform metadata: the API version and any active platform-level notices.
+ * Get platform metadata: the API version and the notices the backend serves.
+ * A notice without `providerKeys` is global; a notice with `providerKeys` is
+ * scoped to those providers. The SDK returns notices as served and does not
+ * filter them by `validFrom` / `validTo`.
  *
- * @returns Platform version and the list of active notices
+ * @returns Platform version and the global and provider-scoped notices
  * @throws {PerpsError} On API error responses
  * @throws {PerpsError} On network or parsing errors
  *
