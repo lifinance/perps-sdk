@@ -33,6 +33,7 @@
     "check:types:spec": "pnpm -r --parallel --filter './packages/**' check:types:spec",
     "check:circular-deps": "pnpm -r --parallel --filter './packages/**' check:circular-deps",
     "test": "pnpm -r --parallel --filter './packages/**' test",
+    "test:affected": "pnpm -r --parallel --filter './packages/**' test:affected",
     "test:cov": "pnpm -r --parallel --filter './packages/**' test:cov",
     "test:unit": "pnpm -r --parallel --filter './packages/**' test:unit",
     "knip:check": "knip --dependencies --files --no-config-hints --exclude binaries",
@@ -50,7 +51,8 @@
     "@types/node": "^26.6.6",
     "husky": "^9.1.7",
     "knip": "^5.82.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vite": "^7.3.7"
   },
   "publishConfig": {
     "access": "public"

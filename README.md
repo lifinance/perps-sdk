@@ -27,7 +27,7 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 ## Development
 
-pnpm workspace — Node `>=24.22.1` (the `engines` field of `package.json`), pnpm `11` (pinned via `packageManager`). CI reads the Node version from `.nvmrc`. From the repository root:
+pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnpm `11` (pinned via `packageManager`). CI reads the Node version from `.nvmrc`. From the repository root:
 
 | Command | Does |
 | --- | --- |
