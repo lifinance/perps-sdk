@@ -34,6 +34,11 @@ class MockRws {
   onStatus(fn: (s: WsConnectionStatus) => void) {
     this.statusHandlers.push(fn)
   }
+  offStatus(fn: (s: WsConnectionStatus) => void) {
+    this.statusHandlers = this.statusHandlers.filter(
+      (handler) => handler !== fn
+    )
+  }
   getStatus(): WsConnectionStatus {
     return this.status
   }
@@ -134,6 +139,53 @@ const marketsContextEvent: MarketsContextEvent = {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('WsProviderBase — status-only observation', () => {
+  it('observes a disconnected socket without recovery or a channel', () => {
+    const rws = new MockRws()
+    rws.status = 'disconnected'
+    const p = new TestProvider(rws)
+    const status = vi.fn()
+    const baseline = rws.statusHandlers.length
+    const first = p.subscribeStatus(status)
+    const second = p.subscribeStatus(status)
+    expect(rws.statusHandlers).toHaveLength(baseline + 2)
+
+    expect(status.mock.calls).toEqual([['disconnected'], ['disconnected']])
+    expect(rws.reconnectCalls).toBe(0)
+    expect(p.openCount).toBe(0)
+    first()
+    first()
+    expect(rws.statusHandlers).toHaveLength(baseline + 1)
+    status.mockClear()
+    p.reconnect()
+    rws.simulateOpen()
+    expect(status.mock.calls).toEqual([['reconnecting'], ['connected']])
+    second()
+    expect(rws.statusHandlers).toHaveLength(baseline)
+    status.mockClear()
+    rws.simulateStatus('disconnected')
+    expect(status).not.toHaveBeenCalled()
+    p.close()
+  })
+
+  it('removes observer resources on close without changing subscription status delivery', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    const status = vi.fn()
+    const dataStatus = vi.fn()
+    const baseline = rws.statusHandlers.length
+    p.subscribeStatus(status)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), dataStatus)
+    p.close()
+    expect(rws.statusHandlers).toHaveLength(baseline)
+    expect(status).toHaveBeenLastCalledWith('disconnected')
+    expect(dataStatus).toHaveBeenLastCalledWith('disconnected')
+    status.mockClear()
+    rws.simulateOpen()
+    expect(status).not.toHaveBeenCalled()
+  })
 })
 
 describe('WsProviderBase — ref-counted fan-out', () => {

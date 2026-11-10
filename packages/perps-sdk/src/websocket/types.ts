@@ -28,12 +28,10 @@ export type SubscriptionErrorListener = (error: unknown) => void
 /**
  * Health of a provider's underlying WS connection.
  *
- * - `connected` — socket open, not proof of account authorization.
- * - `reconnecting` — socket dropped; auto-reconnect with backoff in progress.
- *   Data may be stale until it returns to `connected`.
- * - `disconnected` — reconnection abandoned after the retry cap, or the
- *   connection was explicitly closed. The connection is permanently dead and
- *   will not recover on its own; the subscription's data is stale. Terminal.
+ * - `connected` — socket open. This does not prove channel freshness or authentication.
+ * - `reconnecting` — initial connection or automatic recovery in progress.
+ * - `disconnected` — retry budget exhausted or explicitly closed.
+ *   Recovery requires an explicit reconnect.
  *
  * @public
  */
@@ -64,6 +62,8 @@ export interface WsProvider {
     onStatus?: WsStatusListener,
     onError?: SubscriptionErrorListener
   ): Promise<() => void>
+  /** Observe current socket status and transitions without a channel or reconnect. Release is idempotent. */
+  subscribeStatus(listener: WsStatusListener): () => void
   /**
    * Recover a terminally exhausted connection. Safe no-op unless status is
    * `disconnected`.
