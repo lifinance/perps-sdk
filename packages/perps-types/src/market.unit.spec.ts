@@ -160,6 +160,16 @@ describe('MarketContext', () => {
     expect(ctx.openInterest).toBeUndefined()
     expect(ctx.funding).toBeUndefined()
   })
+
+  it('omits midPrice when the source gives no order-book midpoint', () => {
+    const ctx: MarketContext = {
+      provider: 'ondo',
+      marketId: 'AAPL-USD.P',
+      markPrice: '227.50',
+    }
+    expect(ctx.midPrice).toBeUndefined()
+    expect(ctx.markPrice).toBe('227.50')
+  })
 })
 
 describe('BaseMarket', () => {
