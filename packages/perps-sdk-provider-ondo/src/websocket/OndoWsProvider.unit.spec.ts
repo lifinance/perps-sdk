@@ -759,6 +759,29 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', () => {
+      vi.useFakeTimers()
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketsContext', listener)
+
+      feed(p, markFrame('AAPL-USD.P', '227.50'))
+      expect(listener).toHaveBeenCalledTimes(1)
+      const first = lastContext(listener, 'AAPL-USD.P')
+
+      feed(p, markFrame('AAPL-USD.P', '227.60'))
+      feed(p, markFrame('AAPL-USD.P', '227.70'))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(1)
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(lastContext(listener, 'AAPL-USD.P').markPrice).toBe('227.70')
+      // The delivered snapshot is its own object: later frames do not touch it.
+      expect(first.markPrice).toBe('227.50')
+      p.close()
+    })
+
     it('calculates the mid from the best level of each side when a frame carries several', () => {
       vi.useFakeTimers()
       const p = makeProvider()

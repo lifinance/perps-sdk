@@ -1802,6 +1802,64 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', async () => {
+      const provider = makeFetchingProvider()
+      const internals = provider as unknown as {
+        rws: {
+          ready: () => Promise<void>
+          getStatus: () => string
+          send: (payload: string) => void
+        }
+        handleMessage: (raw: string) => void
+      }
+      internals.rws.ready = vi.fn().mockResolvedValue(undefined)
+      internals.rws.getStatus = () => 'connected'
+      internals.rws.send = vi.fn()
+      const statsFrame = (midPrice: string) =>
+        JSON.stringify({
+          type: 'update/market_stats',
+          market_stats: {
+            '0': {
+              market_id: 0,
+              index_price: '49998',
+              mark_price: '50000',
+              mid_price: midPrice,
+              open_interest: '12.5',
+              last_trade_price: '50002',
+              current_funding_rate: '0.0012',
+              funding_rate: '0.0001',
+              funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+              daily_base_token_volume: 10,
+              daily_quote_token_volume: 500000,
+              daily_price_change: 1.2,
+            },
+          },
+        })
+      const listener = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'lighter' },
+        listener
+      )
+
+      vi.useFakeTimers()
+      try {
+        internals.handleMessage(statsFrame('50001'))
+        expect(listener).toHaveBeenCalledTimes(1)
+
+        internals.handleMessage(statsFrame('50002'))
+        internals.handleMessage(statsFrame('50003'))
+        vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+        expect(listener).toHaveBeenCalledTimes(1)
+
+        vi.advanceTimersByTime(1)
+        expect(listener).toHaveBeenCalledTimes(2)
+        expect(listener.mock.calls[1][0].data['0'].midPrice).toBe('50003')
+      } finally {
+        vi.useRealTimers()
+      }
+      provider.close()
+    })
+
     it('keeps every market in the all-markets frame when one record omits its daily figures', async () => {
       const provider = makeFetchingProvider()
       // The suite installs no socket double, so the spec holds the open

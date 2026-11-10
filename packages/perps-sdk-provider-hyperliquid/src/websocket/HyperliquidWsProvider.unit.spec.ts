@@ -1529,6 +1529,36 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
+
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
+
+        seedMids({ BTC: '95001' })
+        expect(listener).toHaveBeenCalledTimes(1)
+        const first = listener.mock.calls[0][0]
+
+        seedMids({ BTC: '95002' })
+        seedMids({ BTC: '95003' })
+        vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+        expect(listener).toHaveBeenCalledTimes(1)
+
+        vi.advanceTimersByTime(1)
+        expect(listener).toHaveBeenCalledTimes(2)
+        expect(listener.mock.calls[1][0].data.BTC.midPrice).toBe('95003')
+        // The delivered snapshot is its own object: later frames do not touch it.
+        expect(first.data.BTC.midPrice).toBe('95001')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('emits marketContext with oracle/mark/funding/volume from activeAssetCtx', async () => {
       const provider = createProvider()
       const listener = vi.fn()
