@@ -743,6 +743,41 @@ describe('getActivity — transfer registry identity', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it('keeps identical zero-hash rows distinct across a page boundary', async () => {
+    // Two copies of a recorded completed unstake in one millisecond.
+    const unstake: HlUserNonFundingLedgerUpdates[number] = {
+      time: 1784492879045,
+      hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      delta: {
+        type: 'cStakingTransfer',
+        token: 'HYPE',
+        amount: '25.38015398',
+        isDeposit: false,
+      },
+    }
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: [unstake, unstake] },
+      [],
+      [],
+      [token]
+    )
+    const params = {
+      address: ADDRESS,
+      limit: 1,
+      type: [ActivityType.INTERNAL_TRANSFER],
+    }
+    const first = await getActivity(ctx, params)
+    const second = await getActivity(ctx, {
+      ...params,
+      cursor: first.pagination.cursor,
+    })
+    const id = 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z'
+    expect(first.items.map((item) => item.id)).toEqual([`${id}:1`])
+    expect(first.pagination.hasMore).toBe(true)
+    expect(second.items.map((item) => item.id)).toEqual([id])
+    expect(second.pagination.hasMore).toBe(false)
+  })
+
   it('skips a transfer whose asset cannot resolve and returns the other rows', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     installInfoFetchMock(

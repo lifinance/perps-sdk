@@ -30,7 +30,9 @@ An internal transfer is not an external deposit, withdrawal, income, or trading 
 A borrow or repayment also affects a liability. Consumers must preserve and inspect the operation metadata.
 
 `TransferActivity` still requires a counterparty and describes movements between distinct accounts.
-Hyperliquid staking and borrow-lend rows use `INTERNAL_TRANSFER`, not `TRANSFER`.
+Only the Hyperliquid provider emits `INTERNAL_TRANSFER`.
+Its staking, borrow-lend, and spot/perps rows use `INTERNAL_TRANSFER`, not `TRANSFER`.
+An `[ActivityType.INTERNAL_TRANSFER]` filter returns no rows from other providers.
 Add `INTERNAL_TRANSFER` to activity filters and handle its union member explicitly.
 Use `[ActivityType.TRANSFER, ActivityType.INTERNAL_TRANSFER]` to request both types.
 An omitted filter includes both types.

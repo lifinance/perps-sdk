@@ -169,13 +169,14 @@ export type HlAccountClassTransferDelta = {
   toPerp: boolean
 }
 
-/** Narrow account-class transfers only when the venue gives a direction. @public */
+/** Narrow account-class transfers only when the venue gives a direction and an amount. @public */
 export const isAccountClassTransferDelta = (
   delta: HlLedgerDelta
 ): delta is HlAccountClassTransferDelta =>
   delta.type === 'accountClassTransfer' &&
   'toPerp' in delta &&
-  typeof delta.toPerp === 'boolean'
+  typeof delta.toPerp === 'boolean' &&
+  hasUsdcAmount(delta)
 
 /**
  * Union of known Hyperliquid non-funding ledger deltas plus an open fallback

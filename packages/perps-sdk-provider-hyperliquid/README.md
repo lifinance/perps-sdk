@@ -137,9 +137,9 @@ All internal rows preserve `meta.transferType`.
 The balance pair determines direction. The amount retains the venue decimal string, including its sign and precision.
 Borrow-lend amounts already include reported interest. The mapper does not apply interest again.
 A borrow or repayment also affects a liability. Internal transfers are not income, expenses, or trading profit.
-Unknown operations and missing or non-boolean direction flags produce no row.
+Unknown operations, missing or non-boolean direction flags, and account-class rows without a `usdc` string produce no row.
 
-Include `INTERNAL_TRANSFER` in activity filters to retain staking and borrow-lend history.
+Include `INTERNAL_TRANSFER` in activity filters to retain staking, borrow-lend, and spot/perps history.
 `[TRANSFER]` returns genuine transfers only.
 Use `[TRANSFER, INTERNAL_TRANSFER]` to request both types, or omit the filter.
 An internal-transfer-only request synchronizes assets without markets.
@@ -150,6 +150,8 @@ Zero-hash staking and borrow-lend rows retain their synthesized identifiers:
 A zero-hash account-class row uses
 `accountClassTransfer:USDC:<sourceBalance>:<destinationBalance>:<usdc>:<ISO time>`.
 These rows have no explorer link.
+Within one ledger response, a repeated row id of one activity type gets an occurrence suffix (`:1`, `:2`) after the first row.
+Identical zero-hash rows in one millisecond therefore stay distinct across pages.
 Unknown future delta types remain outside the supported activity model.
 An unregistered staking or borrow-lend token skips the row with a warning.
 A missing collateral registry asset raises an error.

@@ -193,6 +193,7 @@ const fetchActivityData = async (
     return { items: [], saturated: true }
   }
 
+  const ledgerKeyCounts = new Map<string, number>()
   const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
     (entry): ActivityItem[] => {
       if (
@@ -220,7 +221,16 @@ const fetchActivityData = async (
         assetRegistry,
         resolveMarket
       )
-      return item === null ? [] : [item]
+      if (item === null) {
+        return []
+      }
+      // Identical zero-hash rows synthesize one id; a suffix keeps page keys unique.
+      const key = `${item.type}:${item.id}`
+      const occurrence = ledgerKeyCounts.get(key) ?? 0
+      ledgerKeyCounts.set(key, occurrence + 1)
+      return [
+        occurrence === 0 ? item : { ...item, id: `${item.id}:${occurrence}` },
+      ]
     }
   )
 

@@ -1588,6 +1588,21 @@ describe('mapLedgerEntry — account-class transfers', () => {
     ).toBeNull()
   })
 
+  it.each([
+    true,
+    false,
+  ])('drops a row without a usdc amount for toPerp=%s', (toPerp) => {
+    expect(
+      mapLedgerEntry(
+        { ...entry, delta: { type: 'accountClassTransfer', toPerp } },
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
   it('requires the collateral registry identity', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response(JSON.stringify({ assets: [HYPE] }), { status: 200 })
