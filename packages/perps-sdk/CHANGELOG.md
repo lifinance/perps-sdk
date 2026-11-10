@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 32.0.0
+
+### Major Changes
+
+- [#707](https://github.com/lifinance/perps-sdk/pull/707) [`1230b65`](https://github.com/lifinance/perps-sdk/commit/1230b6517f9c27b6ce53a195a4d9107aa076f44a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `PerpsWsClient.subscribeStatus` for passive, provider-specific socket observation. Custom `WsProvider` implementations must supply the required `subscribeStatus` method. `WsProviderBase` supplies it for all built-in providers.
+
 ## 31.1.1
 
 ### Patch Changes
