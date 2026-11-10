@@ -21,6 +21,7 @@ import type {
   HlUserNonFundingLedgerUpdates,
 } from '../types/index.js'
 import {
+  isAccountClassTransferDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
@@ -73,6 +74,7 @@ const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.DEPOSIT,
   ActivityType.WITHDRAWAL,
   ActivityType.TRANSFER,
+  ActivityType.INTERNAL_TRANSFER,
 ])
 
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
@@ -203,9 +205,11 @@ const fetchActivityData = async (
             (isSpotTransferDelta(entry.delta) ||
               isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
-              isVaultTransferDelta(entry.delta) ||
-              isCStakingTransferDelta(entry.delta) ||
-              isBorrowLendDelta(entry.delta))))
+              isVaultTransferDelta(entry.delta))) ||
+          (!typeFilter.includes(ActivityType.INTERNAL_TRANSFER) &&
+            (isCStakingTransferDelta(entry.delta) ||
+              isBorrowLendDelta(entry.delta) ||
+              isAccountClassTransferDelta(entry.delta))))
       ) {
         return []
       }

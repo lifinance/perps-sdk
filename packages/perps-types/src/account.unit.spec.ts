@@ -5,6 +5,8 @@ import type {
   DepositActivity,
   Fill,
   FillLiquidation,
+  InternalTransferActivity,
+  InternalTransferBalance,
   LiquidationActivity,
   MarketSettings,
   OndoAccountConfig,
@@ -557,7 +559,7 @@ describe('Fee', () => {
 })
 
 describe('exhaustive narrowing across ActivityItem', () => {
-  it('forces a TRANSFER branch in switch (type-level guard)', () => {
+  it('routes genuine and internal transfers with exhaustive narrowing', () => {
     const route = (item: ActivityItem): string => {
       switch (item.type) {
         case ActivityType.DEPOSIT:
@@ -570,6 +572,8 @@ describe('exhaustive narrowing across ActivityItem', () => {
           return `funding:${item.fundingRate}`
         case ActivityType.TRANSFER:
           return `transfer:${item.direction}:${item.counterpartyAccountIndex}:${item.amount}`
+        case ActivityType.INTERNAL_TRANSFER:
+          return `internal:${item.sourceBalance}:${item.destinationBalance}:${item.amount}`
         default: {
           // If a new variant is added, this assignment fails — locking
           // exhaustiveness for future ActivityType extensions.
@@ -595,6 +599,27 @@ describe('exhaustive narrowing across ActivityItem', () => {
       amount: '12.34',
     }
     expect(route(transfer)).toBe('transfer:OUT:99:12.34')
+
+    const internalTransfer: InternalTransferActivity = {
+      id: 'internal-1',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:08:00.000Z',
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance: 'spot',
+      destinationBalance: 'staking',
+      asset: USDC_ASSET,
+      amount: '12.340000000000000001',
+      meta: { transferType: 'cStakingTransfer' },
+    }
+    expect(route(internalTransfer)).toBe(
+      'internal:spot:staking:12.340000000000000001'
+    )
+    expectTypeOf<InternalTransferBalance>().toEqualTypeOf<
+      'spot' | 'perps' | 'staking' | 'borrowLend'
+    >()
+    expectTypeOf<
+      Extract<ActivityItem, { type: ActivityType.INTERNAL_TRANSFER }>
+    >().toEqualTypeOf<InternalTransferActivity>()
 
     const withdrawal: WithdrawalActivity = {
       id: 'w-1',

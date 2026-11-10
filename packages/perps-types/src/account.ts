@@ -510,6 +510,27 @@ export type TransferActivity = BaseActivity & {
     | { counterpartyAccountIndex?: number; counterpartyAddress: string }
   )
 
+/** Balance kinds within one account, not provider trading-category identifiers. */
+export type InternalTransferBalance =
+  | 'spot'
+  | 'perps'
+  | 'staking'
+  | 'borrowLend'
+
+/**
+ * Movement between balances of one account, not income or an external transfer.
+ * The venue amount stays unchanged; the balance pair determines direction.
+ */
+export interface InternalTransferActivity extends BaseActivity {
+  type: ActivityType.INTERNAL_TRANSFER
+  asset: Asset
+  amount: DecimalString
+  sourceBalance: InternalTransferBalance
+  destinationBalance: InternalTransferBalance
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
 /**
  * Discriminated union of all activity records returned by a provider.
  *
@@ -521,6 +542,7 @@ export type ActivityItem =
   | LiquidationActivity
   | FundingActivity
   | TransferActivity
+  | InternalTransferActivity
 
 /**
  * Paginated account-activity response for one provider and account.

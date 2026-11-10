@@ -2,6 +2,7 @@ import { AssetRegistry, createPerpsClient } from '@lifi/perps-sdk'
 import type {
   Asset,
   DepositActivity,
+  InternalTransferActivity,
   LiquidationActivity,
   MarketDisplay,
   TransferActivity,
@@ -1221,7 +1222,7 @@ describe('mapLedgerEntry — non-transfer branches', () => {
   })
 
   it('returns null for unsupported delta types', () => {
-    const types = ['accountClassTransfer', 'somethingNew']
+    const types = ['somethingNew']
     for (const type of types) {
       const entry: HlLedgerUpdate = {
         time: 1_700_000_000_000,
@@ -1305,24 +1306,24 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
     },
   }
 
-  it('maps a stake as an outbound HYPE transfer with its explorer link', () => {
+  it('maps a stake from spot to staking with its explorer link', () => {
     expect(
       mapLedgerEntry(STAKE, PROVIDER, STAKER, assetRegistry, resolveMarket)
     ).toEqual({
       id: STAKE.hash,
       provider: PROVIDER,
       timestamp: '2026-07-15T17:30:28.469Z',
-      type: ActivityType.TRANSFER,
-      direction: 'OUT',
-      counterpartyAddress: STAKER,
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance: 'spot',
+      destinationBalance: 'staking',
       asset: HYPE,
       amount: '5.0',
       meta: { transferType: 'cStakingTransfer' },
       explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${STAKE.hash}`,
-    } satisfies TransferActivity)
+    } satisfies InternalTransferActivity)
   })
 
-  it('maps a zero-hash unstake inbound with a synthesized id and no explorer link', () => {
+  it('maps a zero-hash unstake to spot with a synthesized id and no explorer link', () => {
     const result = mapLedgerEntry(
       UNSTAKE,
       PROVIDER,
@@ -1334,13 +1335,13 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
       id: 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z',
       provider: PROVIDER,
       timestamp: '2026-07-19T20:27:59.045Z',
-      type: ActivityType.TRANSFER,
-      direction: 'IN',
-      counterpartyAddress: STAKER,
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance: 'staking',
+      destinationBalance: 'spot',
       asset: HYPE,
       amount: '25.38015398',
       meta: { transferType: 'cStakingTransfer' },
-    } satisfies TransferActivity)
+    } satisfies InternalTransferActivity)
   })
 
   it.each([
@@ -1348,6 +1349,22 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
     [
       { ...SUPPLY_HYPE, hash: UNSTAKE.hash },
       'borrowLend:HYPE:supply:100.0:2026-09-18T18:02:54.549Z',
+    ],
+    [
+      { ...STAKE, hash: ZERO_HASH },
+      'cStakingTransfer:HYPE:OUT:5.0:2026-07-15T17:30:28.469Z',
+    ],
+    [
+      { ...WITHDRAW_HYPE, hash: ZERO_HASH },
+      'borrowLend:HYPE:withdraw:90.0:2026-09-28T15:07:31.368Z',
+    ],
+    [
+      { ...BORROW_USDC, hash: ZERO_HASH },
+      'borrowLend:USDC:borrow:4000.0:2026-09-18T18:03:07.548Z',
+    ],
+    [
+      { ...REPAY_USDC, hash: ZERO_HASH },
+      'borrowLend:USDC:repay:4005.69059395:2026-09-28T15:13:16.569Z',
     ],
   ] as const)('synthesizes id %# for a zero-hash $delta.type row', (entry, id) => {
     const result = mapLedgerEntry(
@@ -1383,37 +1400,53 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
   })
 
   it.each([
-    [SUPPLY_HYPE, 'OUT', HYPE, '100.0', 'supply', '0.0'],
-    [WITHDRAW_HYPE, 'IN', HYPE, '90.0', 'withdraw', '0.0'],
-    [BORROW_USDC, 'IN', USDC, '4000.0', 'borrow', '0.0'],
-    [REPAY_USDC, 'OUT', USDC, '4005.69059395', 'repay', '5.69059395'],
-  ] as const)('maps borrow-lend row %# as a %s transfer', (entry, direction, asset, amount, operation, interestAmount) => {
+    [SUPPLY_HYPE, 'spot', 'borrowLend', HYPE, '100.0', 'supply', '0.0'],
+    [WITHDRAW_HYPE, 'borrowLend', 'spot', HYPE, '90.0', 'withdraw', '0.0'],
+    [BORROW_USDC, 'borrowLend', 'spot', USDC, '4000.0', 'borrow', '0.0'],
+    [
+      REPAY_USDC,
+      'spot',
+      'borrowLend',
+      USDC,
+      '4005.69059395',
+      'repay',
+      '5.69059395',
+    ],
+  ] as const)('maps borrow-lend row %# between balances', (entry, sourceBalance, destinationBalance, asset, amount, operation, interestAmount) => {
     expect(
       mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
     ).toEqual({
       id: entry.hash,
       provider: PROVIDER,
       timestamp: new Date(entry.time).toISOString(),
-      type: ActivityType.TRANSFER,
-      direction,
-      counterpartyAddress: LENDER,
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance,
+      destinationBalance,
       asset,
       amount,
       meta: { transferType: 'borrowLend', operation, interestAmount },
       explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`,
-    } satisfies TransferActivity)
+    } satisfies InternalTransferActivity)
   })
 
-  it('lower-cases a checksummed queried address for the counterparty', () => {
+  it.each([
+    STAKE,
+    REPAY_USDC,
+  ])('retains decimal precision and sign for $delta.type', (entry) => {
+    const amount = '-12345678901234567890.123456789012345678'
     expect(
       mapLedgerEntry(
-        STAKE,
+        { ...entry, delta: { ...entry.delta, amount } },
         PROVIDER,
-        '0x2F103bC1Da4B4DE74737c538A01E17822524A6E3',
+        QUERIED,
         assetRegistry,
         resolveMarket
       )
-    ).toMatchObject({ counterpartyAddress: STAKER })
+    ).toMatchObject({
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance: 'spot',
+      amount,
+    })
   })
 
   it.each([
@@ -1467,6 +1500,102 @@ describe('mapLedgerEntry — staking and borrow-lend transfers', () => {
     expect(
       mapLedgerEntry(entry, PROVIDER, LENDER, assetRegistry, resolveMarket)
     ).toBeNull()
+  })
+})
+
+describe('mapLedgerEntry — account-class transfers', () => {
+  // Quicknode Events Dataset: https://www.quicknode.com/docs/hyperliquid/datasets/events
+  // The event timestamp is adapted to the REST endpoint's millisecond format.
+  const entry: HlLedgerUpdate = {
+    time: Date.parse('2025-11-05T10:00:00.064Z'),
+    hash: '0x402db380b853070941a7042ee18e5502023c0066535625dbe3f65ed37756e0f3',
+    delta: { type: 'accountClassTransfer', usdc: '1.57', toPerp: true },
+  }
+
+  it.each([
+    [true, 'spot', 'perps'],
+    [false, 'perps', 'spot'],
+  ] as const)('maps toPerp=%s between balances', (toPerp, sourceBalance, destinationBalance) => {
+    // The false case is constructed from the published true case.
+    expect(
+      mapLedgerEntry(
+        { ...entry, delta: { ...entry.delta, toPerp } },
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toEqual({
+      id: entry.hash,
+      provider: PROVIDER,
+      timestamp: '2025-11-05T10:00:00.064Z',
+      type: ActivityType.INTERNAL_TRANSFER,
+      asset: USDC,
+      amount: '1.57',
+      sourceBalance,
+      destinationBalance,
+      meta: { transferType: 'accountClassTransfer' },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`,
+    } satisfies InternalTransferActivity)
+  })
+
+  it.each([
+    [true, 'spot:perps'],
+    [false, 'perps:spot'],
+  ] as const)('synthesizes a zero-hash identity for toPerp=%s', (toPerp, balances) => {
+    const amount = '-12345678901234567890.123456789012345678'
+    const result = mapLedgerEntry(
+      {
+        ...entry,
+        hash: ZERO_HASH,
+        delta: { type: 'accountClassTransfer', usdc: amount, toPerp },
+      },
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: `accountClassTransfer:USDC:${balances}:${amount}:2025-11-05T10:00:00.064Z`,
+      provider: PROVIDER,
+      timestamp: '2025-11-05T10:00:00.064Z',
+      type: ActivityType.INTERNAL_TRANSFER,
+      asset: USDC,
+      amount,
+      sourceBalance: toPerp ? 'spot' : 'perps',
+      destinationBalance: toPerp ? 'perps' : 'spot',
+      meta: { transferType: 'accountClassTransfer' },
+    } satisfies InternalTransferActivity)
+  })
+
+  it.each([
+    {},
+    { toPerp: 'true' },
+    { toPerp: null },
+    { toPerp: 0 },
+  ])('drops a row with an invalid direction: %j', (flag) => {
+    expect(
+      mapLedgerEntry(
+        {
+          ...entry,
+          delta: { type: 'accountClassTransfer', usdc: '1.57', ...flag },
+        },
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
+  it('requires the collateral registry identity', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue(
+      new Response(JSON.stringify({ assets: [HYPE] }), { status: 200 })
+    )
+    await assetRegistry.sync()
+    expect(() =>
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toThrow(/stale or mis-keyed/)
   })
 })
 
