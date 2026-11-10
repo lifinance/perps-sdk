@@ -36,7 +36,15 @@ describe('getLedgerHistory', () => {
     expect(new Set(result.map((row) => row.hash)).size).toBe(1101)
     expect(result.some((row) => row.time === 0)).toBe(true)
     expect(result.some((row) => row.time === 550)).toBe(true)
-    expect(requests.length).toBeGreaterThan(1)
+    expect(requests.map((r) => [r.startTime, r.endTime])).toEqual([
+      [0, 550],
+      [276, 550],
+      [414, 550],
+      [276, 413],
+      [0, 275],
+      [138, 275],
+      [0, 137],
+    ])
   })
 
   it('rejects a saturated single timestamp instead of reporting partial coverage', async () => {

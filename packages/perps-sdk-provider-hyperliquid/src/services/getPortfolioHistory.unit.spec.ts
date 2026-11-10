@@ -277,6 +277,45 @@ describe('Hyperliquid getPortfolioHistory', () => {
     })
   })
 
+  it('skips the ledger read for a single-sample window and anchors it at zero', async () => {
+    const installed = installFetchMock({
+      portfolio: [
+        [
+          'perpDay',
+          {
+            accountValueHistory: [[1_741_046_400_000, '1000.0']] as [
+              number,
+              string,
+            ][],
+            pnlHistory: [[1_741_046_400_000, '2.0']] as [number, string][],
+            vlm: '10.0',
+          },
+        ],
+      ],
+      userAbstraction: null,
+    })
+    restore = installed.restore
+
+    const result = await getPortfolioHistory(ctx, {
+      address: ADDRESS,
+      range: '24h',
+    })
+
+    expect(result.points).toEqual([
+      {
+        timestamp: 1_741_046_400_000,
+        accountValue: '1000.0',
+        pnl: '2.0',
+        netTransfers: '0',
+      },
+    ])
+    expect(requestBodies(installed.requests)).toEqual([
+      'portfolio',
+      'preTransferCheck',
+      'userAbstraction',
+    ])
+  })
+
   it('throws a ThirdPartyError when the requested window is missing', async () => {
     const installed = installInfoFetchMock({
       portfolio: [['perpDay', window(1)]],

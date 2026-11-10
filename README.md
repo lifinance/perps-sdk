@@ -39,7 +39,7 @@ An absent value means unavailable, not zero. Other history fields keep their exi
   Invalid transfer totals omit only `netTransfers`.
   An invalid first baseline makes all transfer values unavailable.
 - Hyperliquid reads raw ledger rows for the complete sample interval.
-  Activity and portfolio reads share `getLedgerWindow`, `getLedgerHistory`, and the existing capped-window paginator.
+  Activity and portfolio reads share one raw ledger read and the existing capped-window paginator.
   Movements after the first sample and through each sample timestamp count once.
   Per-dex collateral accounts use the perps-only window.
   Unified and portfolio-margin accounts use the combined spot-and-perps window.
@@ -55,13 +55,13 @@ Hyperliquid classifies raw deltas, not display activity types:
 | `spotTransfer` | Count distinct addresses for combined history only. |
 | `vaultCreate`, `vaultDeposit` | Capital leaves the account for the separate vault address. A vault-side deposit lacks the depositor and has unavailable coverage. |
 | `vaultWithdraw` | The user receives `netWithdrawnUsd`. The vault releases `requestedUsd`. A vault-to-itself movement contributes zero. |
-| `cStakingTransfer` | Staking sits outside spot-and-perps balances. Combined history counts the spot leg with historical USD valuation. Perps-only history counts zero. |
-| `borrowLend` | Lending sits outside spot-and-perps balances. Combined history counts the spot principal and excludes recorded interest. Perps-only history counts zero. |
+| `cStakingTransfer` | Staking sits outside spot-and-perps balances. Combined history counts the spot leg for USDC. Perps-only history counts zero. |
+| `borrowLend` | Lending sits outside spot-and-perps balances. Combined history counts the USDC spot principal and excludes recorded interest. Perps-only history counts zero. |
 | Funding, liquidation, rewards, vault leader commissions, deployment gas, spot genesis | Income or expenses, not capital transfers. |
 
-USDC amounts use venue USD units. Other tokens require the recorded `usdcValue`.
+USDC amounts use venue USD units. Transfers of other tokens require the recorded `usdcValue`.
 The SDK never uses current token prices for historical movements.
-A non-USDC lending withdrawal or repayment with nonzero interest lacks a separate historical USD value for interest, so coverage becomes unavailable.
+Staking and lending rows carry no `usdcValue`, so a non-USDC staking or lending movement makes coverage unavailable in combined history.
 Unknown deltas, ambiguous scope, and missing or invalid valuation make that sample and all later cumulative values unavailable.
 The SDK keeps account values and PnL. Ledger errors and cancellation still reject the read.
 The paginator rejects a saturated single timestamp instead of returning partial coverage.

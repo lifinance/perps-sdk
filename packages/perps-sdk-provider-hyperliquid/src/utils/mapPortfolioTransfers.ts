@@ -6,7 +6,18 @@ import {
 } from '@lifi/perps-sdk'
 import type { PortfolioHistoryPoint } from '@lifi/perps-types'
 import { isAddress } from 'viem'
-import type { HlLedgerDelta, HlLedgerUpdate } from '../types/index.js'
+import {
+  type HlLedgerDelta,
+  type HlLedgerUpdate,
+  isBorrowLendDelta,
+  isCollateralTransferDelta,
+  isCStakingTransferDelta,
+  isDepositDelta,
+  isSendAssetDelta,
+  isSpotTransferDelta,
+  isVaultTransferDelta,
+  isWithdrawDelta,
+} from '../types/index.js'
 
 const NON_CAPITAL_DELTAS: Readonly<Record<string, true>> = {
   funding: true,
@@ -20,156 +31,138 @@ const NON_CAPITAL_DELTAS: Readonly<Record<string, true>> = {
 const parseUnsignedAmount = (value: unknown): string | undefined =>
   isDecimalString(value) && !value.startsWith('-') ? value : undefined
 
+const parseSignedAmount = (
+  value: unknown,
+  incoming: boolean
+): string | undefined => {
+  const amount = parseUnsignedAmount(value)
+  return amount === undefined
+    ? undefined
+    : incoming
+      ? amount
+      : safeSubtractDecimalString('0', amount)
+}
+
+const parseTokenUsd = (delta: {
+  token: string
+  amount: string
+  usdcValue?: string
+}): string | undefined => {
+  const amount = parseUnsignedAmount(delta.amount)
+  if (amount === undefined) {
+    return undefined
+  }
+  return delta.token.split(':')[0] === 'USDC'
+    ? amount
+    : parseUnsignedAmount(delta.usdcValue)
+}
+
 const classifyCapitalMovement = (
   delta: HlLedgerDelta,
   queried: string,
   combined: boolean
 ): string | undefined => {
-  const fields: Readonly<Record<string, unknown>> = delta
-  const parseSignedAmount = (
-    value: unknown,
-    incoming: boolean
-  ): string | undefined => {
-    const amount = parseUnsignedAmount(value)
-    return amount === undefined
-      ? undefined
-      : incoming
-        ? amount
-        : safeSubtractDecimalString('0', amount)
+  if (isDepositDelta(delta)) {
+    return parseSignedAmount(delta.usdc, true)
   }
-  const parseTokenUsd = (): string | undefined => {
-    const amount = parseUnsignedAmount(fields.amount)
-    if (amount === undefined || typeof fields.token !== 'string') {
+  if (isWithdrawDelta(delta)) {
+    return parseSignedAmount(delta.usdc, false)
+  }
+  if (
+    isCollateralTransferDelta(delta) ||
+    isSpotTransferDelta(delta) ||
+    isSendAssetDelta(delta)
+  ) {
+    if (
+      !isAddress(delta.user, { strict: false }) ||
+      !isAddress(delta.destination, { strict: false })
+    ) {
       return undefined
     }
-    return fields.token.split(':')[0] === 'USDC'
-      ? amount
-      : parseUnsignedAmount(fields.usdcValue)
+    const sender = delta.user.toLowerCase()
+    const recipient = delta.destination.toLowerCase()
+    let sourceIncluded = combined || !isSpotTransferDelta(delta)
+    let destinationIncluded = sourceIncluded
+    if (isSendAssetDelta(delta)) {
+      sourceIncluded = combined || delta.sourceDex !== 'spot'
+      destinationIncluded = combined || delta.destinationDex !== 'spot'
+    }
+    const outgoing = sender === queried && sourceIncluded
+    const incoming = recipient === queried && destinationIncluded
+    if (incoming === outgoing) {
+      return '0'
+    }
+    return parseSignedAmount(
+      isCollateralTransferDelta(delta) ? delta.usdc : parseTokenUsd(delta),
+      incoming
+    )
   }
-
-  switch (delta.type) {
-    case 'deposit':
-      return parseSignedAmount(fields.usdc, true)
-    case 'withdraw':
-      return parseSignedAmount(fields.usdc, false)
-    case 'accountClassTransfer':
-      return combined
-        ? '0'
-        : typeof fields.toPerp === 'boolean'
-          ? parseSignedAmount(fields.usdc, fields.toPerp)
-          : undefined
-    case 'internalTransfer':
-    case 'subAccountTransfer':
-    case 'spotTransfer':
-    case 'send': {
-      if (
-        typeof fields.user !== 'string' ||
-        !isAddress(fields.user, { strict: false }) ||
-        typeof fields.destination !== 'string' ||
-        !isAddress(fields.destination, { strict: false })
-      ) {
-        return undefined
-      }
-      const sender = fields.user.toLowerCase()
-      const recipient = fields.destination.toLowerCase()
-      let sourceIncluded = delta.type !== 'spotTransfer' || combined
-      let destinationIncluded = sourceIncluded
-      if (delta.type === 'send') {
-        if (
-          typeof fields.sourceDex !== 'string' ||
-          typeof fields.destinationDex !== 'string'
-        ) {
-          return undefined
-        }
-        sourceIncluded = combined || fields.sourceDex !== 'spot'
-        destinationIncluded = combined || fields.destinationDex !== 'spot'
-      }
-      const outgoing = sender === queried && sourceIncluded
-      const incoming = recipient === queried && destinationIncluded
-      if (incoming === outgoing) {
-        return '0'
-      }
-      return parseSignedAmount(
-        delta.type === 'internalTransfer' || delta.type === 'subAccountTransfer'
-          ? fields.usdc
-          : parseTokenUsd(),
-        incoming
-      )
+  if (isVaultTransferDelta(delta)) {
+    if (!isAddress(delta.vault, { strict: false })) {
+      return undefined
     }
-    case 'vaultCreate':
-    case 'vaultDeposit':
-      if (
-        typeof fields.vault !== 'string' ||
-        fields.vault.toLowerCase() === queried
-      ) {
-        return undefined
-      }
-      return parseSignedAmount(fields.usdc, false)
-    case 'vaultWithdraw': {
-      if (typeof fields.vault !== 'string' || typeof fields.user !== 'string') {
-        return undefined
-      }
-      const vault = fields.vault.toLowerCase()
-      const user = fields.user.toLowerCase()
-      if (vault === queried && user === queried) {
-        return '0'
-      }
-      if (vault === queried) {
-        return parseSignedAmount(fields.requestedUsd, false)
-      }
-      return user === queried
-        ? parseSignedAmount(fields.netWithdrawnUsd, true)
-        : undefined
+    const vault = delta.vault.toLowerCase()
+    if (delta.type === 'vaultDeposit') {
+      return vault === queried
+        ? undefined
+        : parseSignedAmount(delta.usdc, false)
     }
-    case 'cStakingTransfer':
-      if (!combined) {
-        return '0'
-      }
-      return typeof fields.isDeposit === 'boolean'
-        ? parseSignedAmount(parseTokenUsd(), !fields.isDeposit)
-        : undefined
-    case 'borrowLend': {
-      if (!combined) {
-        return '0'
-      }
-      const operation = fields.operation
-      if (
-        operation !== 'supply' &&
-        operation !== 'withdraw' &&
-        operation !== 'borrow' &&
-        operation !== 'repay'
-      ) {
-        return undefined
-      }
-      let amount = parseTokenUsd()
-      const interest = parseUnsignedAmount(fields.interestAmount)
-      if (interest === undefined) {
-        return undefined
-      }
-      if (
-        (operation === 'withdraw' || operation === 'repay') &&
-        !safeIsDecimalStringZero(interest)
-      ) {
-        // A token-unit interest amount cannot be subtracted from a USD valuation.
-        if (
-          typeof fields.token !== 'string' ||
-          fields.token.split(':')[0] !== 'USDC'
-        ) {
-          return undefined
-        }
-        amount =
-          amount === undefined
-            ? undefined
-            : safeSubtractDecimalString(amount, interest)
-      }
-      return parseSignedAmount(
-        amount,
-        operation === 'withdraw' || operation === 'borrow'
-      )
+    if (!isAddress(delta.user, { strict: false })) {
+      return undefined
     }
-    default:
-      return Object.hasOwn(NON_CAPITAL_DELTAS, delta.type) ? '0' : undefined
+    const user = delta.user.toLowerCase()
+    if (vault === queried && user === queried) {
+      return '0'
+    }
+    if (vault === queried) {
+      return parseSignedAmount(delta.requestedUsd, false)
+    }
+    return user === queried
+      ? parseSignedAmount(delta.netWithdrawnUsd, true)
+      : undefined
   }
+  if (delta.type === 'cStakingTransfer' || delta.type === 'borrowLend') {
+    if (!combined) {
+      return '0'
+    }
+    if (isCStakingTransferDelta(delta)) {
+      return parseSignedAmount(parseTokenUsd(delta), !delta.isDeposit)
+    }
+    if (!isBorrowLendDelta(delta)) {
+      return undefined
+    }
+    const interest = parseUnsignedAmount(delta.interestAmount)
+    if (interest === undefined) {
+      return undefined
+    }
+    const releases =
+      delta.operation === 'withdraw' || delta.operation === 'borrow'
+    let amount = parseTokenUsd(delta)
+    if (
+      amount !== undefined &&
+      (delta.operation === 'withdraw' || delta.operation === 'repay') &&
+      !safeIsDecimalStringZero(interest)
+    ) {
+      amount = safeSubtractDecimalString(amount, interest)
+    }
+    return parseSignedAmount(amount, releases)
+  }
+  if (delta.type === 'accountClassTransfer') {
+    if (combined) {
+      return '0'
+    }
+    return typeof delta.toPerp === 'boolean'
+      ? parseSignedAmount(delta.usdc, delta.toPerp)
+      : undefined
+  }
+  if (delta.type === 'vaultCreate') {
+    return typeof delta.vault === 'string' &&
+      isAddress(delta.vault, { strict: false }) &&
+      delta.vault.toLowerCase() !== queried
+      ? parseSignedAmount(delta.usdc, false)
+      : undefined
+  }
+  return Object.hasOwn(NON_CAPITAL_DELTAS, delta.type) ? '0' : undefined
 }
 
 /** Add cumulative USD flows for the selected spot-and-perps or perps-only balances. */
@@ -186,18 +179,12 @@ export const mapPortfolioTransfers = (
   const ordered = ledger
     .filter((entry) => entry.time > first.timestamp)
     .sort((a, b) => a.time - b.time)
-  const seen = new Set<string>()
   const queried = address.toLowerCase()
   let index = 0
   let cumulative: string | undefined = '0'
   return points.map((point) => {
     while (index < ordered.length && ordered[index].time <= point.timestamp) {
       const entry = ordered[index++]
-      const key = `${entry.time}:${entry.hash}:${JSON.stringify(entry.delta)}`
-      if (seen.has(key)) {
-        continue
-      }
-      seen.add(key)
       if (cumulative !== undefined) {
         const movement = classifyCapitalMovement(entry.delta, queried, combined)
         cumulative =

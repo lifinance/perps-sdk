@@ -20,7 +20,9 @@ const jsonResponse = (value: unknown, status = 200): Response =>
  * route from `prices`, the `/providers` GET route from `providers`, and
  * resolves each Hyperliquid POST from `responses` keyed by the body's `type`
  * field. A `Response` entry or `providers` value is served as-is, so a
- * spec can drive a non-2xx status. POSTs are recorded in `requests`; the
+ * spec can drive a non-2xx status. A function entry receives the request
+ * body and returns the value to serve, so a spec can answer each time
+ * window differently. POSTs are recorded in `requests`; the
  * reference-data GET routes are recorded separately in `referenceRequests`.
  * Account-read fixtures model a funded account unless they provide
  * `preTransferCheck`; every other unknown `type` raises.
@@ -87,9 +89,11 @@ export function installInfoFetchMock(
         throw new Error(`No mock response registered for /info type=${type}`)
       }
       const registered = responses[type]
-      return registered instanceof Response
-        ? registered.clone()
-        : jsonResponse(registered)
+      const resolved: unknown =
+        typeof registered === 'function' ? registered(body) : registered
+      return resolved instanceof Response
+        ? resolved.clone()
+        : jsonResponse(resolved)
     })
 
   return {

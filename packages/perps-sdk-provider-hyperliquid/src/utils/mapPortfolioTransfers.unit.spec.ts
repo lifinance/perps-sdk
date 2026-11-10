@@ -40,15 +40,13 @@ const flows = (ledger: HlLedgerUpdate[], combined = false) =>
   )
 
 describe('mapPortfolioTransfers', () => {
-  it('anchors the first sample, includes right boundaries, and counts duplicate rows once', () => {
-    const deposit = row(20, { type: 'deposit', usdc: '0.2' })
+  it('anchors the first sample and includes right boundaries', () => {
     const result = mapPortfolioTransfers(
       points,
       [
         row(9, { type: 'deposit', usdc: '100' }),
         row(10, { type: 'deposit', usdc: '100' }),
-        deposit,
-        deposit,
+        row(20, { type: 'deposit', usdc: '0.2' }),
         row(20, { type: 'withdraw', usdc: '0.1', fee: '1' }, 'other'),
         row(31, { type: 'deposit', usdc: '9007199254740993.01' }),
         row(41, { type: 'deposit', usdc: '100' }),
@@ -67,6 +65,18 @@ describe('mapPortfolioTransfers', () => {
     expect(points.every((p) => !('netTransfers' in p))).toBe(true)
   })
 
+  it('orders newest-first ledger rows before it aggregates them', () => {
+    expect(
+      flows([
+        row(40, { type: 'withdraw', usdc: '5' }),
+        row(30, { type: 'deposit', usdc: '3' }),
+        row(30, { type: 'deposit', usdc: '4' }),
+        row(20, { type: 'deposit', usdc: '1' }),
+        row(11, { type: 'deposit', usdc: '10' }),
+      ])
+    ).toEqual(['0', '11', '18', '18', '13'])
+  })
+
   it.each<[HlLedgerDelta, boolean, string | undefined]>([
     [{ type: 'deposit', usdc: '2.1' }, false, '2.1'],
     [{ type: 'withdraw', usdc: '2.1', fee: '1' }, true, '-2.1'],
@@ -75,24 +85,11 @@ describe('mapPortfolioTransfers', () => {
         type: 'borrowLend',
         token: 'HYPE',
         amount: '10',
-        operation: 'withdraw',
-        interestAmount: '0.0',
-        usdcValue: '100',
-      },
-      true,
-      '100',
-    ],
-    [
-      {
-        type: 'borrowLend',
-        token: 'HYPE',
-        amount: '10',
         operation: 'repay',
         interestAmount: '0',
-        usdcValue: '100',
       },
       true,
-      '-100',
+      undefined,
     ],
     [{ type: 'accountClassTransfer', usdc: '5', toPerp: true }, false, '5'],
     [{ type: 'accountClassTransfer', usdc: '5', toPerp: false }, false, '-5'],
@@ -123,8 +120,6 @@ describe('mapPortfolioTransfers', () => {
     [send({ user: 'invalid' }), true, undefined],
     [send({ destination: undefined }), true, undefined],
     [send({ destination: 'invalid' }), true, undefined],
-    [send({ destinationDex: undefined }), true, undefined],
-    [send({ token: undefined }), true, undefined],
     [send({ token: 'HYPE', usdcValue: 'NaN' }), true, undefined],
     [{ type: 'vaultCreate', vault: OTHER, usdc: '7', fee: '1' }, true, '-7'],
     [{ type: 'vaultDeposit', usdc: '7' }, true, undefined],
@@ -185,7 +180,6 @@ describe('mapPortfolioTransfers', () => {
     ],
     [send({ sourceDex: 'spot' }), false, '0'],
     [send({ sourceDex: 'spot' }), true, '-12.34'],
-    [send({ sourceDex: undefined }), false, undefined],
     [send({ token: 'HYPE', amount: '2', usdcValue: '60' }), true, '-60'],
     [send({ token: 'HYPE', usdcValue: undefined }), true, undefined],
     [send({ amount: 'NaN' }), false, undefined],
@@ -255,15 +249,19 @@ describe('mapPortfolioTransfers', () => {
       '0',
     ],
     [
+      { type: 'cStakingTransfer', token: 'USDC', amount: '2', isDeposit: true },
+      true,
+      '-2',
+    ],
+    [
       {
         type: 'cStakingTransfer',
-        token: 'HYPE',
+        token: 'USDC',
         amount: '2',
         isDeposit: false,
-        usdcValue: '60',
       },
       true,
-      '60',
+      '2',
     ],
     [
       {
@@ -326,8 +324,7 @@ describe('mapPortfolioTransfers', () => {
         token: 'HYPE',
         amount: '10',
         operation: 'withdraw',
-        interestAmount: '1',
-        usdcValue: '100',
+        interestAmount: '0.0',
       },
       true,
       undefined,
