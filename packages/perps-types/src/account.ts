@@ -479,6 +479,24 @@ export interface FundingActivity extends BaseActivity {
   fundingRate: DecimalString
 }
 
+/** A standalone charge in asset units; amount retains the venue's decimal string. @public */
+export interface FeeActivity extends BaseActivity {
+  type: ActivityType.FEE
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
+/** Reward income in asset units; amount retains the venue's decimal string. @public */
+export interface RewardActivity extends BaseActivity {
+  type: ActivityType.REWARD
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
 /**
@@ -521,6 +539,8 @@ export type ActivityItem =
   | LiquidationActivity
   | FundingActivity
   | TransferActivity
+  | FeeActivity
+  | RewardActivity
 
 /**
  * Paginated account-activity response for one provider and account.

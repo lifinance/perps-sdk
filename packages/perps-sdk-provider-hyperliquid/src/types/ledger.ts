@@ -162,6 +162,27 @@ export type HlBorrowLendDelta = {
   interestAmount: string
 }
 
+/** A priority gas charge in the specified token's units. @public */
+export type HlGossipPriorityGasAuctionDelta = {
+  type: 'gossipPriorityGasAuction'
+  token: string
+  amount: string
+}
+
+/** An account activation charge in the specified token's units. @public */
+export type HlAccountActivationGasDelta = {
+  type: 'accountActivationGas'
+  token: string
+  amount: string
+}
+
+/** Claimed reward income in the specified token's units. @public */
+export type HlRewardsClaimDelta = {
+  type: 'rewardsClaim'
+  token: string
+  amount: string
+}
+
 /**
  * Union of known Hyperliquid non-funding ledger deltas plus an open fallback
  * for endpoint variants the provider does not map.
@@ -177,6 +198,9 @@ export type HlLedgerDelta =
   | HlLiquidationDelta
   | HlCStakingTransferDelta
   | HlBorrowLendDelta
+  | HlGossipPriorityGasAuctionDelta
+  | HlAccountActivationGasDelta
+  | HlRewardsClaimDelta
   | {
       type: string
       usdc?: string
@@ -262,6 +286,19 @@ export const isBorrowLendDelta = (
   delta.type === 'borrowLend' &&
   'operation' in delta &&
   HL_BORROW_LEND_OPERATIONS.has(delta.operation)
+
+export const isGossipPriorityGasAuctionDelta = (
+  delta: HlLedgerDelta
+): delta is HlGossipPriorityGasAuctionDelta =>
+  delta.type === 'gossipPriorityGasAuction'
+
+export const isAccountActivationGasDelta = (
+  delta: HlLedgerDelta
+): delta is HlAccountActivationGasDelta => delta.type === 'accountActivationGas'
+
+export const isRewardsClaimDelta = (
+  delta: HlLedgerDelta
+): delta is HlRewardsClaimDelta => delta.type === 'rewardsClaim'
 
 /**
  * One timestamped non-funding ledger update. `time` is milliseconds since

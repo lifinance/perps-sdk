@@ -252,6 +252,8 @@ export enum ActivityType {
   LIQUIDATION = 'LIQUIDATION',
   FUNDING = 'FUNDING',
   TRANSFER = 'TRANSFER',
+  FEE = 'FEE',
+  REWARD = 'REWARD',
 }
 
 /** Human-readable classification of how a fill changed a position. @public */

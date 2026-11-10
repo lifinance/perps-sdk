@@ -146,6 +146,154 @@ const fundingUpdate = (coin: string, time: number): HlFundingUpdate => ({
   },
 })
 
+describe('mapLedgerEntry — fees and rewards', () => {
+  // Complete events: https://www.quicknode.com/docs/hyperliquid/datasets/events
+  const cases = [
+    {
+      event: {
+        time: '2026-04-30T19:02:47.045403103',
+        hash: '0x298562a202dad0762aff043a58e40702012a00879dddef48cd4e0df4c1deaa60',
+        inner: {
+          LedgerUpdate: {
+            users: ['0xed047f2f15f2b29adece2c1da06ab7a872294f2c'],
+            delta: {
+              type: 'gossipPriorityGasAuction',
+              token: 'HYPE',
+              amount: '0.30773712',
+            },
+          },
+        },
+      },
+      type: ActivityType.FEE,
+      asset: HYPE,
+      timestamp: '2026-04-30T19:02:47.045Z',
+    },
+    {
+      event: {
+        time: '2026-05-15T14:57:54.057017613',
+        hash: '0x358fca921369ed063709043b7612810204390077ae6d0bd8d95875e4d26dc6f0',
+        inner: {
+          LedgerUpdate: {
+            users: ['0x96cc51652916dbf3bccff11cfe5b997dec908b5e'],
+            delta: {
+              type: 'accountActivationGas',
+              amount: '0.02283782',
+              token: 'HYPE',
+            },
+          },
+        },
+      },
+      type: ActivityType.FEE,
+      asset: HYPE,
+      timestamp: '2026-05-15T14:57:54.057Z',
+    },
+    {
+      event: {
+        time: '2025-11-05T10:01:12.722447184',
+        hash: '0x546aff0681417b4155e4042ee191e702094900ec1c449a13f833aa594045552b',
+        inner: {
+          LedgerUpdate: {
+            users: ['0x364fc7e594e98f123829403889a6a2212583f58a'],
+            delta: {
+              type: 'rewardsClaim',
+              amount: '18.40514403',
+              token: 'USDC',
+            },
+          },
+        },
+      },
+      type: ActivityType.REWARD,
+      asset: USDC,
+      timestamp: '2025-11-05T10:01:12.722Z',
+    },
+  ]
+
+  it.each(cases)('maps published $event.inner.LedgerUpdate.delta.type', ({
+    event,
+    type,
+    asset,
+    timestamp,
+  }) => {
+    const result = mapLedgerEntry(
+      {
+        time: Date.parse(`${event.time}Z`),
+        hash: event.hash,
+        delta: event.inner.LedgerUpdate.delta,
+      },
+      PROVIDER,
+      event.inner.LedgerUpdate.users[0],
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: event.hash,
+      provider: PROVIDER,
+      timestamp,
+      type,
+      asset,
+      amount: event.inner.LedgerUpdate.delta.amount,
+      meta: { ledgerType: event.inner.LedgerUpdate.delta.type },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${event.hash}`,
+    })
+  })
+
+  it.each(
+    cases
+  )('preserves precision and zero-hash identity for $event.inner.LedgerUpdate.delta.type', ({
+    event,
+    type,
+    timestamp,
+  }) => {
+    const delta = {
+      ...event.inner.LedgerUpdate.delta,
+      token: 'PURR',
+      amount: '123456789.0000000001234500',
+    }
+    const entry = { time: Date.parse(`${event.time}Z`), hash: ZERO_HASH, delta }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: `${delta.type}:PURR:123456789.0000000001234500:${timestamp}`,
+      provider: PROVIDER,
+      timestamp,
+      type,
+      asset: PURR,
+      amount: '123456789.0000000001234500',
+      meta: { ledgerType: delta.type },
+    })
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toEqual(result)
+  })
+
+  it.each(
+    cases
+  )('skips an unresolved token for $event.inner.LedgerUpdate.delta.type', ({
+    event,
+  }) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const provider = `hyperliquid-${event.inner.LedgerUpdate.delta.type}`
+    const result = mapLedgerEntry(
+      {
+        time: Date.parse(`${event.time}Z`),
+        hash: event.hash,
+        delta: { ...event.inner.LedgerUpdate.delta, token: 'UNLISTED' },
+      },
+      provider,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('UNLISTED'))
+  })
+})
+
 // ---------------------------------------------------------------------------
 // mapLedgerEntry — spotTransfer
 // ---------------------------------------------------------------------------

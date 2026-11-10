@@ -897,3 +897,141 @@ describe('getActivity — spot transfers with a null nonce', () => {
     ])
   })
 })
+
+describe('getActivity — fees and rewards', () => {
+  const hype: Asset = {
+    providerId: 'hyperliquid',
+    id: '150',
+    displaySymbol: 'HYPE',
+    logoURI: 'https://assets.example/hype.svg',
+  }
+  const ledger: HlUserNonFundingLedgerUpdates = [
+    {
+      time: 1760000000000,
+      hash: '0xpriority',
+      delta: {
+        type: 'gossipPriorityGasAuction',
+        token: 'HYPE',
+        amount: '0.3077371200',
+      },
+    },
+    {
+      time: 1760000000001,
+      hash: '0xactivation',
+      delta: {
+        type: 'accountActivationGas',
+        token: 'USDC',
+        amount: '1.00000000',
+      },
+    },
+    {
+      time: 1760000000002,
+      hash: '0xreward',
+      delta: {
+        type: 'rewardsClaim',
+        token: 'USDC',
+        amount: '18.4051440300',
+      },
+    },
+  ]
+  const expected = [
+    {
+      id: '0xreward',
+      type: ActivityType.REWARD,
+      asset: USDC_ASSET,
+      amount: '18.4051440300',
+      meta: { ledgerType: 'rewardsClaim' },
+    },
+    {
+      id: '0xactivation',
+      type: ActivityType.FEE,
+      asset: USDC_ASSET,
+      amount: '1.00000000',
+      meta: { ledgerType: 'accountActivationGas' },
+    },
+    {
+      id: '0xpriority',
+      type: ActivityType.FEE,
+      asset: hype,
+      amount: '0.3077371200',
+      meta: { ledgerType: 'gossipPriorityGasAuction' },
+    },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([
+    { type: undefined, ids: ['0xreward', '0xactivation', '0xpriority'] },
+    { type: [ActivityType.FEE], ids: ['0xactivation', '0xpriority'] },
+    { type: [ActivityType.REWARD], ids: ['0xreward'] },
+    {
+      type: [ActivityType.FEE, ActivityType.REWARD],
+      ids: ['0xreward', '0xactivation', '0xpriority'],
+    },
+    {
+      type: [ActivityType.FEE, ActivityType.DEPOSIT],
+      ids: ['0xactivation', '0xpriority'],
+    },
+    { type: [ActivityType.REWARD, ActivityType.FUNDING], ids: ['0xreward'] },
+    { type: [ActivityType.DEPOSIT], ids: [] },
+    { type: [ActivityType.WITHDRAWAL], ids: [] },
+    { type: [ActivityType.TRANSFER], ids: [] },
+    { type: [ActivityType.LIQUIDATION], ids: [] },
+    { type: [ActivityType.FUNDING], ids: [] },
+  ])('returns matching activities for $type', async ({ type, ids }) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mock = installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: ledger,
+        userFunding: [],
+        userFillsByTime: [],
+      },
+      [],
+      [],
+      [USDC_ASSET, hype]
+    )
+    const result = await getActivity(
+      { ...ctx, client: createPerpsClient({ retry: false }) },
+      { address: ADDRESS, type }
+    )
+    expect(result.items.map((item) => item.id)).toEqual(ids)
+    expect(result.items).toMatchObject(
+      expected.filter((item) => ids.includes(item.id))
+    )
+    expect(warn).not.toHaveBeenCalled()
+    const needsMarket =
+      type === undefined ||
+      type.includes(ActivityType.FUNDING) ||
+      type.includes(ActivityType.LIQUIDATION)
+    expect(mock.referenceRequests.some((url) => url.includes('/markets'))).toBe(
+      needsMarket
+    )
+    if (
+      type === undefined ||
+      type.some((t) => t === ActivityType.FEE || t === ActivityType.REWARD)
+    ) {
+      expect(
+        mock.referenceRequests.some((url) => url.includes('/assets'))
+      ).toBe(true)
+    }
+  })
+
+  it.each([
+    ActivityType.FEE,
+    ActivityType.REWARD,
+  ])('keeps resolved rows when a %s token is not registered', async (type) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: ledger },
+      [],
+      [],
+      [hype]
+    )
+    const result = await getActivity(
+      { ...ctx, client: createPerpsClient({ retry: false }) },
+      { address: ADDRESS, type: [type] }
+    )
+    expect(result.items.map((item) => item.id)).toEqual(
+      type === ActivityType.FEE ? ['0xpriority'] : []
+    )
+  })
+})
