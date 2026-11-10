@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  isDecimalString,
   isDecimalStringGreaterThan,
   PerpsError,
   safeDivideDecimalString,
@@ -21,6 +22,7 @@ import {
 } from '@lifi/perps-types'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
+import { buildFee } from './buildFee.js'
 import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
 
 const skipOrder = (
@@ -228,6 +230,13 @@ export const mapOrder = (
       durationSeconds: order.runningTime,
       startedAt: createdAt,
     }
+  }
+  if (isDecimalString(order.realizedPnl)) {
+    base.realizedPnl = order.realizedPnl
+  }
+  const fee = buildFee(order, market.quoteAsset.displaySymbol)
+  if (fee !== undefined) {
+    base.fee = fee
   }
   if (order.clientOrderId !== undefined) {
     base.clientOrderId = order.clientOrderId

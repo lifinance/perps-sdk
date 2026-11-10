@@ -68,6 +68,15 @@ Every row carries the venue `orderId`, sizes, side, market, `reduceOnly`, and
 creation/update times. Ondo's optional `clientOrderId` and `parentOrderId` remain
 separate fields. The mapper omits `explorerLink` because these venue rows carry no transaction hash.
 
+Regular and trigger orders expose a valid venue `realizedPnl` for the filled
+portion, before fees. An absent or malformed value leaves `realizedPnl` absent.
+Their optional `fee` uses the market quote asset and subtracts `feeRebate`
+from the venue fee. A malformed fee or rebate leaves the complete `fee` absent.
+TWAP parents expose neither outcome field because the venue gives no complete outcome.
+
+Orders and fills expose the venue rebate as `fee.rebate` when present.
+`fee.amount` remains the net amount charged, after the rebate.
+
 | Ondo status | SDK status |
 | --- | --- |
 | `open`, `untriggered` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |

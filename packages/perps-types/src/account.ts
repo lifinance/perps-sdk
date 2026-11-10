@@ -95,6 +95,13 @@ export interface OrderBase {
   remainingSize: DecimalString
   filledSize: DecimalString
   averagePrice?: DecimalString
+  /**
+   * Venue realized PnL for the filled portion of the order, before fees.
+   * Absent when the provider has no complete value.
+   */
+  realizedPnl?: DecimalString
+  /** Fee for the filled portion, absent when the provider has no complete value. */
+  fee?: Fee
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
   parentOrderId?: string
@@ -270,8 +277,10 @@ export interface OrdersResponse {
  * @public
  */
 export interface Fee {
-  /** Decimal string in `asset`'s units. */
+  /** Net amount charged, after rebates, in `asset`'s units. */
   amount: DecimalString
+  /** Part the venue gave back, in the same asset. Absent when not reported. */
+  rebate?: DecimalString
   /**
    * Display symbol the fee is denominated in, resolved by the provider
    * adapter. Falls back to the venue's own asset id when the registry knows no

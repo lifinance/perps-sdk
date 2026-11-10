@@ -78,9 +78,89 @@ describe('mapOrder', () => {
       reduceOnly: false,
       status: OrderStatus.PARTIALLY_FILLED,
       averagePrice: '200.5',
+      fee: { amount: '0.4', asset: 'USD' },
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z',
     })
+  })
+  it('maps PnL and a net fee for the filled portion without formatting PnL', () => {
+    expect(
+      mapOrder(
+        orderFixture({ realizedPnl: '-12.5000', feeRebate: '0.1' }),
+        MARKET
+      )
+    ).toMatchObject({
+      status: OrderStatus.PARTIALLY_FILLED,
+      realizedPnl: '-12.5000',
+      fee: { amount: '0.3', rebate: '0.1', asset: 'USD' },
+    })
+  })
+  it('preserves a zero PnL and an explicit zero rebate', () => {
+    expect(
+      mapOrder(orderFixture({ realizedPnl: '0', feeRebate: '0' }), MARKET)
+    ).toMatchObject({
+      realizedPnl: '0',
+      fee: { amount: '0.4', rebate: '0', asset: 'USD' },
+    })
+  })
+  it('uses the market quote asset for the order fee', () => {
+    expect(
+      mapOrder(orderFixture(), {
+        ...MARKET,
+        quoteAsset: { ...MARKET.quoteAsset, displaySymbol: 'USDC' },
+      })?.fee
+    ).toEqual({ amount: '0.4', asset: 'USDC' })
+  })
+  it.each([
+    undefined,
+    '',
+    '12oops',
+    'NaN',
+    'Infinity',
+    '1e-7',
+  ])('omits an unavailable or invalid PnL (%s) without dropping the order', (realizedPnl) => {
+    const mapped = mapOrder(orderFixture({ realizedPnl }), MARKET)
+    expect(mapped?.orderId).toBe('ord-1')
+    expect(mapped).not.toHaveProperty('realizedPnl')
+    expect(mapped?.fee).toEqual({ amount: '0.4', asset: 'USD' })
+  })
+  it.each([
+    'fee',
+    'feeRebate',
+  ] as const)('omits the complete fee when %s is malformed', (field) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mapped = mapOrder(
+      orderFixture({ [field]: '10oops', realizedPnl: '12.5' }),
+      MARKET
+    )
+    expect(mapped?.orderId).toBe('ord-1')
+    expect(mapped?.realizedPnl).toBe('12.5')
+    expect(mapped).not.toHaveProperty('fee')
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+  it('maps the outcome on a trigger order', () => {
+    expect(
+      mapOrder(
+        orderFixture({
+          stopOrderType: 'stopLoss',
+          triggerPrice: '180',
+          realizedPnl: '-20',
+          feeRebate: '0.1',
+        }),
+        MARKET
+      )
+    ).toMatchObject({
+      type: OrderType.STOP_LIMIT,
+      realizedPnl: '-20',
+      fee: { amount: '0.3', rebate: '0.1', asset: 'USD' },
+    })
+  })
+  it('leaves TWAP outcomes absent because the row has no complete outcome', () => {
+    const mapped = mapOrder(twapFixture(), MARKET)
+    expect(mapped?.orderId).toBe('twap-1')
+    expect(mapped).not.toHaveProperty('realizedPnl')
+    expect(mapped).not.toHaveProperty('fee')
   })
   it('preserves venue, client and parent ids independently', () => {
     expect(
