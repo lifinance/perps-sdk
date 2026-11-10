@@ -111,18 +111,37 @@ describe('mapOrder', () => {
       })?.fee
     ).toEqual({ amount: '0.4', asset: 'USDC' })
   })
+  it('omits an absent PnL without a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mapped = mapOrder(orderFixture({ realizedPnl: undefined }), MARKET)
+    expect(mapped?.orderId).toBe('ord-1')
+    expect(mapped).not.toHaveProperty('realizedPnl')
+    expect(mapped?.fee).toEqual({ amount: '0.4', asset: 'USD' })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
   it.each([
-    undefined,
     '',
+    '+5',
     '12oops',
     'NaN',
     'Infinity',
     '1e-7',
-  ])('omits an unavailable or invalid PnL (%s) without dropping the order', (realizedPnl) => {
-    const mapped = mapOrder(orderFixture({ realizedPnl }), MARKET)
+  ])('omits an invalid PnL (%s), keeps the order and warns once', async (realizedPnl) => {
+    // A fresh module instance clears the warn-once memory.
+    vi.resetModules()
+    const { mapOrder: freshMapOrder } = await import('./mapOrder.js')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const mapped = freshMapOrder(orderFixture({ realizedPnl }), MARKET)
     expect(mapped?.orderId).toBe('ord-1')
     expect(mapped).not.toHaveProperty('realizedPnl')
     expect(mapped?.fee).toEqual({ amount: '0.4', asset: 'USD' })
+    freshMapOrder(orderFixture({ realizedPnl }), MARKET)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] order \`realizedPnl\` is not a valid decimal, so it is absent: '${realizedPnl}'`
+    )
+    warn.mockRestore()
   })
   it.each([
     'fee',

@@ -36,4 +36,21 @@ describe('buildFee', () => {
     expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
   })
+
+  it.each([
+    '-0.1',
+    '-0.000000000000000001',
+  ])('omits the fee and warns once when the rebate is negative (%s)', async (feeRebate) => {
+    // A fresh module instance clears the warn-once memory.
+    vi.resetModules()
+    const { buildFee: freshBuildFee } = await import('./buildFee.js')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(freshBuildFee({ fee: '0.4', feeRebate }, 'USD')).toBeUndefined()
+    expect(freshBuildFee({ fee: '0.4', feeRebate }, 'USD')).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      `[ondo] \`feeRebate\` is negative, so the fee is absent: '${feeRebate}'`
+    )
+    warn.mockRestore()
+  })
 })
