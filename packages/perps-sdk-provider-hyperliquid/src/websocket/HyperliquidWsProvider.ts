@@ -822,14 +822,14 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   }
 
   private handleAllDexsAssetCtxs(data: HlWsAllDexsAssetCtxsData) {
-    this.emitMarketsContext(
+    this.updateMarketsContext(
       this.mergePerpAssetCtxEntries(allDexsAssetCtxEntries(data))
     )
   }
 
   private handlePac(base64: string) {
     this.pacDecodeChain.push(async () => {
-      this.emitMarketsContext(
+      this.updateMarketsContext(
         this.mergePerpAssetCtxEntries(
           await decodeCompressedJson<HlWsPacData>(base64)
         )
@@ -882,7 +882,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
         touched.add(marketId)
       }
-      this.emitMarketsContext(touched)
+      this.updateMarketsContext(touched)
     })
   }
 
@@ -923,30 +923,26 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         }
         touched.push(marketId)
       }
-      this.emitMarketsContext(touched)
+      this.updateMarketsContext(touched)
     })
   }
 
   /**
-   * Emit the all-markets context map, re-mapping only the markets the incoming
-   * frame touched. Each emission is a fresh snapshot object that carries
-   * untouched entries over by reference, so a listener holding an earlier
-   * snapshot never observes later-frame mutation.
+   * Re-map only the markets the incoming frame touched, then hand the map to
+   * the base's throttled emit. The delivered event is a fresh snapshot built
+   * at delivery time, so a listener holding an earlier snapshot never observes
+   * later-frame mutation.
    */
-  private emitMarketsContext(touchedMarketIds: Iterable<string>) {
-    const data: Record<string, MarketContext> = {
-      ...this.marketsContextByMarketId,
-    }
+  private updateMarketsContext(touchedMarketIds: Iterable<string>) {
     for (const marketId of touchedMarketIds) {
       const context = this.computeMarketContext(marketId)
       if (context === undefined) {
-        delete data[marketId]
+        delete this.marketsContextByMarketId[marketId]
       } else {
-        data[marketId] = context
+        this.marketsContextByMarketId[marketId] = context
       }
     }
-    this.marketsContextByMarketId = data
-    this.emit('marketsContext', { channel: 'marketsContext', data })
+    this.emitMarketsContext(() => ({ ...this.marketsContextByMarketId }))
   }
 
   /**

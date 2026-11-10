@@ -370,6 +370,7 @@ export type {
 } from './websocket/types.js'
 export {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './websocket/WsProviderBase.js'
 export { wsLog } from './websocket/wsLog.js'

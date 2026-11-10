@@ -1,4 +1,8 @@
-import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import {
+  createPerpsClient,
+  PerpsError,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
+} from '@lifi/perps-sdk'
 import {
   OrderStatus,
   PerpsErrorCode,
@@ -1714,79 +1718,87 @@ describe('LighterWsProvider', () => {
         JSON.stringify({ type: 'subscribe', channel: 'spot_market_stats/all' })
       )
 
-      // Perp context (keyed by String(market_id)) carries oracle/mark/mid.
-      ;(provider as any).handleMessage(
-        JSON.stringify({
-          type: 'update/market_stats',
-          market_stats: {
-            '0': {
-              market_id: 0,
-              index_price: '49998',
-              mark_price: '50000',
-              mid_price: '50001',
-              open_interest: '12.5',
-              last_trade_price: '50002',
-              current_funding_rate: '0.0012',
-              funding_rate: '0.0001',
-              funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
-              daily_base_token_volume: 10,
-              daily_quote_token_volume: 500000,
-              daily_price_change: 1.2,
+      vi.useFakeTimers()
+      try {
+        // Perp context (keyed by String(market_id)) carries oracle/mark/mid.
+        ;(provider as any).handleMessage(
+          JSON.stringify({
+            type: 'update/market_stats',
+            market_stats: {
+              '0': {
+                market_id: 0,
+                index_price: '49998',
+                mark_price: '50000',
+                mid_price: '50001',
+                open_interest: '12.5',
+                last_trade_price: '50002',
+                current_funding_rate: '0.0012',
+                funding_rate: '0.0001',
+                funding_timestamp: LAST_FUNDING_PAYMENT_TIME,
+                daily_base_token_volume: 10,
+                daily_quote_token_volume: 500000,
+                daily_price_change: 1.2,
+              },
             },
+          })
+        )
+        expect(listener).toHaveBeenCalledOnce()
+        const perpEvent = listener.mock.calls[0][0]
+        expect(perpEvent.channel).toBe('marketsContext')
+        expect(perpEvent.data['0']).toMatchObject({
+          provider: 'lighter',
+          marketId: '0',
+          midPrice: '50001',
+          markPrice: '50000',
+          oraclePrice: '49998',
+          priceChange24h: '1.2',
+          openInterest: '12.5',
+          funding: {
+            rate: '0.000012',
+            nextFundingTime: NEXT_FUNDING_PAYMENT_TIME,
           },
         })
-      )
-      expect(listener).toHaveBeenCalledOnce()
-      const perpEvent = listener.mock.calls[0][0]
-      expect(perpEvent.channel).toBe('marketsContext')
-      expect(perpEvent.data['0']).toMatchObject({
-        provider: 'lighter',
-        marketId: '0',
-        midPrice: '50001',
-        markPrice: '50000',
-        oraclePrice: '49998',
-        priceChange24h: '1.2',
-        openInterest: '12.5',
-        funding: {
-          rate: '0.000012',
-          nextFundingTime: NEXT_FUNDING_PAYMENT_TIME,
-        },
-      })
 
-      // Spot ticks arrive on the spot channel and merge into the same
-      // `marketsContext` emit; spot carries oracle + mid, mark folds to mid.
-      ;(provider as any).handleMessage(
-        JSON.stringify({
-          type: 'update/spot_market_stats',
-          spot_market_stats: {
-            '2048': {
-              market_id: 2048,
-              symbol: 'LIT/USDC',
-              index_price: '1814.00',
-              mid_price: '1814.34',
-              best_ask_price: '1814.40',
-              best_bid_price: '1814.28',
-              last_trade_price: '1814.34',
-              daily_base_token_volume: 100,
-              daily_quote_token_volume: 200,
-              daily_price_low: 1800,
-              daily_price_high: 1820,
-              daily_price_change: 0.5,
+        // Spot ticks arrive on the spot channel and merge into the same
+        // `marketsContext` emit; spot carries oracle + mid, mark folds to mid.
+        // The tick lands inside the delivery gap, so it waits for the gap end.
+        ;(provider as any).handleMessage(
+          JSON.stringify({
+            type: 'update/spot_market_stats',
+            spot_market_stats: {
+              '2048': {
+                market_id: 2048,
+                symbol: 'LIT/USDC',
+                index_price: '1814.00',
+                mid_price: '1814.34',
+                best_ask_price: '1814.40',
+                best_bid_price: '1814.28',
+                last_trade_price: '1814.34',
+                daily_base_token_volume: 100,
+                daily_quote_token_volume: 200,
+                daily_price_low: 1800,
+                daily_price_high: 1820,
+                daily_price_change: 0.5,
+              },
             },
-          },
+          })
+        )
+        expect(listener).toHaveBeenCalledOnce()
+        vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+        expect(listener).toHaveBeenCalledTimes(2)
+        const spotEvent = listener.mock.calls[1][0]
+        expect(Object.keys(spotEvent.data).sort()).toEqual(['0', '2048'])
+        expect(spotEvent.data['2048']).toMatchObject({
+          provider: 'lighter',
+          marketId: '2048',
+          midPrice: '1814.34',
+          markPrice: '1814.34',
+          oraclePrice: '1814.00',
+          priceChange24h: '0.5',
         })
-      )
-      expect(listener).toHaveBeenCalledTimes(2)
-      const spotEvent = listener.mock.calls[1][0]
-      expect(Object.keys(spotEvent.data).sort()).toEqual(['0', '2048'])
-      expect(spotEvent.data['2048']).toMatchObject({
-        provider: 'lighter',
-        marketId: '2048',
-        midPrice: '1814.34',
-        markPrice: '1814.34',
-        oraclePrice: '1814.00',
-        priceChange24h: '0.5',
-      })
+      } finally {
+        vi.useRealTimers()
+      }
       provider.close()
     })
 

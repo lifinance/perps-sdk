@@ -1,4 +1,8 @@
-import type { Subscription, SubscriptionEvent } from '@lifi/perps-types'
+import type {
+  MarketContext,
+  Subscription,
+  SubscriptionEvent,
+} from '@lifi/perps-types'
 import type {
   ProviderGetQuoteParams,
   QuoteListener,
@@ -22,6 +26,14 @@ import { wsLog } from './wsLog.js'
  */
 export const WS_CHANNEL_TEARDOWN_LINGER_MS = 250
 
+/**
+ * Minimum gap between two `marketsContext` deliveries on one provider. Wire
+ * frames inside the gap coalesce; the newest one is delivered when it ends.
+ *
+ * @public
+ */
+export const WS_MARKETS_CONTEXT_INTERVAL_MS = 1_000
+
 interface ChannelEntry {
   /**
    * Per-listener ref count — a `Map`, not a `Set`, because the same listener
@@ -35,6 +47,10 @@ interface ChannelEntry {
   opening?: Promise<() => void>
   /** Deferred-teardown timer, set on the 1→0 transition; cleared if re-subscribed within the linger. */
   pendingTeardown?: ReturnType<typeof setTimeout>
+  /** `marketsContext` gap timer, set on each delivery; the next delivery waits for it. */
+  throttle?: ReturnType<typeof setTimeout>
+  /** Newest `marketsContext` snapshot producer that arrived inside the gap. */
+  pendingSnapshot?: () => Record<string, MarketContext>
 }
 
 /**
@@ -159,6 +175,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       if (entry.pendingTeardown !== undefined) {
         clearTimeout(entry.pendingTeardown)
       }
+      this.cancelPendingMarketsContext(entry)
     }
     this.onClose()
     this.rws.close()
@@ -180,6 +197,50 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     for (const fn of entry.listeners.keys()) {
       this.callListener(`subscription:${key}`, fn, event)
     }
+  }
+
+  /**
+   * Deliver the all-markets context map to the `marketsContext` listeners,
+   * at most once per {@link WS_MARKETS_CONTEXT_INTERVAL_MS}. The first call
+   * after the channel opens delivers at once. Calls inside the gap keep only
+   * the newest `snapshot`, which runs when the gap ends, so one delivered
+   * event costs one map build regardless of the wire rate.
+   */
+  protected emitMarketsContext(
+    snapshot: () => Record<string, MarketContext>
+  ): void {
+    const key = this.toKey({ channel: 'marketsContext', dex: this.providerKey })
+    const entry = this.channels.get(key)
+    if (entry === undefined || entry.listeners.size === 0) {
+      return
+    }
+    if (entry.throttle !== undefined) {
+      entry.pendingSnapshot = snapshot
+      return
+    }
+    this.deliverMarketsContext(key, entry, snapshot)
+  }
+
+  private deliverMarketsContext(
+    key: string,
+    entry: ChannelEntry,
+    snapshot: () => Record<string, MarketContext>
+  ): void {
+    entry.pendingSnapshot = undefined
+    entry.throttle = setTimeout(() => {
+      entry.throttle = undefined
+      const pending = entry.pendingSnapshot
+      if (pending !== undefined && this.channels.get(key) === entry) {
+        this.deliverMarketsContext(key, entry, pending)
+      }
+    }, WS_MARKETS_CONTEXT_INTERVAL_MS)
+    this.emit(key, { channel: 'marketsContext', data: snapshot() })
+  }
+
+  private cancelPendingMarketsContext(entry: ChannelEntry): void {
+    clearTimeout(entry.throttle)
+    entry.throttle = undefined
+    entry.pendingSnapshot = undefined
   }
 
   /**
@@ -365,6 +426,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     if (entry.listeners.size > 0) {
       return
     }
+    this.cancelPendingMarketsContext(entry)
 
     if (entry.teardown === undefined) {
       // Open not resolved yet — acquireChannel's post-open check unwinds it.
