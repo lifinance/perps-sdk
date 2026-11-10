@@ -120,6 +120,14 @@ withdrawal fees retain their current representation without duplicate activities
 For a zero hash, the mapper uses `<delta type>:<token>:<amount>:<ISO time>`
 as the activity id and omits the explorer link.
 
+Two zero-hash rows with the same delta type, token, amount, and millisecond
+get the same id. If a page boundary falls between them, `getActivity` returns
+only one of the two rows. The venue row has no other field that distinguishes
+them.
+
+The mapper excludes a fee or reward row without a string `token` and a string
+`amount`.
+
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor
 field. A query for the vault account therefore raises `ValidationError` for that

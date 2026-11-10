@@ -166,6 +166,8 @@ describe('mapLedgerEntry — fees and rewards', () => {
       },
       type: ActivityType.FEE,
       asset: HYPE,
+      amount: '0.30773712',
+      ledgerType: 'gossipPriorityGasAuction',
       timestamp: '2026-04-30T19:02:47.045Z',
     },
     {
@@ -185,6 +187,8 @@ describe('mapLedgerEntry — fees and rewards', () => {
       },
       type: ActivityType.FEE,
       asset: HYPE,
+      amount: '0.02283782',
+      ledgerType: 'accountActivationGas',
       timestamp: '2026-05-15T14:57:54.057Z',
     },
     {
@@ -204,14 +208,18 @@ describe('mapLedgerEntry — fees and rewards', () => {
       },
       type: ActivityType.REWARD,
       asset: USDC,
+      amount: '18.40514403',
+      ledgerType: 'rewardsClaim',
       timestamp: '2025-11-05T10:01:12.722Z',
     },
   ]
 
-  it.each(cases)('maps published $event.inner.LedgerUpdate.delta.type', ({
+  it.each(cases)('maps published $ledgerType', ({
     event,
     type,
     asset,
+    amount,
+    ledgerType,
     timestamp,
   }) => {
     const result = mapLedgerEntry(
@@ -231,17 +239,18 @@ describe('mapLedgerEntry — fees and rewards', () => {
       timestamp,
       type,
       asset,
-      amount: event.inner.LedgerUpdate.delta.amount,
-      meta: { ledgerType: event.inner.LedgerUpdate.delta.type },
+      amount,
+      meta: { ledgerType },
       explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${event.hash}`,
     })
   })
 
   it.each(
     cases
-  )('preserves precision and zero-hash identity for $event.inner.LedgerUpdate.delta.type', ({
+  )('preserves precision and zero-hash identity for $ledgerType', ({
     event,
     type,
+    ledgerType,
     timestamp,
   }) => {
     const delta = {
@@ -258,26 +267,25 @@ describe('mapLedgerEntry — fees and rewards', () => {
       resolveMarket
     )
     expect(result).toEqual({
-      id: `${delta.type}:PURR:123456789.0000000001234500:${timestamp}`,
+      id: `${ledgerType}:PURR:123456789.0000000001234500:${timestamp}`,
       provider: PROVIDER,
       timestamp,
       type,
       asset: PURR,
       amount: '123456789.0000000001234500',
-      meta: { ledgerType: delta.type },
+      meta: { ledgerType },
     })
     expect(
       mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
     ).toEqual(result)
   })
 
-  it.each(
-    cases
-  )('skips an unresolved token for $event.inner.LedgerUpdate.delta.type', ({
+  it.each(cases)('skips an unresolved token for $ledgerType', ({
     event,
+    ledgerType,
   }) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const provider = `hyperliquid-${event.inner.LedgerUpdate.delta.type}`
+    const provider = `hyperliquid-${ledgerType}`
     const result = mapLedgerEntry(
       {
         time: Date.parse(`${event.time}Z`),
@@ -291,6 +299,36 @@ describe('mapLedgerEntry — fees and rewards', () => {
     )
     expect(result).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('UNLISTED'))
+  })
+
+  it.each(
+    cases.flatMap(({ event, ledgerType }) => {
+      const { delta } = event.inner.LedgerUpdate
+      return [
+        {
+          label: `${ledgerType} without an amount`,
+          delta: { type: delta.type, token: delta.token },
+        },
+        {
+          label: `${ledgerType} with a numeric amount`,
+          delta: { ...delta, amount: Number(delta.amount) },
+        },
+        {
+          label: `${ledgerType} without a token`,
+          delta: { type: delta.type, amount: delta.amount },
+        },
+      ]
+    })
+  )('excludes $label', ({ delta }) => {
+    expect(
+      mapLedgerEntry(
+        { time: 1_760_000_000_000, hash: ZERO_HASH, delta },
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
   })
 })
 

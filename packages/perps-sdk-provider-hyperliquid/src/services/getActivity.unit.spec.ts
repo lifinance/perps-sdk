@@ -1,6 +1,7 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
 import type { Asset } from '@lifi/perps-types'
 import { ActivityType } from '@lifi/perps-types'
+import { zeroHash } from 'viem'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_DELISTED_MARKET,
@@ -1015,23 +1016,97 @@ describe('getActivity — fees and rewards', () => {
     }
   })
 
+  // The skipped-row warner keeps its keys for the whole process, so each case
+  // loads a fresh module graph to see its own warning.
   it.each([
     ActivityType.FEE,
     ActivityType.REWARD,
   ])('keeps resolved rows when a %s token is not registered', async (type) => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.resetModules()
+    const sdk = await import('@lifi/perps-sdk')
+    const { getActivity: freshGetActivity } = await import('./getActivity.js')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     installInfoFetchMock(
       { userNonFundingLedgerUpdates: ledger },
       [],
       [],
       [hype]
     )
-    const result = await getActivity(
-      { ...ctx, client: createPerpsClient({ retry: false }) },
+    const result = await freshGetActivity(
+      { ...ctx, client: sdk.createPerpsClient({ retry: false }) },
       { address: ADDRESS, type: [type] }
     )
     expect(result.items.map((item) => item.id)).toEqual(
       type === ActivityType.FEE ? ['0xpriority'] : []
     )
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(
+      "[hyperliquid] skipping ledger row: `token` is not a valid registered spot symbol: 'USDC'"
+    )
+  })
+
+  it('pages zero-hash rows by their synthesized ids', async () => {
+    installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: [
+          {
+            time: 1760000000000,
+            hash: zeroHash,
+            delta: {
+              type: 'gossipPriorityGasAuction',
+              token: 'HYPE',
+              amount: '0.3077371200',
+            },
+          },
+          {
+            time: 1760000000002,
+            hash: zeroHash,
+            delta: {
+              type: 'rewardsClaim',
+              token: 'USDC',
+              amount: '18.4051440300',
+            },
+          },
+        ],
+      },
+      [],
+      [],
+      [USDC_ASSET, hype]
+    )
+    const pageCtx = { ...ctx, client: createPerpsClient({ retry: false }) }
+    const type = [ActivityType.FEE, ActivityType.REWARD]
+    const first = await getActivity(pageCtx, {
+      address: ADDRESS,
+      type,
+      limit: 1,
+    })
+    const second = await getActivity(pageCtx, {
+      address: ADDRESS,
+      type,
+      limit: 1,
+      cursor: first.pagination.cursor,
+    })
+    expect(first.pagination.hasMore).toBe(true)
+    expect(second.pagination.hasMore).toBe(false)
+    expect([...first.items, ...second.items]).toEqual([
+      {
+        id: 'rewardsClaim:USDC:18.4051440300:2025-10-09T08:53:20.002Z',
+        provider: 'hyperliquid',
+        timestamp: '2025-10-09T08:53:20.002Z',
+        type: ActivityType.REWARD,
+        asset: USDC_ASSET,
+        amount: '18.4051440300',
+        meta: { ledgerType: 'rewardsClaim' },
+      },
+      {
+        id: 'gossipPriorityGasAuction:HYPE:0.3077371200:2025-10-09T08:53:20.000Z',
+        provider: 'hyperliquid',
+        timestamp: '2025-10-09T08:53:20.000Z',
+        type: ActivityType.FEE,
+        asset: hype,
+        amount: '0.3077371200',
+        meta: { ledgerType: 'gossipPriorityGasAuction' },
+      },
+    ])
   })
 })
