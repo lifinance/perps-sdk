@@ -1286,6 +1286,10 @@ describe('OndoProvider — getAccount (logged in)', () => {
         leverage: '5',
         marginUsed: '401',
         initialMarginRequirement: '401',
+        positionValue: '2020.5',
+        returnOnEquity: '3.8',
+        effectiveLeverage: '5.0386533665835411471321695760598503740648',
+        liquidationDistance: '9.77480821578817124474140064340509774808',
         marginMode: MarginMode.CROSS,
       },
     ])
@@ -1589,6 +1593,25 @@ describe('OndoProvider — getPositions skips a bad row', () => {
       )
     )
     warn.mockRestore()
+  })
+})
+
+describe('OndoProvider — getPositions calculated fields', () => {
+  it('returns the venue positionValue and returnOnEquity with the calculated fields', async () => {
+    const { provider } = await loggedInProvider()
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions[0]).toMatchObject({
+      markPrice: '202.05',
+      unrealizedPnl: '15.5',
+      marginUsed: '401',
+      leverage: '5',
+      positionValue: '2020.5',
+      returnOnEquity: '3.8',
+      effectiveLeverage: '5.0386533665835411471321695760598503740648',
+      liquidationDistance: '9.77480821578817124474140064340509774808',
+    })
   })
 })
 

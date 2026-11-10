@@ -74,6 +74,31 @@ export interface Position {
    * Unlike `leverage`, this decimal string is safe for risk calculations.
    */
   initialMarginRequirement?: DecimalString
+  /**
+   * Absolute position value in quote-asset units: `size × markPrice`. The
+   * venue figure when the venue sends a decimal one. Absent when the venue
+   * sends none and the position has no positive `markPrice`.
+   */
+  positionValue?: DecimalString
+  /**
+   * Return on equity as a percent (`'10'` is 10%). Ondo: the venue
+   * `returnOnEquity` fraction × 100. Hyperliquid, Lighter and every
+   * `remarkPosition` result: `unrealizedPnl ÷ marginUsed × 100`, so the
+   * venue meaning of `marginUsed` applies. Absent when the venue sends none
+   * and `marginUsed` is not above zero or an input is not a decimal.
+   */
+  returnOnEquity?: DecimalString
+  /**
+   * Effective leverage as a multiple: `positionValue ÷ marginUsed`. Absent
+   * when `positionValue` is absent or `marginUsed` is not above zero.
+   */
+  effectiveLeverage?: DecimalString
+  /**
+   * Distance from `markPrice` to `liquidationPrice` as an absolute percent of
+   * `markPrice` (`'10'` is 10%). Absent when the position has no decimal
+   * `liquidationPrice` or no positive `markPrice`.
+   */
+  liquidationDistance?: DecimalString
   marginMode: MarginMode
 }
 

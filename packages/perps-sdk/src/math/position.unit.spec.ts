@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import type { LiquidationEstimateParams } from '../types/provider.js'
 import {
+  buildPosition,
   calculateEffectiveLeverage,
   calculateInitialMarginRoe,
   calculateLiquidationDistance,
@@ -26,6 +27,7 @@ import {
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
+  remarkPosition,
   safeCalculateEffectiveLeverage,
   safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
@@ -1473,5 +1475,172 @@ describe('isPositionMarginRemovable', () => {
     expect(
       isPositionMarginRemovable(subject) && !isPositionMarginAdjustable(subject)
     ).toBe(false)
+  })
+})
+
+const isolatedPosition = (overrides: Partial<Position> = {}): Position => ({
+  ...position(MarginMode.ISOLATED, PositionMarginAdjustment.ADD_AND_REMOVE),
+  ...overrides,
+})
+
+describe('buildPosition', () => {
+  it('calculates every field from the mapped position', () => {
+    expect(buildPosition(isolatedPosition({ unrealizedPnl: '500' }))).toEqual({
+      ...isolatedPosition({ unrealizedPnl: '500' }),
+      positionValue: '100000',
+      returnOnEquity: '5',
+      effectiveLeverage: '10',
+      liquidationDistance: '10',
+    })
+  })
+
+  it('keeps a venue positionValue and returnOnEquity', () => {
+    const built = buildPosition(
+      isolatedPosition({ positionValue: '99999', returnOnEquity: '3.86' })
+    )
+
+    expect(built.positionValue).toBe('99999')
+    expect(built.returnOnEquity).toBe('3.86')
+    expect(built.effectiveLeverage).toBe('9.9999')
+  })
+
+  it('takes the size magnitude for the calculated positionValue', () => {
+    expect(buildPosition(isolatedPosition({ size: '-2' })).positionValue).toBe(
+      '200000'
+    )
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['zero', '0'],
+    ['not a decimal', 'n/a'],
+  ])('leaves positionValue, effectiveLeverage and liquidationDistance absent when markPrice is %s', (_, markPrice) => {
+    const { markPrice: _markPrice, ...withoutMark } = isolatedPosition()
+    const built = buildPosition(
+      markPrice === undefined ? withoutMark : { ...withoutMark, markPrice }
+    )
+
+    expect(built).not.toHaveProperty('positionValue')
+    expect(built).not.toHaveProperty('effectiveLeverage')
+    expect(built).not.toHaveProperty('liquidationDistance')
+    expect(built.returnOnEquity).toBe('0')
+  })
+
+  it.each([
+    '0',
+    '-1',
+    'none',
+  ])('leaves returnOnEquity and effectiveLeverage absent when marginUsed is %j', (marginUsed) => {
+    const built = buildPosition(isolatedPosition({ marginUsed }))
+
+    expect(built).not.toHaveProperty('returnOnEquity')
+    expect(built).not.toHaveProperty('effectiveLeverage')
+    expect(built.positionValue).toBe('100000')
+  })
+
+  it('leaves liquidationDistance absent without a liquidationPrice', () => {
+    const { liquidationPrice: _, ...withoutLiquidation } = isolatedPosition()
+
+    expect(buildPosition(withoutLiquidation)).not.toHaveProperty(
+      'liquidationDistance'
+    )
+  })
+
+  it('neither throws nor warns on venue figures that are not decimals', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const built = buildPosition(
+      isolatedPosition({ unrealizedPnl: '1,0', liquidationPrice: 'NaN' })
+    )
+
+    expect(built).not.toHaveProperty('returnOnEquity')
+    expect(built).not.toHaveProperty('liquidationDistance')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('remarkPosition', () => {
+  it('calculates the position value for the mark price', () => {
+    expect(
+      remarkPosition(isolatedPosition({ size: '2317.64901' }), '72880.0')
+        .positionValue
+    ).toBe('168910259.8488')
+  })
+
+  it('calculates every mark-dependent field again for a long', () => {
+    expect(remarkPosition(isolatedPosition(), '110000')).toEqual({
+      ...isolatedPosition(),
+      markPrice: '110000',
+      unrealizedPnl: '10000',
+      positionValue: '110000',
+      returnOnEquity: '100',
+      effectiveLeverage: '11',
+      liquidationDistance: '18.18181818181818181818181818181818181818',
+    })
+  })
+
+  it('signs the unrealizedPnl of a short', () => {
+    const remarked = remarkPosition(
+      isolatedPosition({ side: PositionSide.SHORT }),
+      '110000'
+    )
+
+    expect(remarked.unrealizedPnl).toBe('-10000')
+    expect(remarked.returnOnEquity).toBe('-100')
+  })
+
+  it('replaces the venue positionValue and returnOnEquity of the input', () => {
+    const remarked = remarkPosition(
+      buildPosition(
+        isolatedPosition({ positionValue: '99999', returnOnEquity: '3.86' })
+      ),
+      '110000'
+    )
+
+    expect(remarked.positionValue).toBe('110000')
+    expect(remarked.returnOnEquity).toBe('100')
+  })
+
+  it('drops a liquidationDistance that the new mark cannot give', () => {
+    const { liquidationPrice: _, ...withoutLiquidation } = isolatedPosition({
+      liquidationDistance: '10',
+    })
+
+    expect(remarkPosition(withoutLiquidation, '110000')).not.toHaveProperty(
+      'liquidationDistance'
+    )
+  })
+
+  it('keeps the input unrealizedPnl when entryPrice is not a decimal', () => {
+    const remarked = remarkPosition(
+      isolatedPosition({ entryPrice: 'n/a', unrealizedPnl: '7' }),
+      '110000'
+    )
+
+    expect(remarked.unrealizedPnl).toBe('7')
+    expect(remarked.markPrice).toBe('110000')
+  })
+
+  it('does not change its input', () => {
+    const input = Object.freeze(buildPosition(isolatedPosition()))
+    const snapshot = { ...input }
+
+    const remarked = remarkPosition(input, '110000')
+
+    expect(remarked).not.toBe(input)
+    expect(input).toEqual(snapshot)
+  })
+
+  it.each([
+    '0',
+    '-1',
+    '',
+    'abc',
+    '1e5',
+  ])('gives the position unchanged when markPrice is %j', (markPrice) => {
+    const input = buildPosition(isolatedPosition())
+
+    expect(remarkPosition(input, markPrice)).toBe(input)
   })
 })

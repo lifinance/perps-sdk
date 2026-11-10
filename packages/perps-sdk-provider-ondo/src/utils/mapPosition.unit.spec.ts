@@ -59,6 +59,10 @@ describe('mapPosition', () => {
       leverage: '5',
       marginUsed: '401',
       initialMarginRequirement: '401',
+      positionValue: '2020.5',
+      returnOnEquity: '3.86',
+      effectiveLeverage: '5.0386533665835411471321695760598503740648',
+      liquidationDistance: '9.77480821578817124474140064340509774808',
       marginMode: MarginMode.CROSS,
     })
   })
@@ -70,6 +74,55 @@ describe('mapPosition', () => {
     )
     expect(mapped?.side).toBe(PositionSide.SHORT)
     expect(mapped?.size).toBe('2.5')
+  })
+
+  it('sets positionValue to the notionalValue magnitude', () => {
+    expect(
+      mapPosition(positionFixture({ notionalValue: '-2020.5' }), MARKET)
+        ?.positionValue
+    ).toBe('2020.5')
+  })
+
+  it.each([
+    ['0.0386', '3.86'],
+    ['-0.44', '-44'],
+    ['0', '0'],
+  ])('changes the venue returnOnEquity fraction %s to the percent %s', (returnOnEquity, percent) => {
+    expect(
+      mapPosition(positionFixture({ returnOnEquity }), MARKET)?.returnOnEquity
+    ).toBe(percent)
+  })
+
+  it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(
+      positionFixture({ notionalValue: 'n/a' }),
+      MARKET
+    )
+    expect(mapped?.positionValue).toBe('2020.5')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('calculates returnOnEquity from unrealizedPnl and usedMargin when the venue figure is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(positionFixture({ returnOnEquity: '' }), MARKET)
+    // 15.5 ÷ 401 × 100
+    expect(mapped?.returnOnEquity).toBe(
+      '3.86533665835411471321695760598503740648'
+    )
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('leaves liquidationDistance absent when liquidationPrice is not a decimal', () => {
+    const mapped = mapPosition(
+      positionFixture({ liquidationPrice: 'NaN' }),
+      MARKET
+    )
+    expect(mapped).not.toHaveProperty('liquidationDistance')
   })
 
   // Ondo already signs funding from the account's point of view, so

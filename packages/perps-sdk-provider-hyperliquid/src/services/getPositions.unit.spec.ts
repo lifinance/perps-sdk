@@ -104,6 +104,23 @@ describe('getPositions', () => {
     expect(pos.size).toBe('0.1')
   })
 
+  it('returns the venue positionValue and the calculated fields', async () => {
+    ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
+
+    const result = await getPositions(ctx, { address: ADDRESS })
+
+    expect(result.positions[0]).toMatchObject({
+      markPrice: '95000',
+      unrealizedPnl: '100',
+      marginUsed: '940',
+      leverage: '10',
+      positionValue: '9500',
+      returnOnEquity: '10.63829787234042553191489361702127659574',
+      effectiveLeverage: '10.1063829787234042553191489361702127659574',
+      liquidationDistance: '10.52631578947368421052631578947368421053',
+    })
+  })
+
   it('filters by the marketId-matching `symbol` param', async () => {
     ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
 
