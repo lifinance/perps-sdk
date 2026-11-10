@@ -40,6 +40,7 @@ import {
   DEFAULT_LIGHTER_WS_URL,
   LIGHTER_BASE_FEE_TIER,
   LIGHTER_COLLATERAL_ASSETS,
+  LIGHTER_INVALID_AUTH_CODE,
   LIGHTER_PROVIDER_KEY,
   LIGHTER_RH_PROVIDER_KEY,
 } from '../constants.js'
@@ -148,6 +149,9 @@ interface SubState {
   address?: Address
   /** Whether this channel needs an `auth` field on each subscribe send. */
   needsAuth: boolean
+  key?: string
+  token?: string
+  failure?: PerpsError
 }
 
 /** Settlement equity and per-asset route quantities for account valuation. */
@@ -263,6 +267,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   private readonly accountIndexCache = new Map<string, number>()
   private readonly accountIndexPromises = new Map<string, Promise<number>>()
+  private readonly rejectedTokens = new Map<string, Set<string>>()
 
   constructor(
     wsUrl: string = DEFAULT_LIGHTER_WS_URL,
@@ -342,7 +347,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       await this.registry?.sync()
     }
 
-    const wireChannels = await this.resolveChannel(sub)
+    const wireChannels: SubState[] = (await this.resolveChannel(sub)).map(
+      (state) => ({ ...state, key: this.toKey(sub) })
+    )
+    const summaryInputs = {}
 
     // Acquired before the wire subs register, so a rejected spot-mark open
     // leaves no `user_stats`/`account_all` entry behind for the next replay.
@@ -351,23 +359,36 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         ? await this.subscribeSpotMarks(sub)
         : undefined
     if (sub.channel === 'accountSummary') {
-      this.accountSummaryInputs.set(sub.address.toLowerCase(), {})
+      this.accountSummaryInputs.set(sub.address.toLowerCase(), summaryInputs)
     }
 
     try {
       // Registry keyed by the wire channel (unique per sub), so replay-failure
       // logs name the channel the venue knows. A logical sub may fan out to
       // several wire channels (e.g. `marketsContext`), each registered independently.
-      for (const { channel, needsAuth, address } of wireChannels) {
-        await this.registerSub(channel, { channel, needsAuth, address })
+      for (const state of wireChannels) {
+        await this.registerSub(state.channel, state)
+        if (state.failure !== undefined) {
+          throw state.failure
+        }
       }
       await this.rws.ready()
+      const failure = wireChannels.find((state) => state.failure)?.failure
+      if (failure !== undefined) {
+        throw failure
+      }
     } catch (error) {
       releaseSpotMarks?.()
-      for (const { channel } of wireChannels) {
-        this.unregisterSub(channel)
+      for (const state of wireChannels) {
+        if (this.wireSubs.get(state.channel) === state) {
+          this.unregisterSub(state.channel)
+        }
       }
-      if (sub.channel === 'accountSummary') {
+      if (
+        sub.channel === 'accountSummary' &&
+        this.accountSummaryInputs.get(sub.address.toLowerCase()) ===
+          summaryInputs
+      ) {
         this.accountSummaryInputs.delete(sub.address.toLowerCase())
       }
       throw error
@@ -375,9 +396,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
     return () => {
       releaseSpotMarks?.()
-      for (const { channel } of wireChannels) {
-        this.unregisterSub(channel)
-        this.rws.send(JSON.stringify({ type: 'unsubscribe', channel }))
+      for (const state of wireChannels) {
+        if (this.wireSubs.get(state.channel) === state) {
+          this.unregisterSub(state.channel)
+          this.rws.send(
+            JSON.stringify({
+              type: 'unsubscribe',
+              channel: state.channel,
+            })
+          )
+        }
       }
       if (sub.channel === 'orderbook') {
         const id = Number(sub.marketId)
@@ -388,7 +416,11 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       if (sub.channel === 'positions') {
         this.positionsByAddress.delete(sub.address.toLowerCase())
       }
-      if (sub.channel === 'accountSummary') {
+      if (
+        sub.channel === 'accountSummary' &&
+        this.accountSummaryInputs.get(sub.address.toLowerCase()) ===
+          summaryInputs
+      ) {
         this.accountSummaryInputs.delete(sub.address.toLowerCase())
       }
     }
@@ -415,17 +447,18 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.accountSummaryInputs.clear()
   }
 
-  protected async sendSubscribe({
-    channel,
-    needsAuth,
-    address,
-  }: SubState): Promise<void> {
+  protected async sendSubscribe(state: SubState): Promise<void> {
+    const { channel, needsAuth, address } = state
     const payload: { type: 'subscribe'; channel: string; auth?: string } = {
       type: 'subscribe',
       channel,
     }
     if (needsAuth) {
       payload.auth = await this.requireAuthToken(channel, address)
+      if (this.wireSubs.get(channel) !== state) {
+        return
+      }
+      state.token = payload.auth
     }
     this.rws.send(JSON.stringify(payload))
   }
@@ -455,6 +488,12 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       throw new PerpsError(
         PerpsErrorCode.SetupRequired,
         `Lighter WS channel '${channel}' requires authentication but no token was available for ${address}.`
+      )
+    }
+    if (this.rejectedTokens.get(address.toLowerCase())?.has(token)) {
+      throw new PerpsError(
+        PerpsErrorCode.Unauthorized,
+        'Lighter rejected the read credential. Authenticate again before subscribing.'
       )
     }
     return token
@@ -622,11 +661,16 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   }
 
   protected handleMessage(raw: string): void {
-    let msg: LtWsMessage
+    let msg: unknown
     try {
-      msg = JSON.parse(raw) as LtWsMessage
+      msg = JSON.parse(raw)
     } catch {
       wsLog.parseFailure(this.providerKey, raw)
+      return
+    }
+
+    if (isObject(msg) && isObject(msg.error)) {
+      this.handleSubscriptionError(msg.error)
       return
     }
 
@@ -639,6 +683,56 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       this.dispatch(msg)
     } catch (error) {
       wsLog.handlerFailure(this.providerKey, error)
+    }
+  }
+
+  private handleSubscriptionError(error: Record<string, unknown>): void {
+    const { code, message } = error
+    if (code !== LIGHTER_INVALID_AUTH_CODE || typeof message !== 'string') {
+      wsLog.serverError(this.providerKey, `Venue error code: ${String(code)}`)
+      return
+    }
+    const target = [...this.wireSubs.values()].find(
+      (state) =>
+        state.needsAuth &&
+        state.token !== undefined &&
+        message === `invalid auth: ${state.channel.replaceAll('/', ':')}`
+    )
+    if (target?.address === undefined || target.token === undefined) {
+      return
+    }
+    const address = target.address.toLowerCase()
+    let rejected = this.rejectedTokens.get(address)
+    if (rejected === undefined) {
+      rejected = new Set()
+      this.rejectedTokens.set(address, rejected)
+    }
+    rejected.add(target.token)
+    const provider = this.client?.getProvider(this.providerKey)
+    if (provider !== undefined && hasAuthTokenResolver(provider)) {
+      provider.rejectAuthToken?.(target.address, target.token)
+    }
+    const failure = new PerpsError(
+      PerpsErrorCode.Unauthorized,
+      'Lighter rejected the read credential. Authenticate again before subscribing.'
+    )
+    failure.tool = this.providerKey
+    const affected = [...this.wireSubs.values()].filter(
+      (state) =>
+        state.needsAuth &&
+        state.address?.toLowerCase() === address &&
+        state.token === target.token
+    )
+    for (const state of affected) {
+      state.failure = failure
+    }
+    for (const state of affected) {
+      if (state.key !== undefined) {
+        this.rejectChannel(state.key, failure)
+      }
+      if (this.wireSubs.get(state.channel) === state) {
+        this.unregisterSub(state.channel)
+      }
     }
   }
 
@@ -1189,15 +1283,15 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
  * handler that throws on otherwise-shaped data. Frames for other types pass
  * through to `dispatch`, which ignores types it does not recognise.
  */
-function isValidLighterFrame(msg: LtWsMessage): boolean {
-  if (typeof msg.type !== 'string') {
+function isValidLighterFrame(msg: unknown): msg is LtWsMessage {
+  if (!isObject(msg) || typeof msg.type !== 'string') {
     return false
   }
   if (
     msg.type === 'subscribed/order_book' ||
     msg.type === 'update/order_book'
   ) {
-    const book = (msg as { order_book?: unknown }).order_book
+    const book = msg.order_book
     return (
       isObject(book) && Array.isArray(book.bids) && Array.isArray(book.asks)
     )

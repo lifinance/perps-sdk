@@ -363,6 +363,7 @@ export type { ReconnectingWebSocketOptions } from './websocket/ReconnectingWebSo
 export { ReconnectingWebSocket } from './websocket/ReconnectingWebSocket.js'
 export type {
   EventForSubscription,
+  SubscriptionErrorListener,
   SubscriptionListener,
   WsConnectionStatus,
   WsProvider,

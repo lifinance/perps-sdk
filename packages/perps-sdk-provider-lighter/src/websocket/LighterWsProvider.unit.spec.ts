@@ -20,6 +20,7 @@ type LighterWsProviderInternals = {
   accountIndexCache: Map<string, number>
   accountSummaryInputs: Map<string, unknown>
   wireSubs: Map<string, unknown>
+  replaySubs(): Promise<void>
   rws: {
     ready(): Promise<void>
     getStatus(): string
@@ -293,6 +294,205 @@ describe('LighterWsProvider', () => {
   const inject = (p: LighterWsProvider, key: string, fn: () => void) => {
     ;(p as any).channels.set(key, { listeners: new Map([[fn, 1]]) })
   }
+
+  describe('venue authentication rejection', () => {
+    const rejected = {
+      error: { code: 20013, message: 'invalid auth: account_all_orders:42' },
+    }
+
+    it('stops private account channels but retains public fills and other accounts', async () => {
+      let token = 'old-read-token'
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => token },
+        freshClient()
+      )
+      const { p, internals, send } = connectedProvider(provider)
+      const other = '0xcafecafecafecafecafecafecafecafecafecafe'
+      internals.accountIndexCache.set(other, 43)
+      const errors = [vi.fn(), vi.fn(), vi.fn()]
+      const data = vi.fn()
+      const release = await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        data,
+        undefined,
+        errors[0]
+      )
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        data,
+        undefined,
+        errors[1]
+      )
+      await p.subscribe(
+        { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
+        data,
+        undefined,
+        errors[2]
+      )
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      const otherError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: other },
+        vi.fn(),
+        undefined,
+        otherError
+      )
+      data.mockClear()
+      internals.handleMessage(JSON.stringify(rejected))
+      internals.handleMessage(JSON.stringify(rejected))
+      for (const listener of errors) {
+        expect(listener).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+        )
+      }
+      expect(publicError).not.toHaveBeenCalled()
+      expect(otherError).not.toHaveBeenCalled()
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: 'account_all_orders:42',
+          orders: { 0: [RAW_ORDER] },
+        })
+      )
+      expect(data).not.toHaveBeenCalled()
+      send.mockClear()
+      await internals.replaySubs()
+      const frames = send.mock.calls.map(([raw]) => JSON.parse(raw))
+      expect(frames).not.toContainEqual(
+        expect.objectContaining({
+          channel: 'account_all_orders/42',
+        })
+      )
+      expect(frames).toContainEqual(
+        expect.objectContaining({
+          channel: 'account_all_trades/42',
+        })
+      )
+      expect(frames).toContainEqual(
+        expect.objectContaining({
+          channel: 'account_all_orders/43',
+        })
+      )
+      await expect(
+        p.subscribe(
+          { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+      token = 'replacement-read-token'
+      const restored = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        restored
+      )
+      release()
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: 'account_all_orders:42',
+          orders: { 0: [RAW_ORDER] },
+        })
+      )
+      expect(restored).toHaveBeenCalledTimes(1)
+      expect(data).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('keeps malformed requests and server failures distinct from authentication', async () => {
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => 'read-token' },
+        freshClient()
+      )
+      const { p, internals } = connectedProvider(provider)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      internals.handleMessage(
+        JSON.stringify({
+          error: { code: 20001, message: 'invalid param' },
+        })
+      )
+      internals.handleMessage(
+        JSON.stringify({
+          error: { code: 29500, message: 'internal server error' },
+        })
+      )
+      expect(onError).not.toHaveBeenCalled()
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(true)
+      log.mockRestore()
+      p.close()
+    })
+  })
+
+  it('rejects a synchronous venue failure only through the initial promise', async () => {
+    const provider = new LighterWsProvider(
+      'ws://127.0.0.1:1',
+      'lighter',
+      { resolveAuthToken: async () => 'read-token' },
+      freshClient()
+    )
+    const { p, internals, send } = connectedProvider(provider)
+    send.mockImplementation((raw: string) => {
+      if (JSON.parse(raw).type === 'subscribe') {
+        internals.handleMessage(
+          JSON.stringify({
+            error: {
+              code: 20013,
+              message: 'invalid auth: account_all_orders:42',
+            },
+          })
+        )
+      }
+    })
+    const onError = vi.fn()
+    await expect(
+      p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.Unauthorized })
+    expect(onError).not.toHaveBeenCalled()
+    expect(internals.wireSubs.size).toBe(0)
+    p.close()
+  })
+
+  it('keeps missing credentials on the initial SetupRequired route', async () => {
+    const provider = new LighterWsProvider(
+      'ws://127.0.0.1:1',
+      'lighter',
+      { resolveAuthToken: async () => undefined },
+      freshClient()
+    )
+    const { p } = connectedProvider(provider)
+    const onError = vi.fn()
+    await expect(
+      p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+    expect(onError).not.toHaveBeenCalled()
+    p.close()
+  })
 
   describe('candle', () => {
     const BAR = {

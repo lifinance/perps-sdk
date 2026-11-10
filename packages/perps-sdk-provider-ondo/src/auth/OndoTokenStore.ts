@@ -75,7 +75,18 @@ export class OndoTokenStore {
     await this.storage.set(this.storageKey(address), JSON.stringify(token))
   }
 
-  async remove(address: Address): Promise<void> {
-    await this.storage.remove(this.storageKey(address))
+  async remove(address: Address, rejectedToken?: string): Promise<void> {
+    const key = this.storageKey(address)
+    if (rejectedToken !== undefined) {
+      const current = await readValidatedRecord(
+        this.storage,
+        key,
+        isOnAuthToken
+      )
+      if (current?.token !== rejectedToken) {
+        return
+      }
+    }
+    await this.storage.remove(key)
   }
 }

@@ -105,6 +105,10 @@ class TestProvider extends WsProviderBase<{ id: string }> {
     this.emit(key, event)
   }
 
+  reject(key: string, error: unknown) {
+    this.rejectChannel(key, error)
+  }
+
   /** Test hook into the base's protected idle-channel reclaim. */
   expireIdle(key: string): boolean {
     return this.closeChannelIfIdle(key)
@@ -179,6 +183,93 @@ describe('WsProviderBase — ref-counted fan-out', () => {
     unsub1() // repeat invocation must be a no-op, not a second decrement
     p.deliver('marketsContext', marketsContextEvent)
     expect(listener).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('WsProviderBase — subscription errors', () => {
+  it('rejects an initial failure without calling the error listener', async () => {
+    const p = new TestProvider(new MockRws())
+    const error = new Error('open failed')
+    p.openImpl = async () => {
+      throw error
+    }
+    const onError = vi.fn()
+    await expect(
+      p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    ).rejects.toBe(error)
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('isolates late error listeners and stops data after rejection', async () => {
+    const p = new TestProvider(new MockRws())
+    const data = vi.fn()
+    const onError = vi.fn()
+    const teardown = vi.fn()
+    p.openImpl = async () => teardown
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, () => {
+      throw new Error('consumer failed')
+    })
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, onError)
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = new Error('credential rejected')
+    p.reject('marketsContext', error)
+    p.reject('marketsContext', error)
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(onError).toHaveBeenCalledExactlyOnceWith(error)
+    expect(data).not.toHaveBeenCalled()
+    expect(teardown).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
+  it('keeps shared error callbacks independent of idempotent releases', async () => {
+    const p = new TestProvider(new MockRws())
+    const data = vi.fn()
+    const onError = vi.fn()
+    const release = await p.subscribe(MARKETS_CONTEXT, data, undefined, onError)
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, onError)
+    release()
+    release()
+    p.reject('marketsContext', new Error('rejected'))
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not let an old release remove a replacement channel', async () => {
+    const p = new TestProvider(new MockRws())
+    const release = await p.subscribe(MARKETS_CONTEXT, vi.fn())
+    p.reject('marketsContext', new Error('rejected'))
+    const data = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, data)
+    release()
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(data).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a sibling released by an error callback', async () => {
+    const p = new TestProvider(new MockRws())
+    let release = () => {}
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, () => release())
+    const onError = vi.fn()
+    release = await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    p.reject('marketsContext', new Error('rejected'))
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('rejects an in-flight opening once without calling onError', async () => {
+    const p = new TestProvider(new MockRws())
+    let resolve!: (teardown: () => void) => void
+    p.openImpl = () =>
+      new Promise((finish) => {
+        resolve = finish
+      })
+    const onError = vi.fn()
+    const opening = p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    const error = new Error('rejected during open')
+    p.reject('marketsContext', error)
+    const teardown = vi.fn()
+    resolve(teardown)
+    await expect(opening).rejects.toBe(error)
+    expect(onError).not.toHaveBeenCalled()
+    expect(teardown).toHaveBeenCalledTimes(1)
   })
 })
 

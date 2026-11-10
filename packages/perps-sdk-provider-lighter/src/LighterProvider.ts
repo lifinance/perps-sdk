@@ -367,6 +367,8 @@ export interface LighterPerpsProvider extends PerpsProviderPlugin {
    * source can produce a token.
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
+  /** Exclude a venue-rejected read token from subsequent credential resolution. */
+  rejectAuthToken(address: Address, token: string): void
 }
 
 /**
@@ -409,6 +411,7 @@ export const createLighterProvider = (
   const apiKeyFreshness = createLighterApiKeyFreshness()
   const tokenRenewBufferSeconds = options.tokenRenewBufferSeconds ?? 60
   const standardTokenByAddress: Map<string, CachedStandardToken> = new Map()
+  const rejectedTokensByAddress = new Map<string, Set<string>>()
   // Single-flight + backoff for lazy read-only token creation. Without these,
   // concurrent reads on first load all race `tokens/create`, and any sustained
   // failure (CORS preflight, body validation, etc.) is retried on every
@@ -451,7 +454,8 @@ export const createLighterProvider = (
     if (
       cached !== undefined &&
       cached.signingKey === signingKey &&
-      cached.expiresAt - nowSec > tokenRenewBufferSeconds
+      cached.expiresAt - nowSec > tokenRenewBufferSeconds &&
+      !rejectedTokensByAddress.get(cacheKey)?.has(cached.token)
     ) {
       return cached.token
     }
@@ -463,6 +467,12 @@ export const createLighterProvider = (
         accountIndex: indices.accountIndex,
       },
     })
+    if (rejectedTokensByAddress.get(cacheKey)?.has(token)) {
+      throw new PerpsError(
+        PerpsErrorCode.Unauthorized,
+        'Lighter rejected the read credential. Authenticate again before subscribing.'
+      )
+    }
     const expiresAt = nowSec + STANDARD_TOKEN_LIFETIME_SECONDS
     standardTokenByAddress.set(cacheKey, { token, expiresAt, signingKey })
     return token
@@ -502,6 +512,12 @@ export const createLighterProvider = (
     }
 
     const stored = await readOnlyTokenManager.get(address, apiKey.accountIndex)
+    if (
+      stored !== undefined &&
+      rejectedTokensByAddress.get(address.toLowerCase())?.has(stored.token)
+    ) {
+      return replaceRevokedReadOnlyToken(address, stored.token)
+    }
     if (stored !== undefined) {
       return stored.token
     }
@@ -1046,6 +1062,16 @@ export const createLighterProvider = (
 
     resolveAuthToken(address: Address): Promise<string | undefined> {
       return resolveAuthToken(address)
+    },
+
+    rejectAuthToken(address: Address, token: string): void {
+      const key = address.toLowerCase()
+      let rejected = rejectedTokensByAddress.get(key)
+      if (rejected === undefined) {
+        rejected = new Set()
+        rejectedTokensByAddress.set(key, rejected)
+      }
+      rejected.add(token)
     },
 
     async getAccount(

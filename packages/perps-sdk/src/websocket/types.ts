@@ -22,10 +22,13 @@ export type EventForSubscription<S extends Subscription> = Extract<
  */
 export type SubscriptionListener = (event: SubscriptionEvent) => void
 
+/** Receives a failure after a subscription registers. */
+export type SubscriptionErrorListener = (error: unknown) => void
+
 /**
  * Health of a provider's underlying WS connection.
  *
- * - `connected` — socket open, live data flowing.
+ * - `connected` — socket open, not proof of account authorization.
  * - `reconnecting` — socket dropped; auto-reconnect with backoff in progress.
  *   Data may be stale until it returns to `connected`.
  * - `disconnected` — reconnection abandoned after the retry cap, or the
@@ -51,13 +54,15 @@ export type WsStatusListener = (status: WsConnectionStatus) => void
  */
 export interface WsProvider {
   /**
-   * Subscribe to one venue channel and return an idempotent unsubscribe.
-   * `onStatus` receives the provider socket's health transitions.
+   * Resolve to an idempotent unsubscribe after local registration completes.
+   * Initial failures reject the promise. Later failures invoke `onError`.
+   * Registration does not confirm venue authorization. `onStatus` is transport-only.
    */
   subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
-    onStatus?: WsStatusListener
+    onStatus?: WsStatusListener,
+    onError?: SubscriptionErrorListener
   ): Promise<() => void>
   /**
    * Recover a terminally exhausted connection. Safe no-op unless status is

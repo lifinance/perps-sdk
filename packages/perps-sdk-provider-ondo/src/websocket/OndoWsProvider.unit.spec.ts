@@ -196,7 +196,14 @@ describe('OndoWsProvider', () => {
 
   /** Stub the underlying socket so subscribes send inline and capture frames. */
   const stubSocket = (p: OndoWsProvider) => {
-    const send = vi.fn()
+    Reflect.get(p, 'rws').close()
+    const send = vi.fn((raw: string) => {
+      if (JSON.parse(raw).op === 'login') {
+        queueMicrotask(() =>
+          feed(p, { type: 'loggedIn', msg: 'Login successful' })
+        )
+      }
+    })
     ;(p as any).rws.ready = vi.fn().mockResolvedValue(undefined)
     ;(p as any).rws.getStatus = () => 'connected'
     ;(p as any).rws.send = send
@@ -223,6 +230,201 @@ describe('OndoWsProvider', () => {
   const feed = (p: OndoWsProvider, frame: unknown) =>
     (p as any).handleMessage(JSON.stringify(frame))
 
+  describe('venue authentication rejection', () => {
+    const rejection = {
+      type: 'error',
+      msg: 'error parsing jwt: token signature is invalid: signing method HS256 is invalid',
+    }
+
+    it('rejects the initial login without an error callback and preserves a newer session', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      send.mockImplementation(() => {})
+      const onError = vi.fn()
+      const opening = p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const result = expect(opening).rejects.toMatchObject({
+        code: PerpsErrorCode.Unauthorized,
+      })
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'login', args: { token: 'jwt-abc' } })
+        )
+      )
+      await storage.set(SESSION_KEY, JSON.stringify(validToken('jwt-new')))
+      feed(p, rejection)
+      await result
+      expect(onError).not.toHaveBeenCalled()
+      expect(JSON.parse((await storage.get(SESSION_KEY)) ?? '{}').token).toBe(
+        'jwt-new'
+      )
+      p.close()
+    })
+
+    it('stops all registered private channels without changing public socket status', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      const errors = [vi.fn(), vi.fn(), vi.fn()]
+      const data = vi.fn()
+      const status = vi.fn()
+      const release = await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        data,
+        status,
+        errors[0]
+      )
+      await p.subscribe(
+        { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+        data,
+        undefined,
+        errors[1]
+      )
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        data,
+        undefined,
+        errors[2]
+      )
+      const publicData = vi.fn()
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderbook', dex: 'ondo', marketId: 'AAPL-USD.P' },
+        publicData,
+        undefined,
+        publicError
+      )
+      feed(p, rejection)
+      feed(p, rejection)
+      await vi.waitFor(() => expect(errors[0]).toHaveBeenCalledTimes(1))
+      for (const listener of errors) {
+        expect(listener).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+        )
+      }
+      await vi.waitFor(async () =>
+        expect(await storage.get(SESSION_KEY)).toBeNull()
+      )
+      feed(p, { type: 'update', channel: 'ordersPerps', data: [RAW_ORDER] })
+      expect(data).not.toHaveBeenCalled()
+      feed(p, {
+        type: 'update',
+        channel: 'depthBooksPerps',
+        data: [
+          {
+            market: 'AAPL-USD.P',
+            bids: [],
+            asks: [],
+            time: '2026-01-01T00:00:00Z',
+          },
+        ],
+      })
+      expect(publicData).toHaveBeenCalledTimes(1)
+      expect(publicError).not.toHaveBeenCalled()
+      expect(status.mock.calls).toEqual([['connected']])
+      send.mockClear()
+      const replay = Reflect.get(p, 'replaySubs').bind(p)
+      await replay()
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw).channel)).toEqual([
+        'depthBooksPerps',
+      ])
+      await storage.set(SESSION_KEY, JSON.stringify(validToken('jwt-new')))
+      const restored = vi.fn()
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        restored
+      )
+      release()
+      feed(p, {
+        type: 'update',
+        channel: 'positionsPerps',
+        data: [RAW_POSITION],
+      })
+      expect(restored).toHaveBeenCalledTimes(1)
+      expect(data).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('does not evict a session for a connection-limit error', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      send.mockImplementation((raw: string) => {
+        if (JSON.parse(raw).op === 'login') {
+          queueMicrotask(() =>
+            feed(p, {
+              type: 'error',
+              msg: 'account already has too many connections',
+            })
+          )
+        }
+      })
+      const onError = vi.fn()
+      await expect(
+        p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn(),
+          undefined,
+          onError
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+      expect(await storage.get(SESSION_KEY)).not.toBeNull()
+      expect(onError).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('delivers a login rejection after registration on a connecting socket', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubConnectingSocket(p)
+      send.mockImplementation(() => {})
+      const onError = vi.fn()
+      const release = await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const replay = Reflect.get(p, 'replaySubs').call(p)
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'login', args: { token: 'jwt-abc' } })
+        )
+      )
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      feed(p, rejection)
+      await replay
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+      )
+      release()
+      feed(p, rejection)
+      expect(onError).toHaveBeenCalledTimes(1)
+      log.mockRestore()
+      p.close()
+    })
+
+    it('keeps missing sessions on the initial SetupRequired route', async () => {
+      const p = makeProvider(createMemoryStorage())
+      stubSocket(p)
+      const onError = vi.fn()
+      await expect(
+        p.subscribe(
+          { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+          vi.fn(),
+          undefined,
+          onError
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+      expect(onError).not.toHaveBeenCalled()
+      p.close()
+    })
+  })
   it('defaults to the production Ondo WS endpoint', () => {
     expect(DEFAULT_ONDO_WS_URL).toBe('wss://api.ondoperps.xyz/ws')
   })
@@ -1586,6 +1788,39 @@ describe('OndoWsProvider', () => {
         listener
       )
 
+    it('removes both summary wires after a venue login rejection', async () => {
+      stubFetch(() => BALANCE)
+      const p = makeProvider()
+      const send = stubSocket(p)
+      const listener = vi.fn()
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'accountSummary', dex: 'ondo', address: TEST_ADDR },
+        listener,
+        undefined,
+        onError
+      )
+      listener.mockClear()
+      feed(p, {
+        type: 'error',
+        msg: 'error parsing jwt: token signature is invalid: signing method HS256 is invalid',
+      })
+      feed(p, {
+        type: 'update',
+        channel: 'positionsPerps',
+        data: [RAW_POSITION],
+      })
+      feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+      )
+      expect(listener).not.toHaveBeenCalled()
+      send.mockClear()
+      await Reflect.get(p, 'replaySubs').call(p)
+      expect(send).not.toHaveBeenCalled()
+      p.close()
+    })
+
     it('seeds from the REST balance and emits an initial summary', async () => {
       stubFetch(() => BALANCE)
       const p = makeProvider()
@@ -1871,6 +2106,11 @@ describe('OndoWsProvider', () => {
       const send = stubSocket(p)
       send.mockImplementation((raw: string) => {
         const frame = JSON.parse(raw)
+        if (frame.op === 'login') {
+          queueMicrotask(() =>
+            feed(p, { type: 'loggedIn', msg: 'Login successful' })
+          )
+        }
         if (
           fail &&
           stage === 'second wire' &&

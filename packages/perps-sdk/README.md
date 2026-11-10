@@ -519,6 +519,61 @@ const unsubscribe = await ws.subscribe(
 )
 ```
 
+### Subscription errors and account authorization
+
+`subscribe(sub, listener, onStatus?, onError?)` accepts a fourth argument of type
+`SubscriptionErrorListener`: `(error: unknown) => void`. Existing three-argument
+calls remain valid.
+
+The promise resolves to an idempotent unsubscribe after the provider completes
+local registration. Until then, an initial failure rejects the promise and does
+not invoke `onError`. After registration, a failure invokes `onError` instead.
+Registration does not prove that the venue accepted the credential.
+
+`SubscriptionEvent` contains data only. `WsConnectionStatus` describes the
+transport only. A `connected` socket does not prove account authorization.
+An empty account stream does not prove credential rejection.
+
+An explicit authentication rejection produces `PerpsErrorCode.Unauthorized`.
+Missing credentials still produce `SetupRequired`. The provider stops the
+rejected private subscriptions and removes their wires from reconnect replay.
+Public subscriptions remain active. A network reconnect does not restore the
+rejected subscriptions.
+
+After successful credential recovery, refresh account access and call
+`subscribe` again. The new subscription obtains the current credential.
+It does not restore the old listeners. Ondo removes only the rejected session.
+Lighter retains the trading key and replaces the rejected read token through
+its provider-owned resolver. A standalone Lighter client must supply a current
+token through `resolveAuthToken` in its provider options.
+
+### Venue rejection evidence
+
+The [Lighter WebSocket reference](https://docs.lighter.xyz/api/websocket)
+defines an `error: {code, message}` envelope without a required `type`.
+A production probe on 2026-11-10 presented a synthetic invalid credential:
+
+```json
+{"error":{"code":20013,"message":"invalid auth: account_all_orders:42"}}
+```
+
+The SDK matches code `20013` and the private wire named in the message.
+It does not treat malformed-request codes or internal-server codes as
+authentication rejection.
+
+The [Ondo login reference](https://docs.ondoperps.xyz/api-reference/connection/login)
+defines `loggedIn` as login acceptance. It lists connection-limit and
+duplicate-login errors separately. A production probe on 2026-11-10 presented
+a synthetic JWT with an invalid signing method:
+
+```json
+{"type":"error","msg":"error parsing jwt: token signature is invalid: signing method HS256 is invalid"}
+```
+
+The SDK identifies the `error parsing jwt: ` prefix as credential rejection.
+It keeps connection-limit and duplicate-login failures as other server errors.
+The callbacks and logs do not include the presented credential.
+
 ## Architecture
 
 ### Package layering
