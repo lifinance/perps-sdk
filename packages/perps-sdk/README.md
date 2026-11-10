@@ -519,6 +519,43 @@ const unsubscribe = await ws.subscribe(
 )
 ```
 
+### Status-only observation
+
+`PerpsWsClient.subscribeStatus(provider, listener)` observes one provider socket without a data subscription.
+It returns an idempotent release function synchronously.
+The listener immediately receives the current `WsConnectionStatus`, or `null` when the provider does not exist.
+This includes unknown provider keys.
+
+```ts
+const releaseStatus = ws.subscribeStatus('hyperliquid', (status) => {
+  console.log(status)
+})
+releaseStatus()
+```
+
+Registration and release do not create a provider, request discovery, open a socket, acquire a channel, or initiate reconnect.
+An observer follows provider creation when a real data or quote consumer subscribes later.
+Observers remain separate by provider key.
+Multiple registrations remain independent, even with the same callback.
+
+`connected` means that the transport socket is open.
+It does not prove channel freshness or authentication.
+`reconnecting` includes the initial connection and automatic recovery.
+`disconnected` means explicit closure or an exhausted retry budget.
+Observation does not recover this state. Call `ws.reconnect(provider)` to request recovery.
+The Online indicator and the `/providers` response describe separate concerns.
+
+`ws.close()` silently releases all status-only observers.
+It does not send a final status to them.
+Later status-only registration throws `PerpsError`, as data subscriptions do after close.
+An initialization that completes after close cannot restore observers or create a socket.
+
+Custom `WsProvider` implementations must implement `subscribeStatus(listener: WsStatusListener): () => void`.
+The method must report the current transport status synchronously and return an idempotent release function.
+It must observe transport transitions without data demand or reconnect.
+`WsProviderBase` supplies this method for Hyperliquid, Lighter, and Ondo.
+This required contract method is a breaking SDK change for custom providers.
+
 ## Architecture
 
 ### Package layering

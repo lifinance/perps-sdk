@@ -34,6 +34,11 @@ class MockRws {
   onStatus(fn: (s: WsConnectionStatus) => void) {
     this.statusHandlers.push(fn)
   }
+  offStatus(fn: (s: WsConnectionStatus) => void) {
+    this.statusHandlers = this.statusHandlers.filter(
+      (handler) => handler !== fn
+    )
+  }
   getStatus(): WsConnectionStatus {
     return this.status
   }
@@ -130,6 +135,47 @@ const marketsContextEvent: MarketsContextEvent = {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('WsProviderBase — status-only observation', () => {
+  it('observes a disconnected socket without recovery or a channel', () => {
+    const rws = new MockRws()
+    rws.status = 'disconnected'
+    const p = new TestProvider(rws)
+    const status = vi.fn()
+    const first = p.subscribeStatus(status)
+    const second = p.subscribeStatus(status)
+
+    expect(status.mock.calls).toEqual([['disconnected'], ['disconnected']])
+    expect(rws.reconnectCalls).toBe(0)
+    expect(p.openCount).toBe(0)
+    first()
+    first()
+    status.mockClear()
+    p.reconnect()
+    rws.simulateOpen()
+    expect(status.mock.calls).toEqual([['reconnecting'], ['connected']])
+    second()
+    status.mockClear()
+    rws.simulateStatus('disconnected')
+    expect(status).not.toHaveBeenCalled()
+    p.close()
+  })
+
+  it('removes observer resources on close without changing subscription status delivery', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    const status = vi.fn()
+    const dataStatus = vi.fn()
+    p.subscribeStatus(status)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), dataStatus)
+    p.close()
+    expect(status).toHaveBeenLastCalledWith('disconnected')
+    expect(dataStatus).toHaveBeenLastCalledWith('disconnected')
+    status.mockClear()
+    rws.simulateOpen()
+    expect(status).not.toHaveBeenCalled()
+  })
 })
 
 describe('WsProviderBase — ref-counted fan-out', () => {

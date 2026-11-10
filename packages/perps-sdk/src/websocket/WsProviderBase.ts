@@ -60,6 +60,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
 
   private readonly channels = new Map<string, ChannelEntry>()
   private readonly statusListeners = new Map<WsStatusListener, number>()
+  private readonly statusObservers = new Set<WsStatusListener>()
   private readonly wireSubs = new Map<string, TSub>()
 
   constructor(rws: ReconnectingWebSocket, providerKey: string) {
@@ -74,6 +75,23 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
         this.callListener('status', fn, status)
       }
     })
+  }
+
+  /** Observe transport status without channel acquisition or socket recovery. */
+  subscribeStatus(listener: WsStatusListener): () => void {
+    const notify: WsStatusListener = (status) => {
+      if (this.statusObservers.has(notify)) {
+        this.callListener('status', listener, status)
+      }
+    }
+    this.statusObservers.add(notify)
+    this.rws.onStatus(notify)
+    notify(this.rws.getStatus())
+    return () => {
+      if (this.statusObservers.delete(notify)) {
+        this.rws.offStatus(notify)
+      }
+    }
   }
 
   /**
@@ -144,6 +162,10 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
     this.onClose()
     this.rws.close()
+    for (const observer of this.statusObservers) {
+      this.rws.offStatus(observer)
+    }
+    this.statusObservers.clear()
     this.channels.clear()
     this.statusListeners.clear()
     this.wireSubs.clear()

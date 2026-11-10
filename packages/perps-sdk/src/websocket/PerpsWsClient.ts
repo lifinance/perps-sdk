@@ -11,9 +11,16 @@ import { cachePromise } from './cachePromise.js'
 import type {
   EventForSubscription,
   SubscriptionListener,
+  WsConnectionStatus,
   WsProvider,
   WsStatusListener,
 } from './types.js'
+import { wsLog } from './wsLog.js'
+
+interface StatusObserver {
+  attach(provider: WsProvider): void
+  release(): void
+}
 
 /**
  * Call parameters of a {@link WsProviderFactory}.
@@ -74,6 +81,7 @@ export class PerpsWsClient {
   private readonly options: PerpsWsClientOptions
   private providers = new Map<string, WsProvider>()
   private initPromises = new Map<string, Promise<WsProvider>>()
+  private readonly statusObservers = new Map<string, Set<StatusObserver>>()
   private discovery: Promise<ProvidersResponse> | undefined
   private closed = false
 
@@ -105,6 +113,65 @@ export class PerpsWsClient {
     return (
       this.options.wsProviders?.[provider]?.streamsAvailableToTrade ?? false
     )
+  }
+
+  /**
+   * Observe one provider's transport without creating it or requesting data.
+   * Reports the current status synchronously, or `null` before provider creation.
+   * Release is idempotent. Client close silently releases observers and rejects new registrations.
+   */
+  subscribeStatus(
+    provider: string,
+    listener: (status: WsConnectionStatus | null) => void
+  ): () => void {
+    this.assertOpen()
+    const observers =
+      this.statusObservers.get(provider) ?? new Set<StatusObserver>()
+    this.statusObservers.set(provider, observers)
+    let released = false
+    let releaseProvider: (() => void) | undefined
+    const notify = (status: WsConnectionStatus | null) => {
+      if (released || this.closed) {
+        return
+      }
+      try {
+        listener(status)
+      } catch (error) {
+        wsLog.listenerFailure(provider, 'status', error)
+      }
+    }
+    const observer: StatusObserver = {
+      attach: (transport) => {
+        if (released || this.closed) {
+          return
+        }
+        const release = transport.subscribeStatus(notify)
+        if (released || this.closed) {
+          release()
+        } else {
+          releaseProvider = release
+        }
+      },
+      release: () => {
+        if (released) {
+          return
+        }
+        released = true
+        releaseProvider?.()
+        observers.delete(observer)
+        if (observers.size === 0) {
+          this.statusObservers.delete(provider)
+        }
+      },
+    }
+    observers.add(observer)
+    const transport = this.providers.get(provider)
+    if (transport) {
+      observer.attach(transport)
+    } else {
+      notify(null)
+    }
+    return observer.release
   }
 
   /**
@@ -168,6 +235,12 @@ export class PerpsWsClient {
    */
   close() {
     this.closed = true
+    for (const observers of this.statusObservers.values()) {
+      for (const observer of observers) {
+        observer.release()
+      }
+    }
+    this.statusObservers.clear()
     for (const p of this.providers.values()) {
       p.close()
     }
@@ -239,6 +312,10 @@ export class PerpsWsClient {
       client: this.client,
     })
     this.providers.set(provider, wsProvider)
+    for (const observer of [...(this.statusObservers.get(provider) ?? [])]) {
+      observer.attach(wsProvider)
+    }
+    this.assertOpen()
     return wsProvider
   }
 
