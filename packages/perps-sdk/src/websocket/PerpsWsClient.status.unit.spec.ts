@@ -114,8 +114,19 @@ function createFixture() {
   return { ws, instances, requests }
 }
 
+/** Tracks the status handlers that remain registered on every real socket. */
+function trackSocketStatusHandlers() {
+  const on = vi.spyOn(ReconnectingWebSocket.prototype, 'onStatus')
+  const off = vi.spyOn(ReconnectingWebSocket.prototype, 'offStatus')
+  return () =>
+    on.mock.calls.filter(
+      ([handler]) => !off.mock.calls.some(([removed]) => removed === handler)
+    ).length
+}
+
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('PerpsWsClient status-only observation', () => {
@@ -185,6 +196,7 @@ describe('PerpsWsClient status-only observation', () => {
   })
 
   it('reports current status without reconnect and releases identical callbacks independently', async () => {
+    const liveHandlers = trackSocketStatusHandlers()
     const { ws, instances } = createFixture()
     const dataStatus = vi.fn()
     const unsubscribe = await ws.subscribe(
@@ -197,12 +209,15 @@ describe('PerpsWsClient status-only observation', () => {
     socket.drop()
     socket.drop()
     const status = vi.fn()
+    const baseline = liveHandlers()
     const first = ws.subscribeStatus('hyperliquid', status)
     const second = ws.subscribeStatus('hyperliquid', status)
+    expect(liveHandlers()).toBe(baseline + 2)
     expect(status.mock.calls).toEqual([['disconnected'], ['disconnected']])
     expect(socket.reconnectCalls).toBe(0)
     first()
     first()
+    expect(liveHandlers()).toBe(baseline + 1)
     status.mockClear()
     ws.reconnect('hyperliquid')
     socket.open()
@@ -211,6 +226,7 @@ describe('PerpsWsClient status-only observation', () => {
     expect(instances[0].opens).toBe(1)
     expect(instances[0].teardowns).toBe(0)
     second()
+    expect(liveHandlers()).toBe(baseline)
     status.mockClear()
     socket.drop()
     expect(status).not.toHaveBeenCalled()
@@ -261,6 +277,7 @@ describe('PerpsWsClient status-only observation', () => {
   })
 
   it('releases observers on close and rejects registration after close', async () => {
+    const liveHandlers = trackSocketStatusHandlers()
     const { ws } = createFixture()
     const status = vi.fn()
     const release = ws.subscribeStatus('hyperliquid', status)
@@ -268,7 +285,9 @@ describe('PerpsWsClient status-only observation', () => {
       { channel: 'marketsContext', dex: 'hyperliquid' },
       vi.fn()
     )
+    const attached = liveHandlers()
     ws.close()
+    expect(liveHandlers()).toBe(attached - 1)
     status.mockClear()
     Socket.instances[0].open()
     expect(status).not.toHaveBeenCalled()
@@ -321,6 +340,33 @@ describe('PerpsWsClient status-only observation', () => {
     expect(stable.mock.calls).toEqual([[null], ['reconnecting'], ['connected']])
     ws.close()
     errorLog.mockRestore()
+  })
+
+  it('isolates a provider status registration failure from data demand and sibling observers', async () => {
+    const { ws, instances } = createFixture()
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(Provider.prototype, 'subscribeStatus').mockImplementationOnce(
+      () => {
+        throw new Error('status registration failed')
+      }
+    )
+    const failed = vi.fn()
+    const stable = vi.fn()
+    ws.subscribeStatus('hyperliquid', failed)
+    ws.subscribeStatus('hyperliquid', stable)
+    await ws.subscribe(
+      { channel: 'marketsContext', dex: 'hyperliquid' },
+      vi.fn()
+    )
+    Socket.instances[0].open()
+    expect(failed.mock.calls).toEqual([[null]])
+    expect(stable.mock.calls).toEqual([[null], ['reconnecting'], ['connected']])
+    expect(instances[0].opens).toBe(1)
+    expect(errorLog).toHaveBeenCalledWith(
+      '[hyperliquid:ws] status observer registration failed',
+      expect.any(Error)
+    )
+    ws.close()
   })
 
   it('does not attach resources when an initial provider status callback closes the client', async () => {

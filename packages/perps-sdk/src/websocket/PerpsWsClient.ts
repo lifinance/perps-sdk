@@ -145,7 +145,13 @@ export class PerpsWsClient {
         if (released || this.closed) {
           return
         }
-        const release = transport.subscribeStatus(notify)
+        let release: () => void
+        try {
+          release = transport.subscribeStatus(notify)
+        } catch (error) {
+          wsLog.statusObserverFailure(provider, error)
+          return
+        }
         if (released || this.closed) {
           release()
         } else {

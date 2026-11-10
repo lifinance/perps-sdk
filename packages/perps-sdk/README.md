@@ -553,6 +553,8 @@ An initialization that completes after close cannot restore observers or create 
 Custom `WsProvider` implementations must implement `subscribeStatus(listener: WsStatusListener): () => void`.
 The method must report the current transport status synchronously and return an idempotent release function.
 It must observe transport transitions without data demand or reconnect.
+If the method throws, the SDK logs the failure and that observer receives no transport status.
+The failure does not reject a data or quote subscription, and other observers continue.
 `WsProviderBase` supplies this method for Hyperliquid, Lighter, and Ondo.
 This required contract method is a breaking SDK change for custom providers.
 
