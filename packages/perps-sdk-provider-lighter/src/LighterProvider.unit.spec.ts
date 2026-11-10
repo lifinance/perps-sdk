@@ -3432,10 +3432,10 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
     const provider = lighterProvider({ storage })
     provider.bind(STUB_CLIENT)
     expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-old')
-    provider.rejectAuthToken(ADDRESS, 'ro-old')
+    provider.rejectAuthToken?.(ADDRESS, 'ro-old')
     expect(created).toBe(1)
     expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-new')
-    provider.rejectAuthToken(ADDRESS, 'ro-old')
+    provider.rejectAuthToken?.(ADDRESS, 'ro-old')
     expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-new')
     expect(created).toBe(2)
     expect(await storage.get(key)).toBe(JSON.stringify(STORED_API_KEY))
@@ -3460,9 +3460,9 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
     provider.bind(STUB_CLIENT)
     const rejected = await provider.resolveAuthToken(ADDRESS)
     expect(rejected).toBe('std-1')
-    provider.rejectAuthToken(ADDRESS, 'std-1')
+    provider.rejectAuthToken?.(ADDRESS, 'std-1')
     if (replacementRejected) {
-      provider.rejectAuthToken(ADDRESS, 'std-2')
+      provider.rejectAuthToken?.(ADDRESS, 'std-2')
       await expect(provider.resolveAuthToken(ADDRESS)).rejects.toMatchObject({
         code: PerpsErrorCode.Unauthorized,
       })

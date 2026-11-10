@@ -368,7 +368,7 @@ export interface LighterPerpsProvider extends PerpsProviderPlugin {
    */
   resolveAuthToken(address: Address): Promise<string | undefined>
   /** Exclude a venue-rejected read token from subsequent credential resolution. */
-  rejectAuthToken(address: Address, token: string): void
+  rejectAuthToken?(address: Address, token: string): void
 }
 
 /**
