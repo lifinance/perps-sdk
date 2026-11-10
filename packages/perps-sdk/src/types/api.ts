@@ -249,6 +249,8 @@ export interface ModifyOrdersParams {
   address: Address
   /** Provider-specific order modifications. */
   modifications: ModifyOrderInput[]
+  /** Market context for per-market order ids; use the order's opaque `market.id`. */
+  assetId?: string
 }
 
 /**

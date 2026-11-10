@@ -117,6 +117,11 @@ them by visibility, scope, or acknowledgement. The caller does that work.
 `placeOrder()`, `placeTriggerOrder()`, `placeTwapOrder()`, `cancelOrders()`,
 `cancelTwapOrder()`, and `modifyOrders()`.
 
+`modifyOrders()` accepts an optional `assetId`, like `cancelOrders()`.
+Use the order's opaque `market.id` for this market context, not a display symbol.
+The SDK sends the value unchanged in the action parameters.
+Calls without `assetId` keep the same behavior.
+
 Account-specific reads go directly to the venue. `getOrders()` returns the
 `Order` union with regular, trigger, and TWAP rows. Its default filter includes
 PENDING, OPEN, PARTIALLY_FILLED, and TRIGGERED. Use `statuses` to read history.
