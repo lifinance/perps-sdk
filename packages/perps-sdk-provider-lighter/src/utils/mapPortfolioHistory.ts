@@ -92,6 +92,7 @@ export const mapPortfolioHistory = (
   }
 
   const firstPnl = getCumulativePnl(firstSnapshot)
+  const firstNetFlow = getCumulativeNetFlow(firstSnapshot)
   const latestPnl = getCumulativePnl(latestSnapshot)
   const accountValueOffset = subtractDecimalString(
     subtractDecimalString(currentValue, latestPnl),
@@ -99,13 +100,15 @@ export const mapPortfolioHistory = (
   )
   const points = orderedSnapshots.map((snapshot) => {
     const pnl = getCumulativePnl(snapshot)
+    const netFlow = getCumulativeNetFlow(snapshot)
     return {
       timestamp: snapshot.timestamp * 1_000,
       accountValue: addDecimalString(
         addDecimalString(accountValueOffset, pnl),
-        getCumulativeNetFlow(snapshot)
+        netFlow
       ),
       pnl: subtractDecimalString(pnl, firstPnl),
+      netTransfers: subtractDecimalString(netFlow, firstNetFlow),
     }
   })
 

@@ -14,6 +14,12 @@ export interface PortfolioHistoryPoint {
   accountValue: DecimalString
   /** Cumulative PnL from the start of the requested window. */
   pnl: DecimalString
+  /**
+   * Cumulative net capital entering the sampled balances, in USD, relative to
+   * the first returned sample. Positive means inflow. The first value is '0'
+   * when coverage is reliable. Absence means unavailable, not zero.
+   */
+  netTransfers?: DecimalString
 }
 
 /**

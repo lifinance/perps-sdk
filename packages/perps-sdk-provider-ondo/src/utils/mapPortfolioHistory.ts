@@ -1,4 +1,8 @@
-import { warnSkippedVenueRow } from '@lifi/perps-sdk'
+import {
+  isDecimalString,
+  safeSubtractDecimalString,
+  warnSkippedVenueRow,
+} from '@lifi/perps-sdk'
 import type {
   PortfolioHistoryPoint,
   PortfolioHistoryRange,
@@ -29,7 +33,8 @@ const summaryVolume = (
 const POINT_ROW = 'portfolio point'
 
 const mapPoint = (
-  point: OndoPortfolioGraphPoint
+  point: OndoPortfolioGraphPoint,
+  baseline: string | undefined
 ): PortfolioHistoryPoint | undefined => {
   const timestamp = Date.parse(point.time)
   if (Number.isNaN(timestamp)) {
@@ -38,8 +43,26 @@ const mapPoint = (
     })
     return undefined
   }
-  return { timestamp, accountValue: point.marginBalance, pnl: point.totalPnL }
+  const netFlow = getCumulativeNetFlow(point)
+  const netTransfers =
+    baseline === undefined || netFlow === undefined
+      ? undefined
+      : safeSubtractDecimalString(netFlow, baseline)
+  return {
+    timestamp,
+    accountValue: point.marginBalance,
+    pnl: point.totalPnL,
+    ...(netTransfers === undefined ? {} : { netTransfers }),
+  }
 }
+
+const getCumulativeNetFlow = (
+  point: OndoPortfolioGraphPoint
+): string | undefined =>
+  isDecimalString(point.allTimeDeposits) &&
+  isDecimalString(point.allTimeWithdrawals)
+    ? safeSubtractDecimalString(point.allTimeDeposits, point.allTimeWithdrawals)
+    : undefined
 
 /**
  * Join the `/v1/portfolio/summary/graph` series with the `/v1/portfolio/summary`
@@ -53,7 +76,9 @@ export const mapPortfolioHistory = (
   graph: OndoPortfolioGraphPoint[],
   summary: OndoPortfolioSummary
 ): PortfolioHistoryResponse => {
-  const points = graph.flatMap((point) => mapPoint(point) ?? [])
+  const first = graph.find((point) => !Number.isNaN(Date.parse(point.time)))
+  const baseline = first === undefined ? undefined : getCumulativeNetFlow(first)
+  const points = graph.flatMap((point) => mapPoint(point, baseline) ?? [])
   return {
     range,
     points,
