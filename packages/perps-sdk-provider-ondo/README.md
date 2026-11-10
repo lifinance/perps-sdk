@@ -193,6 +193,9 @@ Ondo opens the account at the SIWE login, so a data read does not throw
 a new session. The WebSocket account channels throw `SetupRequired` at
 subscribe time when no session is stored.
 
+A data read removes the session only when the rejected token is still the stored
+token. A newer session from a later SIWE login stays in the store.
+
 The action paths use the same codes. `signActions` and the `WITHDRAWAL`
 `resolveActionRequest` throw `SetupRequired` when no session is stored, and send
 no request to Ondo. When Ondo rejects the stored session, `signActions` removes
@@ -202,6 +205,25 @@ These status and flow reads do not throw without a session, or after Ondo
 rejects the session. `getAccount` returns an empty account, and `accountExists`
 returns `false`. `getDepositFlow` and `getWithdrawFlow` return
 `kind: 'setupRequired'`.
+
+### WebSocket login rejection
+
+The WebSocket provider sends one `login` op per connection, before the first
+private subscribe, and waits for the venue answer. A `loggedIn` frame accepts the
+login. An `error` frame whose `msg` starts with `error parsing jwt: ` rejects the
+presented token. The provider then removes that token from the store when it is
+still the stored token, stops every private subscription of the bound address
+with `PerpsErrorCode.Unauthorized`, and removes those wires from reconnect
+replay. Public subscriptions continue. A `loggedIn` frame followed by a later
+`error parsing jwt: ` frame on the same connection is a venue-side session
+invalidation and gets the same treatment.
+
+The connection-limit errors `already logged in on this connection` and `account
+already has too many connections` keep the stored session and stop the private
+subscriptions with `PerpsErrorCode.ThirdPartyError`. When no answer arrives
+within 10 seconds, the provider stops the private subscriptions with
+`PerpsErrorCode.TimeoutError` and cycles the connection. A new `subscribe` call
+after a SIWE login reads the current session and sends a new `login` op.
 
 ## Environments
 

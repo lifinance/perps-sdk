@@ -688,17 +688,17 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
 
   private handleSubscriptionError(error: Record<string, unknown>): void {
     const { code, message } = error
-    if (code !== LIGHTER_INVALID_AUTH_CODE || typeof message !== 'string') {
-      wsLog.serverError(this.providerKey, `Venue error code: ${String(code)}`)
-      return
-    }
-    const target = [...this.wireSubs.values()].find(
-      (state) =>
-        state.needsAuth &&
-        state.token !== undefined &&
-        message === `invalid auth: ${state.channel.replaceAll('/', ':')}`
-    )
+    const target =
+      code === LIGHTER_INVALID_AUTH_CODE && typeof message === 'string'
+        ? [...this.wireSubs.values()].find(
+            (state) =>
+              state.needsAuth &&
+              state.token !== undefined &&
+              message === `invalid auth: ${state.channel.replaceAll('/', ':')}`
+          )
+        : undefined
     if (target?.address === undefined || target.token === undefined) {
+      wsLog.serverError(this.providerKey, `Venue error code: ${String(code)}`)
       return
     }
     const address = target.address.toLowerCase()
@@ -723,15 +723,15 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
         state.address?.toLowerCase() === address &&
         state.token === target.token
     )
+    // Unregister before the channel teardown runs, so a wire the venue never
+    // accepted gets no `unsubscribe` frame.
     for (const state of affected) {
       state.failure = failure
+      this.unregisterSub(state.channel)
     }
     for (const state of affected) {
       if (state.key !== undefined) {
         this.rejectChannel(state.key, failure)
-      }
-      if (this.wireSubs.get(state.channel) === state) {
-        this.unregisterSub(state.channel)
       }
     }
   }

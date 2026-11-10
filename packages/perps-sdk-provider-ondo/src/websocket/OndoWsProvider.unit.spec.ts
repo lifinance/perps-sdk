@@ -350,18 +350,16 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('does not evict a session for a connection-limit error', async () => {
+    it.each([
+      'account already has too many connections',
+      'already logged in on this connection',
+    ])('does not evict a session for the connection error "%s"', async (msg) => {
       const storage = seededStorage()
       const p = makeProvider(storage)
       const send = stubSocket(p)
       send.mockImplementation((raw: string) => {
         if (JSON.parse(raw).op === 'login') {
-          queueMicrotask(() =>
-            feed(p, {
-              type: 'error',
-              msg: 'account already has too many connections',
-            })
-          )
+          queueMicrotask(() => feed(p, { type: 'error', msg }))
         }
       })
       const onError = vi.fn()
@@ -375,6 +373,82 @@ describe('OndoWsProvider', () => {
       ).rejects.toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
       expect(await storage.get(SESSION_KEY)).not.toBeNull()
       expect(onError).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('rejects a login without an acknowledgement as a timeout and keeps the session', async () => {
+      vi.useFakeTimers()
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      send.mockImplementation(() => {})
+      const onError = vi.fn()
+      const opening = p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'login', args: { token: 'jwt-abc' } })
+        )
+      )
+      expect((p as any).loginAttempt).toBeDefined()
+      const result = expect(opening).rejects.toMatchObject({
+        code: PerpsErrorCode.TimeoutError,
+      })
+      await vi.advanceTimersByTimeAsync(10_000)
+      await result
+      expect(onError).not.toHaveBeenCalled()
+      expect((p as any).rws.reconnect).toHaveBeenCalledTimes(1)
+      expect((p as any).wireSubs.size).toBe(0)
+      expect(await storage.get(SESSION_KEY)).not.toBeNull()
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      feed(p, { type: 'loggedIn', msg: 'Login successful' })
+      feed(p, rejection)
+      expect(log).toHaveBeenCalledTimes(1)
+      expect(await storage.get(SESSION_KEY)).not.toBeNull()
+      log.mockRestore()
+      p.close()
+    })
+
+    it('stops the acknowledgement timer once the venue accepts the login', async () => {
+      vi.useFakeTimers()
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      stubSocket(p)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(onError).not.toHaveBeenCalled()
+      expect((p as any).rws.reconnect).not.toHaveBeenCalled()
+      expect((p as any).wireSubs.has('positionsPerps')).toBe(true)
+      p.close()
+    })
+
+    it('ignores a jwt rejection frame without a pending login', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      stubSocket(p)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderbook', dex: 'ondo', marketId: 'AAPL-USD.P' },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      feed(p, rejection)
+      expect(log).toHaveBeenCalledTimes(1)
+      expect(onError).not.toHaveBeenCalled()
+      expect(await storage.get(SESSION_KEY)).not.toBeNull()
+      log.mockRestore()
       p.close()
     })
 

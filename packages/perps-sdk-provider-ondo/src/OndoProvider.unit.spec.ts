@@ -2811,6 +2811,27 @@ describe('OndoProvider — server-revoked session', () => {
     expect(recorded).toHaveLength(0)
   })
 
+  it('keeps a newer session stored during the rejected read', async () => {
+    const { provider, store } = await loggedInProvider()
+    const newer: OndoAuthToken = { ...AUTH_TOKEN, token: 'ondo-jwt-newer' }
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('backend.test/v1/perps/markets')) {
+        return respond(MARKETS_RESPONSE)
+      }
+      if (u.includes('backend.test/v1/perps/providers')) {
+        return respond({ providers: providersResult })
+      }
+      await store.set(ADDRESS, newer)
+      return respond({ success: false, error: 'token expired' }, 401)
+    })
+
+    await expect(
+      provider.getPositions({ address: ADDRESS })
+    ).rejects.toMatchObject(sessionRejectedError('positions read'))
+    await expect(store.get(ADDRESS)).resolves.toEqual(newer)
+  })
+
   it('propagates non-session venue errors and keeps the token', async () => {
     const { provider, store } = await loggedInProvider()
     fetchMock.mockImplementation(async (url: string | URL) => {

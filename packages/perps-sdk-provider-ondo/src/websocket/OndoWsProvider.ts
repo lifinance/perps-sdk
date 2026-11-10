@@ -94,6 +94,9 @@ const ONDO_AUTH_FANOUT: readonly string[] = [
   'accountSummary',
 ]
 
+/** Bound on the venue's answer to a `login` op. An unmapped error leaves no other exit. */
+const ONDO_LOGIN_ACK_TIMEOUT_MS = 10_000
+
 const isAuthChannel = (
   channel: Subscription['channel']
 ): channel is AuthChannel => channel in ONDO_AUTH_CHANNEL
@@ -181,6 +184,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         address: Address
         token: string
         accepted: boolean
+        timer: ReturnType<typeof setTimeout>
         resolve: () => void
         reject: (error: unknown) => void
       }
@@ -210,8 +214,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     // The venue's login lives and dies with the connection, so a drop must
     // forget both the in-flight login and the address it bound.
     this.rws.on('close', () => {
-      this.loginAttempt?.reject(new Error('Ondo WebSocket closed during login'))
-      this.loginAttempt = undefined
+      this.takeLoginAttempt()?.reject(
+        new Error('Ondo WebSocket closed during login')
+      )
       this.loginPromise = undefined
       this.accountAddress = undefined
     })
@@ -492,8 +497,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.pendingFunding.clear()
     this.bookMids.clear()
     this.loginPromise = undefined
-    this.loginAttempt?.reject(new Error('Ondo WebSocket closed during login'))
-    this.loginAttempt = undefined
+    this.takeLoginAttempt()?.reject(
+      new Error('Ondo WebSocket closed during login')
+    )
     this.accountAddress = undefined
     this.authGeneration += 1
     this.closeGeneration += 1
@@ -656,16 +662,31 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
             return
           }
           return new Promise<void>((resolve, reject) => {
-            this.loginAttempt = {
-              address,
-              token: token.token,
-              accepted: false,
-              resolve,
-              reject,
-            }
             this.rws.send(
               JSON.stringify({ op: 'login', args: { token: token.token } })
             )
+            const attempt = {
+              address,
+              token: token.token,
+              accepted: false,
+              timer: setTimeout(() => {
+                if (this.loginAttempt !== attempt) {
+                  return
+                }
+                this.rejectLogin(
+                  new PerpsError(
+                    PerpsErrorCode.TimeoutError,
+                    'Ondo did not acknowledge the WebSocket login.'
+                  ),
+                  false
+                )
+                // The venue may still hold a half-open login on this socket.
+                this.rws.reconnect()
+              }, ONDO_LOGIN_ACK_TIMEOUT_MS),
+              resolve,
+              reject,
+            }
+            this.loginAttempt = attempt
           })
         }
       )
@@ -786,12 +807,25 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     })
   }
 
-  private rejectLogin(error: PerpsError, unauthorized: boolean): void {
+  /** Detach the pending login attempt, if any, and stop its acknowledgement timer. */
+  private takeLoginAttempt(): typeof this.loginAttempt {
     const attempt = this.loginAttempt
+    if (attempt !== undefined) {
+      clearTimeout(attempt.timer)
+      this.loginAttempt = undefined
+    }
+    return attempt
+  }
+
+  private rejectLogin(error: PerpsError, unauthorized: boolean): void {
+    const attempt = this.takeLoginAttempt()
     if (attempt === undefined) {
+      wsLog.serverError(
+        this.providerKey,
+        `Login error without a pending login: ${error.message}`
+      )
       return
     }
-    this.loginAttempt = undefined
     this.loginPromise = undefined
     const address = attempt.address.toLowerCase()
     if (unauthorized) {
@@ -827,6 +861,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
     if (msg.type === 'loggedIn') {
       if (this.loginAttempt !== undefined) {
+        clearTimeout(this.loginAttempt.timer)
         this.loginAttempt.accepted = true
         this.loginAttempt.resolve()
       }

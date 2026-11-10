@@ -437,6 +437,68 @@ describe('LighterWsProvider', () => {
       log.mockRestore()
       p.close()
     })
+
+    it('sends no unsubscribe frame for a rejected wire and keeps a replacement wire on a stale release', async () => {
+      let token = 'old-read-token'
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => token },
+        freshClient()
+      )
+      const { p, internals, send } = connectedProvider(provider)
+      const release = await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        vi.fn()
+      )
+      send.mockClear()
+      internals.handleMessage(JSON.stringify(rejected))
+      expect(send).not.toHaveBeenCalled()
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(false)
+      token = 'replacement-read-token'
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn()
+      )
+      send.mockClear()
+      release()
+      expect(send).not.toHaveBeenCalled()
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(true)
+      p.close()
+    })
+
+    it('logs a 20013 that names no presented wire and keeps every subscription', async () => {
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => 'read-token' },
+        freshClient()
+      )
+      const { p, internals } = connectedProvider(provider)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      internals.handleMessage(
+        JSON.stringify({
+          error: { code: 20013, message: 'invalid auth: account_all_orders:7' },
+        })
+      )
+      expect(log).toHaveBeenCalledExactlyOnceWith(
+        '[lighter:ws] server error',
+        'Venue error code: 20013'
+      )
+      expect(onError).not.toHaveBeenCalled()
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(true)
+      log.mockRestore()
+      p.close()
+    })
   })
 
   it('rejects a synchronous venue failure only through the initial promise', async () => {

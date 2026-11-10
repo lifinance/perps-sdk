@@ -547,6 +547,14 @@ Lighter retains the trading key and replaces the rejected read token through
 its provider-owned resolver. A standalone Lighter client must supply a current
 token through `resolveAuthToken` in its provider options.
 
+A custom `WsProviderBase` subclass reports a venue rejection through the
+protected `rejectChannel(key, error)`. The call invokes the channel teardown,
+delivers `error` to each registered `onError` listener once, and drops the
+channel without a change to the transport status. The subclass removes the
+rejected wire from the protected `wireSubs` registry, or calls
+`unregisterSub(key)`, before the teardown runs. The Lighter and Ondo provider
+READMEs describe each venue rejection frame and recovery path.
+
 ### Venue rejection evidence
 
 The [Lighter WebSocket reference](https://docs.lighter.xyz/api/websocket)
