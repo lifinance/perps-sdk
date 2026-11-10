@@ -47,7 +47,7 @@ interface ChannelEntry {
   opening?: Promise<() => void>
   /** Deferred-teardown timer, set on the 1→0 transition; cleared if re-subscribed within the linger. */
   pendingTeardown?: ReturnType<typeof setTimeout>
-  /** `marketsContext` gap timer, set on each delivery; the next delivery waits for it. */
+  /** `marketsContext` gap timer, set on each delivery and cleared with the channel; the next delivery waits for it. */
   throttle?: ReturnType<typeof setTimeout>
   /** Newest `marketsContext` snapshot producer that arrived inside the gap. */
   pendingSnapshot?: () => Record<string, MarketContext>
@@ -262,6 +262,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     if (entry.pendingTeardown !== undefined) {
       clearTimeout(entry.pendingTeardown)
     }
+    this.cancelPendingMarketsContext(entry)
     entry.teardown?.()
     this.channels.delete(key)
     return true
@@ -426,7 +427,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     if (entry.listeners.size > 0) {
       return
     }
-    this.cancelPendingMarketsContext(entry)
+    entry.pendingSnapshot = undefined
 
     if (entry.teardown === undefined) {
       // Open not resolved yet — acquireChannel's post-open check unwinds it.
@@ -448,6 +449,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
         e.pendingTeardown = undefined
         return
       }
+      this.cancelPendingMarketsContext(e)
       e.teardown?.()
       this.channels.delete(key)
     }, WS_CHANNEL_TEARDOWN_LINGER_MS)

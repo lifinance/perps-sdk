@@ -617,7 +617,34 @@ describe('WsProviderBase — marketsContext delivery gap', () => {
     expect(listener).toHaveBeenCalledTimes(1)
   })
 
-  it('delivers at once to a listener that re-subscribes inside the linger', async () => {
+  it('keeps the gap for a listener that re-subscribes inside the linger', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    unsubscribe()
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS - 1)
+    await p.subscribe(MARKETS_CONTEXT, listener)
+    expect(p.openCount).toBe(1)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '3') }))
+    vi.advanceTimersByTime(
+      WS_MARKETS_CONTEXT_INTERVAL_MS - WS_CHANNEL_TEARDOWN_LINGER_MS
+    )
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(1)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(dataOf(listener)).toEqual([
+      { BTC: context('BTC', '1') },
+      { BTC: context('BTC', '3') },
+    ])
+  })
+
+  it('ends the gap with the channel, so a fresh channel delivers at once', async () => {
     vi.useFakeTimers()
     const p = new TestProvider(new MockRws())
     const listener = vi.fn()
@@ -625,13 +652,25 @@ describe('WsProviderBase — marketsContext delivery gap', () => {
 
     p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
     unsubscribe()
-    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS - 1)
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+    expect(vi.getTimerCount()).toBe(0)
     await p.subscribe(MARKETS_CONTEXT, listener)
-    expect(p.openCount).toBe(1)
+    expect(p.openCount).toBe(2)
 
     p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
     expect(listener).toHaveBeenCalledTimes(2)
     expect(dataOf(listener).at(-1)).toEqual({ BTC: context('BTC', '2') })
+  })
+
+  it('ends the gap when an idle channel is reclaimed inside the linger', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, vi.fn())
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    unsubscribe()
+    expect(p.expireIdle('marketsContext')).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('leaves every other channel unlimited', async () => {
