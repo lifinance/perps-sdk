@@ -80,9 +80,9 @@ export interface Position {
    * sends none and the position has no positive `markPrice`.
    */
   positionValue?: DecimalString
-  /** Percent (`'10'` is 10%) of the entry notional ÷ the current leverage:
-   * `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. Hyperliquid and
-   * Ondo send this figure as a fraction, × 100; re-marking calculates it.
+  /** Unrounded percent (`'10'` is 10%) on entry notional ÷ current leverage.
+   * `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
+   * Hyperliquid and Ondo fractions become percents; re-marking recalculates.
    * Absent without venue ROE when PnL, size, entry price or leverage is unusable.
    */
   returnOnEquity?: DecimalString

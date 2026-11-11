@@ -1552,6 +1552,7 @@ describe('buildPosition', () => {
   it.each([
     ['size', { size: '0' }],
     ['entryPrice', { entryPrice: '0' }],
+    ['leverage', { leverage: '0' }],
     ['leverage', { leverage: '-1' }],
     ['leverage', { leverage: undefined }],
   ] as const)('leaves returnOnEquity absent when %s is not above zero', (_, overrides) => {

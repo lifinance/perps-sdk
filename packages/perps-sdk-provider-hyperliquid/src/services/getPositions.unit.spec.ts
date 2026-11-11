@@ -1,4 +1,4 @@
-import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError, remarkPosition } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HL_CLEARINGHOUSE_STATE, HL_MARKETS } from '../../test/fixtures.js'
@@ -119,6 +119,40 @@ describe('getPositions', () => {
       effectiveLeverage: '10.11',
       liquidationDistance: '10.53',
     })
+  })
+
+  it('keeps venue ROE for a null entry in the HTTP payload and omits calculated ROE after a re-mark', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...responses,
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            {
+              position: {
+                ...HL_CLEARINGHOUSE_STATE.assetPositions[0].position,
+                entryPx: null,
+                liquidationPx: null,
+                returnOnEquity: '0.0985',
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const { positions } = await getPositions(ctx, { address: ADDRESS })
+    const mapped = positions[0]
+
+    expect(mapped.entryPrice).toBe('0')
+    expect(mapped.returnOnEquity).toBe('9.85')
+    expect(mapped).not.toHaveProperty('liquidationPrice')
+
+    const remarked = remarkPosition(mapped, '95000')
+
+    expect(remarked.unrealizedPnl).toBe('100')
+    expect(remarked).not.toHaveProperty('returnOnEquity')
   })
 
   it('filters by the marketId-matching `symbol` param', async () => {

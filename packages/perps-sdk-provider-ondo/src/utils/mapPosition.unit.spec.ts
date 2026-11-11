@@ -114,8 +114,14 @@ describe('mapPosition', () => {
     )
     const remarked = mapped && remarkPosition(mapped, '4005.588571')
 
-    expect(Number(mapped?.returnOnEquity)).toBeCloseTo(24.5662, 4)
-    expect(Number(remarked?.returnOnEquity)).toBeCloseTo(24.5662, 4)
+    expect(mapped?.returnOnEquity).toBe(
+      '24.566202805485535738122665303075355135'
+    )
+    // The rounded venue mark gives a slightly different PnL on re-mark.
+    expect(remarked?.unrealizedPnl).toBe('1.391300015')
+    expect(remarked?.returnOnEquity).toBe(
+      '24.56618541333979344134238407649295238472'
+    )
   })
 
   it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {
