@@ -383,6 +383,50 @@ describe('mapPosition (Lighter)', () => {
       }
     })
   })
+
+  describe('positionValue and the calculated fields', () => {
+    it('sets positionValue from position_value and calculates the rest for an isolated row', () => {
+      const result = map(
+        basePosition({
+          margin_mode: LT_MARGIN_MODE_ISOLATED,
+          position: '1.0',
+          position_value: '50000',
+          allocated_margin: '2500',
+          unrealized_pnl: '10',
+          liquidation_price: '40000',
+        }),
+        MARKET
+      )
+
+      expect(result).toMatchObject({
+        markPrice: '50000',
+        unrealizedPnl: '10',
+        marginUsed: '2500',
+        positionValue: '50000',
+        returnOnEquity: '0.4',
+        effectiveLeverage: '20',
+        liquidationDistance: '20',
+      })
+    })
+
+    it('takes the position_value magnitude for a short row', () => {
+      const result = map(
+        basePosition({ sign: -1, position_value: '-83.961964' }),
+        MARKET
+      )
+
+      expect(result.positionValue).toBe('83.961964')
+    })
+
+    it('gives a cross row the effective leverage of its initial margin and no liquidationDistance', () => {
+      const result = map(basePosition({ liquidation_price: '0' }), MARKET)
+
+      // 83.961964 ÷ (83.961964 × 2.00 ÷ 100)
+      expect(result.effectiveLeverage).toBe('50')
+      expect(result.returnOnEquity).toBe('0')
+      expect(result).not.toHaveProperty('liquidationDistance')
+    })
+  })
 })
 
 describe('leverageFromScaledImf', () => {

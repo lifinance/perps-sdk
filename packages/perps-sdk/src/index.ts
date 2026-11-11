@@ -110,6 +110,7 @@ export {
   safeResolveCloseSize,
 } from './math/order.js'
 export {
+  buildPosition,
   calculateEffectiveLeverage,
   calculateInitialMarginRoe,
   calculateLiquidationDistance,
@@ -126,6 +127,7 @@ export {
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
+  remarkPosition,
   safeCalculateEffectiveLeverage,
   safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,

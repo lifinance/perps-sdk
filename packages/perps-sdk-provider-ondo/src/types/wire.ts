@@ -55,6 +55,10 @@ export interface OndoPosition {
    * {@link OndoFundingFeeTransfer.amount}: positive = earned, negative = paid.
    */
   netFundingSinceNeutral: string
+  /**
+   * Interpreted as a fraction (`'0.022'` is 2.2%); Ondo states no unit.
+   * Its Get Positions example sends `'0.022'` for PnL 25 on margin 1125.
+   */
   returnOnEquity: string
   stopLossTriggerPrice?: string
   takeProfitTriggerPrice?: string

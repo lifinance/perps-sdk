@@ -1380,6 +1380,41 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('emits positionValue and the calculated fields on a positions frame', async () => {
+      const { p, internals } = connectedProvider(
+        new LighterWsProvider(
+          'ws://127.0.0.1:1',
+          'lighter',
+          { resolveAuthToken: async () => 'token' },
+          freshClient()
+        )
+      )
+      const listener = vi.fn()
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        listener
+      )
+
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'subscribed/account_all_positions',
+          channel: `account_all_positions:${ACCOUNT_IDX}`,
+          positions: { '0': { ...RAW_POSITION, unrealized_pnl: '125' } },
+        })
+      )
+
+      const event = listener.mock.calls[0][0]
+      expect(event.data[0]).toMatchObject({
+        markPrice: '50000',
+        marginUsed: '2500',
+        positionValue: '50000',
+        returnOnEquity: '5',
+        effectiveLeverage: '20',
+        liquidationDistance: '20',
+      })
+      p.close()
+    })
+
     it('keeps a close observable: a zero-size update removes the market from the emitted snapshot', async () => {
       const p = makeProvider()
       await seedAccountAndMarkets(p)

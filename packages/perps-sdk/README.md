@@ -415,6 +415,49 @@ Each one throws `PerpsError(ValidationError)` when an input does not match the
 decimal pattern. `calculateRefuelAmount` also throws when a
 base-unit input is not an integer string.
 
+### Position values
+
+Each provider sets four calculated fields on a `Position`, on the REST reads
+and on the `positions` stream:
+
+- `positionValue`: the absolute position value in quote-asset units.
+  Hyperliquid sends `positionValue`, Lighter sends `position_value` and Ondo
+  sends `notionalValue`.
+- `returnOnEquity`: a percent (`'10'` is 10%). The SDK interprets Ondo's
+  value as a fraction and multiplies it by 100. For Hyperliquid and Lighter,
+  the SDK calculates `unrealizedPnl ÷ marginUsed × 100`.
+- `effectiveLeverage`: `positionValue ÷ marginUsed`, rounded half-up to two
+  decimal places for display.
+- `liquidationDistance`: the distance from `markPrice` to `liquidationPrice`,
+  as a percent of `markPrice`, rounded half-up to two decimal places for
+  display.
+
+A field is absent when one of its inputs is absent or is not usable. A
+`liquidationPrice` that is not above zero gives no `liquidationDistance`.
+`buildPosition(position)` calculates each field that the venue does not send.
+It always calculates `effectiveLeverage` and `liquidationDistance` again. All
+three providers use it.
+
+`remarkPosition(position, markPrice)` gives a new `Position` for a live mark
+price. It calculates `markPrice`, `positionValue`, `unrealizedPnl`,
+`returnOnEquity`, `effectiveLeverage` and `liquidationDistance` again. It does
+not change its input. When `markPrice` is not a positive decimal string, it
+gives the input position unchanged.
+
+`remarkPosition` keeps `marginUsed` and `initialMarginRequirement` from the
+input position. The SDK has no venue margin model for a new mark, so
+`returnOnEquity` and `effectiveLeverage` use the margin of the input position
+snapshot. For example, Lighter cross margin follows the position value, so
+the venue figure at the new mark can differ. Read the positions again for
+venue margin figures. When `entryPrice` is not a positive decimal string, or
+`size` is not a decimal string, `unrealizedPnl` keeps the input figure.
+
+```ts
+import { remarkPosition } from '@lifi/perps-sdk'
+
+const livePosition = remarkPosition(position, liveMarkPrice)
+```
+
 ## Numbers
 
 ### Decimal strings
@@ -490,11 +533,12 @@ One verb names one kind of transformation.
 | `is<X>`                     | value → `boolean`, a pattern test                  | no                                | `isDecimalString`                                          |
 | `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
 | `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
-| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
+| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`, `buildPosition`                              |
 | `aggregate<X>`              | collection → total                                 | throws; `safe` form               | —                                                          |
 | `add` `subtract` `multiply` `divide` `abs` `compare` `round` | decimal strings → exact `DecimalString`, or `-1 \| 0 \| 1` for `compare` | throws; `safe` form | `addDecimalString`, `addDecimalStrings`, `compareDecimalStrings`, `roundDecimalString` |
 | `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
 | `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
+| `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `remarkPosition`                         |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every

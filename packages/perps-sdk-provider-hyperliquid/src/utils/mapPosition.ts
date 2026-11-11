@@ -1,5 +1,6 @@
 import {
   absDecimalString,
+  buildPosition,
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
@@ -85,7 +86,7 @@ export const mapPosition = (
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
 
-  return {
+  return buildPosition({
     market,
     side: isDecimalStringGreaterThan('0', pos.szi)
       ? PositionSide.SHORT
@@ -93,6 +94,7 @@ export const mapPosition = (
     size,
     entryPrice: pos.entryPx ?? '0',
     ...(markPrice === undefined ? {} : { markPrice }),
+    ...(positionValue === undefined ? {} : { positionValue }),
     ...(pos.liquidationPx ? { liquidationPrice: pos.liquidationPx } : {}),
     unrealizedPnl: pos.unrealizedPnl,
     ...(accruedFunding === undefined ? {} : { accruedFunding }),
@@ -102,5 +104,5 @@ export const mapPosition = (
       ? {}
       : { initialMarginRequirement }),
     marginMode,
-  }
+  })
 }

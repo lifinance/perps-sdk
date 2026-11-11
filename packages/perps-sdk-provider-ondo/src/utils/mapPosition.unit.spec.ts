@@ -1,3 +1,4 @@
+import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -59,6 +60,10 @@ describe('mapPosition', () => {
       leverage: '5',
       marginUsed: '401',
       initialMarginRequirement: '401',
+      positionValue: '2020.5',
+      returnOnEquity: '3.86',
+      effectiveLeverage: '5.04',
+      liquidationDistance: '9.77',
       marginMode: MarginMode.CROSS,
     })
   })
@@ -70,6 +75,79 @@ describe('mapPosition', () => {
     )
     expect(mapped?.side).toBe(PositionSide.SHORT)
     expect(mapped?.size).toBe('2.5')
+  })
+
+  it('sets positionValue to the notionalValue magnitude', () => {
+    expect(
+      mapPosition(positionFixture({ notionalValue: '-2020.5' }), MARKET)
+        ?.positionValue
+    ).toBe('2020.5')
+  })
+
+  it.each([
+    ['0.0386', '3.86'],
+    ['-0.44', '-44'],
+    ['0', '0'],
+  ])('changes the venue returnOnEquity fraction %s to the percent %s', (returnOnEquity, percent) => {
+    expect(
+      mapPosition(positionFixture({ returnOnEquity }), MARKET)?.returnOnEquity
+    ).toBe(percent)
+  })
+
+  // Ondo's documented Get Positions example sends returnOnEquity '0.022' for
+  // 25 ÷ 1125 (0.0222…), so the venue figure can differ from the formula.
+  it('replaces the venue returnOnEquity with unrealizedPnl ÷ usedMargin × 100 at the same mark', () => {
+    const mapped = mapPosition(
+      positionFixture({
+        averageEntryPrice: '200',
+        markPrice: '200.49',
+        usedMargin: '400',
+        unrealizedPnl: '4.9',
+        notionalValue: '2004.9',
+        returnOnEquity: '0.012',
+      }),
+      MARKET
+    )
+
+    expect(mapped?.returnOnEquity).toBe('1.2')
+    expect(mapped && remarkPosition(mapped, '200.49')).toMatchObject({
+      markPrice: '200.49',
+      unrealizedPnl: '4.9',
+      marginUsed: '400',
+      returnOnEquity: '1.225',
+    })
+  })
+
+  it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(
+      positionFixture({ notionalValue: 'n/a' }),
+      MARKET
+    )
+    expect(mapped?.positionValue).toBe('2020.5')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('calculates returnOnEquity from unrealizedPnl and usedMargin when the venue figure is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(positionFixture({ returnOnEquity: '' }), MARKET)
+    // 15.5 ÷ 401 × 100
+    expect(mapped?.returnOnEquity).toBe(
+      '3.86533665835411471321695760598503740648'
+    )
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('leaves liquidationDistance absent when liquidationPrice is not a decimal', () => {
+    const mapped = mapPosition(
+      positionFixture({ liquidationPrice: 'NaN' }),
+      MARKET
+    )
+    expect(mapped).not.toHaveProperty('liquidationDistance')
   })
 
   // Ondo already signs funding from the account's point of view, so

@@ -1,5 +1,8 @@
 import {
   absDecimalString,
+  buildPosition,
+  isDecimalString,
+  multiplyDecimalString,
   safeIsDecimalStringZero,
   unknownToDecimalString,
   warnSkippedVenueRow,
@@ -9,12 +12,8 @@ import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoPosition } from '../types/wire.js'
 
-/**
- * Map a raw Ondo position to the generic Position type. Ondo margin accounts
- * are cross-margined only. A row with an invalid quantity gives `undefined`;
- * every other figure is the raw venue string.
- *
- * @param market - Backend-resolved market identity for `pos.market`.
+/** Map an Ondo cross position, omitting a row with invalid quantity.
+ * Interpret venue ROE as a fraction and return a percent.
  * @public
  */
 export const mapPosition = (
@@ -36,20 +35,27 @@ export const mapPosition = (
     )
     return undefined
   }
-  return {
+  const positionValue = isDecimalString(pos.notionalValue)
+    ? absDecimalString(pos.notionalValue)
+    : undefined
+  return buildPosition({
     market,
     side: pos.direction === 'short' ? PositionSide.SHORT : PositionSide.LONG,
     size,
     entryPrice: pos.averageEntryPrice,
     markPrice: pos.markPrice,
+    ...(positionValue === undefined ? {} : { positionValue }),
     liquidationPrice: pos.liquidationPrice,
     unrealizedPnl: pos.unrealizedPnl,
+    ...(isDecimalString(pos.returnOnEquity)
+      ? { returnOnEquity: multiplyDecimalString(pos.returnOnEquity, '100') }
+      : {}),
     accruedFunding: pos.netFundingSinceNeutral,
     leverage: pos.leverage,
     marginUsed: pos.usedMargin,
     initialMarginRequirement: pos.usedMargin,
     marginMode: MarginMode.CROSS,
-  }
+  })
 }
 
 /**

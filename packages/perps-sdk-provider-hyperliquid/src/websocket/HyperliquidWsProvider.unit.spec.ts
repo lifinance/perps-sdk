@@ -3817,6 +3817,10 @@ describe('HyperliquidWsProvider', () => {
         size: '0.1',
         entryPrice: '94000',
         leverage: '10',
+        positionValue: '9500',
+        returnOnEquity: '10.63829787234042553191489361702127659574',
+        effectiveLeverage: '10.11',
+        liquidationDistance: '10.53',
       })
     })
 
