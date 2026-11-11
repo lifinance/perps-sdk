@@ -48,6 +48,8 @@ export interface LtPerpsOrderBookDetail {
   min_initial_margin_fraction: number
   maintenance_margin_fraction: number
   closeout_margin_fraction: number
+  mark_price: string
+  index_price: string
   last_trade_price: number
   daily_trades_count: number
   daily_base_token_volume: number
