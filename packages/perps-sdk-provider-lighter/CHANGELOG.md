@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 47.1.0
+
+### Minor Changes
+
+- [#716](https://github.com/lifinance/perps-sdk/pull/716) [`2f41ef6`](https://github.com/lifinance/perps-sdk/commit/2f41ef6d28512c2ac75066bbd96b07e468bcf1db) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LtPerpsOrderBookDetail` declares the `mark_price` and `index_price` decimal strings that Lighter sends on each perps row of `/api/v1/orderBookDetails`.
+
 ## 47.0.0
 
 ### Minor Changes
