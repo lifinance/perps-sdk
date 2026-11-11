@@ -1,5 +1,19 @@
 # @lifi/perps-sdk
 
+## 33.0.1
+
+### Patch Changes
+
+- [#718](https://github.com/lifinance/perps-sdk/pull/718) [`d959e5a`](https://github.com/lifinance/perps-sdk/commit/d959e5a50443ca86d8ef69db85b41a5a94abe0de) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.returnOnEquity` uses the entry notional ÷ the current leverage: `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. `buildPosition` and `remarkPosition` calculate it with `calculateInitialMarginRoe`, so margin that the user adds to an isolated position does not change it. The Hyperliquid mapper passes the venue `returnOnEquity` as a percent, and `HlPosition` declares it. Hyperliquid and Ondo use the same formula for their venue figure.
+
+  `buildPosition` omits calculated ROE when PnL is not decimal, or size, entry price, or leverage is not positive.
+  `remarkPosition` applies the same rule.
+
+  Hyperliquid warns once per market when a present venue ROE is not decimal, then uses the calculated fallback when inputs permit.
+
+- Updated dependencies [[`d959e5a`](https://github.com/lifinance/perps-sdk/commit/d959e5a50443ca86d8ef69db85b41a5a94abe0de)]:
+  - @lifi/perps-types@28.0.1
+
 ## 33.0.0
 
 ### Major Changes
