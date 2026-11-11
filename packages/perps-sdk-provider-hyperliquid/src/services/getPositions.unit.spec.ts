@@ -121,6 +121,37 @@ describe('getPositions', () => {
     })
   })
 
+  it.each([
+    null,
+    42,
+    '+1',
+  ])('uses calculated ROE when the HTTP venue ROE is %j', async (returnOnEquity) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...responses,
+        clearinghouseState: {
+          ...HL_CLEARINGHOUSE_STATE,
+          assetPositions: [
+            {
+              position: {
+                ...HL_CLEARINGHOUSE_STATE.assetPositions[0].position,
+                returnOnEquity,
+              },
+            },
+          ],
+        },
+      },
+      HL_MARKETS
+    ))
+
+    const { positions } = await getPositions(ctx, { address: ADDRESS })
+
+    expect(positions[0].returnOnEquity).toBe(
+      '10.63829787234042553191489361702127659574'
+    )
+  })
+
   it('keeps venue ROE for a null entry in the HTTP payload and omits calculated ROE after a re-mark', async () => {
     ;({ restore } = installInfoFetchMock(
       {

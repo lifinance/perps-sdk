@@ -86,7 +86,7 @@ export const mapPosition = (
   ) {
     warnInvalidReturnOnEquityOnce(
       `${PROVIDER_KEY}|position.returnOnEquity|${market.id}`,
-      `[${PROVIDER_KEY}] position \`returnOnEquity\` on market '${market.id}' is not a valid decimal, so the SDK calculates it: '${String(pos.returnOnEquity).slice(0, 64)}'`
+      `[${PROVIDER_KEY}] position \`returnOnEquity\` on market '${market.id}' is not a valid decimal, so the SDK calculates it when the other ROE inputs are valid: '${String(pos.returnOnEquity).slice(0, 64)}'`
     )
   }
   const marginMode =

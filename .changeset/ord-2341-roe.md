@@ -8,3 +8,5 @@
 
 `buildPosition` omits calculated ROE when PnL is not decimal, or size, entry price, or leverage is not positive.
 `remarkPosition` applies the same rule.
+
+Hyperliquid warns once per market when a present venue ROE is not decimal, then uses the calculated fallback when inputs permit.

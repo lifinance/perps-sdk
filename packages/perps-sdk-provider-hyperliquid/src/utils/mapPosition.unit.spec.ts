@@ -124,7 +124,7 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.returnOnEquity).toBe('9.85')
   })
 
-  it('keeps the same returnOnEquity through remarkPosition at the same mark when isolated marginUsed holds added margin and PnL', () => {
+  it('matches the venue ROE at the same mark despite added isolated margin', () => {
     // 0.1 BTC at 10x, entry 100000, mark 105000: PnL 500 on initial margin 1000
     const isolatedRow = (marginUsed: string): HlAssetPosition =>
       makeAp({
@@ -154,7 +154,7 @@ describe('mapPosition (Hyperliquid)', () => {
     ).toBe('50')
   })
 
-  it('keeps a negative venue returnOnEquity through remarkPosition at the same mark', () => {
+  it('matches the negative venue ROE at the same mark', () => {
     // 0.1 BTC at 10x, entry 100000, mark 97500: PnL -250 on initial margin 1000
     const mapped = map(
       makeAp({
@@ -187,15 +187,27 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('returnOnEquity'))
   })
 
-  it('warns once for repeated rows with different invalid returnOnEquity values', async () => {
+  it('warns once per market across repeated malformed ROE values', async () => {
     const mapper = await freshMapPosition()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    for (const returnOnEquity of ['NaN', '', '1e-2', 'NaN']) {
-      map(makeAp({ returnOnEquity }), mapper)
+    const ethMarket: PerpsMarketDisplay = {
+      ...BTC_MARKET,
+      id: 'ETH',
+      baseAsset: {
+        ...BTC_MARKET.baseAsset,
+        id: 'ETH',
+        displaySymbol: 'ETH',
+        logoURI: 'https://app.hyperliquid.xyz/coins/ETH.svg',
+      },
     }
 
-    expect(warn).toHaveBeenCalledOnce()
+    mapper(makeAp({ returnOnEquity: 'NaN' }), BTC_MARKET)
+    mapper(makeAp({ coin: 'ETH', returnOnEquity: 'NaN' }), ethMarket)
+    mapper(makeAp({ returnOnEquity: '1e-2' }), BTC_MARKET)
+
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenNthCalledWith(1, expect.stringContaining('BTC'))
+    expect(warn).toHaveBeenNthCalledWith(2, expect.stringContaining('ETH'))
   })
 
   it('does not warn when returnOnEquity is absent', async () => {
