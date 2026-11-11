@@ -1,9 +1,11 @@
 import {
   absDecimalString,
+  buildPosition,
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
   isDecimalStringZero,
+  multiplyDecimalString,
   safeAbsDecimalString,
   safeDivideDecimalString,
   safeIsDecimalStringZero,
@@ -44,6 +46,7 @@ export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
  * negative. A row with an invalid size gives `undefined`; an invalid position
  * value, a non-positive leverage or an invalid funding leaves the derived field
  * absent, and a `null` or empty `liquidationPx` leaves `liquidationPrice` absent.
+ * The venue `returnOnEquity` fraction becomes a percent.
  * @public
  */
 export const mapPosition = (
@@ -85,7 +88,7 @@ export const mapPosition = (
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
 
-  return {
+  return buildPosition({
     market,
     side: isDecimalStringGreaterThan('0', pos.szi)
       ? PositionSide.SHORT
@@ -93,8 +96,12 @@ export const mapPosition = (
     size,
     entryPrice: pos.entryPx ?? '0',
     ...(markPrice === undefined ? {} : { markPrice }),
+    ...(positionValue === undefined ? {} : { positionValue }),
     ...(pos.liquidationPx ? { liquidationPrice: pos.liquidationPx } : {}),
     unrealizedPnl: pos.unrealizedPnl,
+    ...(isDecimalString(pos.returnOnEquity)
+      ? { returnOnEquity: multiplyDecimalString(pos.returnOnEquity, '100') }
+      : {}),
     ...(accruedFunding === undefined ? {} : { accruedFunding }),
     ...(leverage === undefined ? {} : { leverage }),
     marginUsed: pos.marginUsed,
@@ -102,5 +109,5 @@ export const mapPosition = (
       ? {}
       : { initialMarginRequirement }),
     marginMode,
-  }
+  })
 }

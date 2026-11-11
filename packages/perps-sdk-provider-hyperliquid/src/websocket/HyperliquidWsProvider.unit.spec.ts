@@ -2,6 +2,7 @@ import {
   createPerpsClient,
   isDecimalString,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
   wsLog,
 } from '@lifi/perps-sdk'
 import type { Fill, Market, Subscription } from '@lifi/perps-types'
@@ -138,6 +139,14 @@ const seedFast = async (
     JSON.stringify({ channel: 'fastAssetCtxs', data })
   )
 }
+
+// Poll like `vi.waitFor`, but run out the `marketsContext` delivery gap before
+// each check so a frame the base holds back lands. Needs fake timers.
+const waitForMarketsContext = (check: () => void) =>
+  vi.waitFor(() => {
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+    check()
+  })
 
 // --- Mock ReconnectingWebSocket ---
 
@@ -1520,6 +1529,36 @@ describe('HyperliquidWsProvider', () => {
       })
     })
 
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', async () => {
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
+
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
+
+        seedMids({ BTC: '95001' })
+        expect(listener).toHaveBeenCalledTimes(1)
+        const first = listener.mock.calls[0][0]
+
+        seedMids({ BTC: '95002' })
+        seedMids({ BTC: '95003' })
+        vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+        expect(listener).toHaveBeenCalledTimes(1)
+
+        vi.advanceTimersByTime(1)
+        expect(listener).toHaveBeenCalledTimes(2)
+        expect(listener.mock.calls[1][0].data.BTC.midPrice).toBe('95003')
+        // The delivered snapshot is its own object: later frames do not touch it.
+        expect(first.data.BTC.midPrice).toBe('95001')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('emits marketContext with oracle/mark/funding/volume from activeAssetCtx', async () => {
       const provider = createProvider()
       const listener = vi.fn()
@@ -1789,86 +1828,91 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('recomputes perp open-interest notional from compressed pac partial updates', async () => {
-      const provider = createEnrichingProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'pac',
-          data: await encodeCompressed([
-            ['', [perpCtx('BTC', '95001'), perpCtx('ETH', '3401')]],
-          ]),
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'pac',
+            data: await encodeCompressed([
+              ['', [perpCtx('BTC', '95001'), perpCtx('ETH', '3401')]],
+            ]),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toMatchObject({
+            provider: providerKey,
+            marketId: 'BTC',
+            midPrice: '95001',
+            prevDayPrice: '95001',
+            openInterest: '9500100',
+          })
         })
-      )
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toMatchObject({
-          provider: providerKey,
-          marketId: 'BTC',
-          midPrice: '95001',
-          prevDayPrice: '95001',
-          openInterest: '9500100',
-        })
-      })
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'pac',
-          data: await encodeCompressed([
-            [
-              '',
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'pac',
+            data: await encodeCompressed([
               [
-                { coin: 'BTC', markPx: '95100', midPx: '95101' },
-                { coin: 'ETH', midPx: '3410' },
+                '',
+                [
+                  { coin: 'BTC', markPx: '95100', midPx: '95101' },
+                  { coin: 'ETH', midPx: '3410' },
+                ],
               ],
-            ],
-          ]),
-        })
-      )
+            ]),
+          })
+        )
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toMatchObject({
-          provider: providerKey,
-          marketId: 'BTC',
-          midPrice: '95101',
-          markPrice: '95100',
-          prevDayPrice: '95001',
-          openInterest: '9510000',
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toMatchObject({
+            provider: providerKey,
+            marketId: 'BTC',
+            midPrice: '95101',
+            markPrice: '95100',
+            prevDayPrice: '95001',
+            openInterest: '9510000',
+          })
+          expect(event.data.ETH).toMatchObject({
+            provider: providerKey,
+            marketId: 'ETH',
+            midPrice: '3410',
+            markPrice: '3401',
+          })
         })
-        expect(event.data.ETH).toMatchObject({
-          provider: providerKey,
-          marketId: 'ETH',
-          midPrice: '3410',
-          markPrice: '3401',
-        })
-      })
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'pac',
-          data: await encodeCompressed([
-            ['', [{ coin: 'BTC', openInterest: '101' }]],
-          ]),
-        })
-      )
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'pac',
+            data: await encodeCompressed([
+              ['', [{ coin: 'BTC', openInterest: '101' }]],
+            ]),
+          })
+        )
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toMatchObject({
-          provider: providerKey,
-          marketId: 'BTC',
-          midPrice: '95101',
-          markPrice: '95100',
-          openInterest: '9605100',
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toMatchObject({
+            provider: providerKey,
+            marketId: 'BTC',
+            midPrice: '95101',
+            markPrice: '95100',
+            openInterest: '9605100',
+          })
         })
-      })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('does not assign unkeyed compressed pac entries by registry order', async () => {
@@ -1896,91 +1940,96 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('emits known spot context from compressed sac and ignores unknown keys', async () => {
-      const spotMarket: Market = {
-        ...HL_SPOT_MARKET,
-        id: 'PURR/USDC',
-        baseAsset: {
-          ...HL_SPOT_MARKET.baseAsset,
-          id: '142',
-          displaySymbol: 'PURR',
-        },
+      vi.useFakeTimers()
+      try {
+        const spotMarket: Market = {
+          ...HL_SPOT_MARKET,
+          id: 'PURR/USDC',
+          baseAsset: {
+            ...HL_SPOT_MARKET.baseAsset,
+            id: '142',
+            displaySymbol: 'PURR',
+          },
+        }
+        const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
+        const listener = vi.fn()
+
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'sac',
+            data: await encodeCompressed({
+              PURR: {
+                prevDayPx: '1',
+                dayNtlVlm: '2',
+                markPx: '3',
+                midPx: '4',
+              },
+              '@142': {
+                prevDayPx: '1',
+                dayNtlVlm: '2',
+                markPx: '3',
+                midPx: '4',
+              },
+              'PURR/USDC': {
+                prevDayPx: '0.09',
+                dayNtlVlm: '1234567.89',
+                markPx: '0.1',
+                midPx: '0.1',
+                dayBaseVlm: '13',
+                circulatingSupply: '590000000000000.123456',
+              },
+              '#999': {
+                prevDayPx: '1',
+                dayNtlVlm: '2',
+                markPx: '3',
+                midPx: '4',
+              },
+            }),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data['PURR/USDC']).toMatchObject({
+            provider: providerKey,
+            marketId: 'PURR/USDC',
+            midPrice: '0.1',
+            markPrice: '0.1',
+            prevDayPrice: '0.09',
+            volume24h: '1234567.89',
+            marketCap: '59000000000000.0123456',
+          })
+          expect(event.data['PURR/USDC'].openInterest).toBeUndefined()
+          expect(event.data['#999']).toBeUndefined()
+        })
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'sac',
+            data: await encodeCompressed({
+              'PURR/USDC': { dayNtlVlm: '1235000' },
+            }),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data['PURR/USDC']).toMatchObject({
+            midPrice: '0.1',
+            markPrice: '0.1',
+            prevDayPrice: '0.09',
+            volume24h: '1235000',
+            marketCap: '59000000000000.0123456',
+          })
+        })
+      } finally {
+        vi.useRealTimers()
       }
-      const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            PURR: {
-              prevDayPx: '1',
-              dayNtlVlm: '2',
-              markPx: '3',
-              midPx: '4',
-            },
-            '@142': {
-              prevDayPx: '1',
-              dayNtlVlm: '2',
-              markPx: '3',
-              midPx: '4',
-            },
-            'PURR/USDC': {
-              prevDayPx: '0.09',
-              dayNtlVlm: '1234567.89',
-              markPx: '0.1',
-              midPx: '0.1',
-              dayBaseVlm: '13',
-              circulatingSupply: '590000000000000.123456',
-            },
-            '#999': {
-              prevDayPx: '1',
-              dayNtlVlm: '2',
-              markPx: '3',
-              midPx: '4',
-            },
-          }),
-        })
-      )
-
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data['PURR/USDC']).toMatchObject({
-          provider: providerKey,
-          marketId: 'PURR/USDC',
-          midPrice: '0.1',
-          markPrice: '0.1',
-          prevDayPrice: '0.09',
-          volume24h: '1234567.89',
-          marketCap: '59000000000000.0123456',
-        })
-        expect(event.data['PURR/USDC'].openInterest).toBeUndefined()
-        expect(event.data['#999']).toBeUndefined()
-      })
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            'PURR/USDC': { dayNtlVlm: '1235000' },
-          }),
-        })
-      )
-
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data['PURR/USDC']).toMatchObject({
-          midPrice: '0.1',
-          markPrice: '0.1',
-          prevDayPrice: '0.09',
-          volume24h: '1235000',
-          marketCap: '59000000000000.0123456',
-        })
-      })
     })
 
     it('merges perp asset contexts across sub-dexs into the marketsContext map', async () => {
@@ -2038,81 +2087,91 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('overlays fastAssetCtxs mid+mark onto a perp without clearing oracle/metadata', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allDexsAssetCtxs',
-          data: {
-            assetCtxs: [
-              [
-                '',
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'allDexsAssetCtxs',
+            data: {
+              assetCtxs: [
                 [
-                  {
-                    coin: 'BTC',
-                    funding: '0.0001',
-                    openInterest: '100',
-                    dayNtlVlm: '1000000',
-                    prevDayPx: '94000',
-                    markPx: '95000',
-                    midPx: '95001',
-                    oraclePx: '94998',
-                  },
+                  '',
+                  [
+                    {
+                      coin: 'BTC',
+                      funding: '0.0001',
+                      openInterest: '100',
+                      dayNtlVlm: '1000000',
+                      prevDayPx: '94000',
+                      markPx: '95000',
+                      midPx: '95001',
+                      oraclePx: '94998',
+                    },
+                  ],
                 ],
               ],
-            ],
-          },
-        })
-      )
+            },
+          })
+        )
 
-      // A later fastAssetCtxs frame updates mid + mark; the rarer asset-context
-      // feed's oracle/metadata must persist (field-level last-write-wins). The
-      // open-interest notional follows the emitted mark: 100 × 95480.
-      await seedFast({ BTC: { midPx: '95500', markPx: '95480' } })
+        // A later fastAssetCtxs frame updates mid + mark; the rarer asset-context
+        // feed's oracle/metadata must persist (field-level last-write-wins). The
+        // open-interest notional follows the emitted mark: 100 × 95480.
+        await seedFast({ BTC: { midPx: '95500', markPx: '95480' } })
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toMatchObject({
-          provider: providerKey,
-          marketId: 'BTC',
-          midPrice: '95500',
-          markPrice: '95480',
-          oraclePrice: '94998',
-          openInterest: '9548000',
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toMatchObject({
+            provider: providerKey,
+            marketId: 'BTC',
+            midPrice: '95500',
+            markPrice: '95480',
+            oraclePrice: '94998',
+            openInterest: '9548000',
+          })
         })
-      })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('emits a perp mid+mark from fastAssetCtxs with no allDexsAssetCtxs frame', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      // No allDexsAssetCtxs frame at all (HL's aggregate feed is idle); the
-      // high-frequency fastAssetCtxs feed alone drives mid + mark.
-      await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
-      await seedFast({ ETH: { midPx: '3411', markPx: '3412' } })
+        // No allDexsAssetCtxs frame at all (HL's aggregate feed is idle); the
+        // high-frequency fastAssetCtxs feed alone drives mid + mark.
+        await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
+        await seedFast({ ETH: { midPx: '3411', markPx: '3412' } })
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.channel).toBe('marketsContext')
-        expect(event.data.ETH).toEqual({
-          provider: providerKey,
-          marketId: 'ETH',
-          midPrice: '3411',
-          markPrice: '3412',
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.channel).toBe('marketsContext')
+          expect(event.data.ETH).toEqual({
+            provider: providerKey,
+            marketId: 'ETH',
+            midPrice: '3411',
+            markPrice: '3412',
+          })
         })
-      })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('coalesces a fastAssetCtxs backlog to its newest frame', async () => {
@@ -2158,256 +2217,281 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('updates a builder/sub-dex coin and merges incremental frames', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      await seedFast({
-        BTC: { midPx: '95000', markPx: '95001' },
-        'xyz:NVDA': { midPx: '145.2', markPx: '145.3' },
-      })
-      // Incremental frame: only BTC changes; xyz:NVDA must persist, and BTC's
-      // mark (absent from this frame) keeps its prior value.
-      await seedFast({ BTC: { midPx: '95500' } })
-
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toEqual({
-          provider: providerKey,
-          marketId: 'BTC',
-          midPrice: '95500',
-          markPrice: '95001',
+        await seedFast({
+          BTC: { midPx: '95000', markPx: '95001' },
+          'xyz:NVDA': { midPx: '145.2', markPx: '145.3' },
         })
-        expect(event.data['xyz:NVDA']).toEqual({
-          provider: providerKey,
-          marketId: 'xyz:NVDA',
-          midPrice: '145.2',
-          markPrice: '145.3',
+        // Incremental frame: only BTC changes; xyz:NVDA must persist, and BTC's
+        // mark (absent from this frame) keeps its prior value.
+        await seedFast({ BTC: { midPx: '95500' } })
+
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toEqual({
+            provider: providerKey,
+            marketId: 'BTC',
+            midPrice: '95500',
+            markPrice: '95001',
+          })
+          expect(event.data['xyz:NVDA']).toEqual({
+            provider: providerKey,
+            marketId: 'xyz:NVDA',
+            midPrice: '145.2',
+            markPrice: '145.3',
+          })
         })
-      })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('keeps untouched markets referentially stable across incremental frames', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      seedMids({ BTC: '95001', ETH: '3401' })
-      const first = listener.mock.calls.at(-1)?.[0]
+        seedMids({ BTC: '95001', ETH: '3401' })
+        const first = listener.mock.calls.at(-1)?.[0]
 
-      // fastAssetCtxs frame touches only BTC.
-      await seedFast({ BTC: { midPx: '95500' } })
+        // fastAssetCtxs frame touches only BTC.
+        await seedFast({ BTC: { midPx: '95500' } })
 
-      await vi.waitFor(() => {
-        const second = listener.mock.calls.at(-1)?.[0]
-        expect(second.data).not.toBe(first.data)
-        expect(second.data.ETH).toBe(first.data.ETH)
-        expect(second.data.BTC).not.toBe(first.data.BTC)
-        expect(second.data.BTC.midPrice).toBe('95500')
-        // The earlier snapshot must not have been mutated by the later frame.
-        expect(first.data.BTC.midPrice).toBe('95001')
-      })
-
-      const second = listener.mock.calls.at(-1)?.[0]
-
-      // pac frame touches only ETH.
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'pac',
-          data: await encodeCompressed([
-            ['', [{ coin: 'ETH', midPx: '3410' }]],
-          ]),
+        await waitForMarketsContext(() => {
+          const second = listener.mock.calls.at(-1)?.[0]
+          expect(second.data).not.toBe(first.data)
+          expect(second.data.ETH).toBe(first.data.ETH)
+          expect(second.data.BTC).not.toBe(first.data.BTC)
+          expect(second.data.BTC.midPrice).toBe('95500')
+          // The earlier snapshot must not have been mutated by the later frame.
+          expect(first.data.BTC.midPrice).toBe('95001')
         })
-      )
 
-      await vi.waitFor(() => {
-        const third = listener.mock.calls.at(-1)?.[0]
-        expect(third.data).not.toBe(second.data)
-        expect(third.data.BTC).toBe(second.data.BTC)
-        expect(third.data.ETH).not.toBe(second.data.ETH)
-        expect(third.data.ETH.midPrice).toBe('3410')
-      })
+        const second = listener.mock.calls.at(-1)?.[0]
+
+        // pac frame touches only ETH.
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'pac',
+            data: await encodeCompressed([
+              ['', [{ coin: 'ETH', midPx: '3410' }]],
+            ]),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const third = listener.mock.calls.at(-1)?.[0]
+          expect(third.data).not.toBe(second.data)
+          expect(third.data.BTC).toBe(second.data.BTC)
+          expect(third.data.ETH).not.toBe(second.data.ETH)
+          expect(third.data.ETH.midPrice).toBe('3410')
+        })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('drops a fast-only market whose mid is nulled and no other feed covers it', async () => {
-      const provider = createProvider()
-      const listener = vi.fn()
+      vi.useFakeTimers()
+      try {
+        const provider = createProvider()
+        const listener = vi.fn()
 
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      await seedFast({ ETH: { midPx: '3400' } })
+        await seedFast({ ETH: { midPx: '3400' } })
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.ETH).toEqual({
-          provider: providerKey,
-          marketId: 'ETH',
-          midPrice: '3400',
-          markPrice: '3400',
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.ETH).toEqual({
+            provider: providerKey,
+            marketId: 'ETH',
+            midPrice: '3400',
+            markPrice: '3400',
+          })
         })
-      })
 
-      // HL sends midPx null when the book empties; with no mark and no
-      // asset-context frame the market no longer maps to a context.
-      await seedFast({ ETH: { midPx: null } })
+        // HL sends midPx null when the book empties; with no mark and no
+        // asset-context frame the market no longer maps to a context.
+        await seedFast({ ETH: { midPx: null } })
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.ETH).toBeUndefined()
-      })
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.ETH).toBeUndefined()
+        })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('keeps perp entries referentially stable across sac frames touching only spot', async () => {
-      const spotMarket: Market = {
-        ...HL_SPOT_MARKET,
-        id: 'PURR/USDC',
-        baseAsset: {
-          ...HL_SPOT_MARKET.baseAsset,
-          id: '142',
-          displaySymbol: 'PURR',
-        },
+      vi.useFakeTimers()
+      try {
+        const spotMarket: Market = {
+          ...HL_SPOT_MARKET,
+          id: 'PURR/USDC',
+          baseAsset: {
+            ...HL_SPOT_MARKET.baseAsset,
+            id: '142',
+            displaySymbol: 'PURR',
+          },
+        }
+        const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
+        const listener = vi.fn()
+
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
+
+        seedMids({ BTC: '95001' })
+        const first = listener.mock.calls.at(-1)?.[0]
+
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'sac',
+            data: await encodeCompressed({
+              'PURR/USDC': {
+                prevDayPx: '0.09',
+                dayNtlVlm: '2',
+                markPx: '0.1',
+                midPx: '0.11',
+              },
+            }),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const second = listener.mock.calls.at(-1)?.[0]
+          expect(second.data).not.toBe(first.data)
+          expect(second.data.BTC).toBe(first.data.BTC)
+          expect(second.data['PURR/USDC']).toMatchObject({
+            provider: providerKey,
+            marketId: 'PURR/USDC',
+            midPrice: '0.11',
+            markPrice: '0.1',
+          })
+        })
+      } finally {
+        vi.useRealTimers()
       }
-      const provider = createEnrichingProvider([...HL_MARKETS, spotMarket])
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
-
-      seedMids({ BTC: '95001' })
-      const first = listener.mock.calls.at(-1)?.[0]
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            'PURR/USDC': {
-              prevDayPx: '0.09',
-              dayNtlVlm: '2',
-              markPx: '0.1',
-              midPx: '0.11',
-            },
-          }),
-        })
-      )
-
-      await vi.waitFor(() => {
-        const second = listener.mock.calls.at(-1)?.[0]
-        expect(second.data).not.toBe(first.data)
-        expect(second.data.BTC).toBe(first.data.BTC)
-        expect(second.data['PURR/USDC']).toMatchObject({
-          provider: providerKey,
-          marketId: 'PURR/USDC',
-          midPrice: '0.11',
-          markPrice: '0.1',
-        })
-      })
     })
 
     it.each([
       'hyperliquid',
       'hyperliquid-testnet',
     ])('stamps the %s provider key on every emitted market context', async (key) => {
-      const spotMarket: Market = {
-        ...HL_SPOT_MARKET,
-        id: 'PURR/USDC',
-        baseAsset: {
-          ...HL_SPOT_MARKET.baseAsset,
-          id: '142',
-          displaySymbol: 'PURR',
-        },
+      vi.useFakeTimers()
+      try {
+        const spotMarket: Market = {
+          ...HL_SPOT_MARKET,
+          id: 'PURR/USDC',
+          baseAsset: {
+            ...HL_SPOT_MARKET.baseAsset,
+            id: '142',
+            displaySymbol: 'PURR',
+          },
+        }
+        marketsFetchMock.mockResolvedValue({
+          markets: [...HL_MARKETS, spotMarket],
+        })
+        const provider = new HyperliquidWsProvider(
+          'wss://api.hyperliquid.xyz/ws',
+          key,
+          freshClient()
+        )
+        const allListener = vi.fn()
+        const perpListener = vi.fn()
+        const spotListener = vi.fn()
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: key },
+          allListener
+        )
+        await provider.subscribe(
+          { channel: 'marketContext', dex: key, marketId: 'BTC' },
+          perpListener
+        )
+        await provider.subscribe(
+          { channel: 'marketContext', dex: key, marketId: 'PURR/USDC' },
+          spotListener
+        )
+
+        seedMids({ BTC: '95001' })
+        await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'sac',
+            data: await encodeCompressed({
+              'PURR/USDC': {
+                prevDayPx: '0.09',
+                dayNtlVlm: '2',
+                markPx: '0.1',
+                midPx: '0.11',
+              },
+            }),
+          })
+        )
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'activeAssetCtx',
+            data: {
+              coin: 'BTC',
+              ctx: {
+                funding: 0.0001,
+                openInterest: 100,
+                dayNtlVlm: 1000000,
+                prevDayPx: 94000,
+                markPx: 95000,
+                midPx: 95001,
+                oraclePx: 94998,
+              },
+            },
+          })
+        )
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'activeSpotAssetCtx',
+            data: {
+              coin: 'PURR/USDC',
+              ctx: {
+                prevDayPx: '0.09',
+                dayNtlVlm: '2',
+                markPx: '0.1',
+                midPx: '0.11',
+              },
+            },
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const data = allListener.mock.calls.at(-1)?.[0].data
+          expect(data?.BTC?.provider).toBe(key)
+          expect(data?.ETH?.provider).toBe(key)
+          expect(data?.['PURR/USDC']?.provider).toBe(key)
+        })
+        expect(perpListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
+        expect(spotListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
+      } finally {
+        vi.useRealTimers()
       }
-      marketsFetchMock.mockResolvedValue({
-        markets: [...HL_MARKETS, spotMarket],
-      })
-      const provider = new HyperliquidWsProvider(
-        'wss://api.hyperliquid.xyz/ws',
-        key,
-        freshClient()
-      )
-      const allListener = vi.fn()
-      const perpListener = vi.fn()
-      const spotListener = vi.fn()
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: key },
-        allListener
-      )
-      await provider.subscribe(
-        { channel: 'marketContext', dex: key, marketId: 'BTC' },
-        perpListener
-      )
-      await provider.subscribe(
-        { channel: 'marketContext', dex: key, marketId: 'PURR/USDC' },
-        spotListener
-      )
-
-      seedMids({ BTC: '95001' })
-      await seedFast({ ETH: { midPx: '3400', markPx: '3401' } })
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            'PURR/USDC': {
-              prevDayPx: '0.09',
-              dayNtlVlm: '2',
-              markPx: '0.1',
-              midPx: '0.11',
-            },
-          }),
-        })
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'activeAssetCtx',
-          data: {
-            coin: 'BTC',
-            ctx: {
-              funding: 0.0001,
-              openInterest: 100,
-              dayNtlVlm: 1000000,
-              prevDayPx: 94000,
-              markPx: 95000,
-              midPx: 95001,
-              oraclePx: 94998,
-            },
-          },
-        })
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'activeSpotAssetCtx',
-          data: {
-            coin: 'PURR/USDC',
-            ctx: {
-              prevDayPx: '0.09',
-              dayNtlVlm: '2',
-              markPx: '0.1',
-              midPx: '0.11',
-            },
-          },
-        })
-      )
-
-      await vi.waitFor(() => {
-        const data = allListener.mock.calls.at(-1)?.[0].data
-        expect(data?.BTC?.provider).toBe(key)
-        expect(data?.ETH?.provider).toBe(key)
-        expect(data?.['PURR/USDC']?.provider).toBe(key)
-      })
-      expect(perpListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
-      expect(spotListener.mock.calls.at(-1)?.[0].data.provider).toBe(key)
     })
 
     it('emits orderbook event for compact l2 snapshot frames', async () => {
@@ -3733,6 +3817,10 @@ describe('HyperliquidWsProvider', () => {
         size: '0.1',
         entryPrice: '94000',
         leverage: '10',
+        positionValue: '9500',
+        returnOnEquity: '10.63829787234042553191489361702127659574',
+        effectiveLeverage: '10.11',
+        liquidationDistance: '10.53',
       })
     })
 
@@ -4368,65 +4456,70 @@ describe('HyperliquidWsProvider', () => {
     })
 
     it('drops an outcome coin from the perp and spot asset-context frames', async () => {
-      const purrSpot: Market = {
-        ...HL_SPOT_MARKET,
-        id: 'PURR/USDC',
-        baseAsset: {
-          ...HL_SPOT_MARKET.baseAsset,
-          id: '142',
-          displaySymbol: 'PURR',
-        },
-      }
-      const provider = createEnrichingProvider([...HL_MARKETS, purrSpot])
-      const listener = vi.fn()
-
-      await provider.subscribe(
-        { channel: 'marketsContext', dex: 'hyperliquid' },
-        listener
-      )
-
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'allDexsAssetCtxs',
-          data: {
-            assetCtxs: [
-              ['', [perpCtx('BTC', '95001'), perpCtx('#26140', '0.42')]],
-            ],
+      vi.useFakeTimers()
+      try {
+        const purrSpot: Market = {
+          ...HL_SPOT_MARKET,
+          id: 'PURR/USDC',
+          baseAsset: {
+            ...HL_SPOT_MARKET.baseAsset,
+            id: '142',
+            displaySymbol: 'PURR',
           },
-        })
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'sac',
-          data: await encodeCompressed({
-            'PURR/USDC': {
-              prevDayPx: '0.09',
-              dayNtlVlm: '2',
-              markPx: '0.1',
-              midPx: '0.11',
-            },
-            '#26140': {
-              prevDayPx: '0.4',
-              dayNtlVlm: '2',
-              markPx: '0.43',
-              midPx: '0.42',
-            },
-          }),
-        })
-      )
+        }
+        const provider = createEnrichingProvider([...HL_MARKETS, purrSpot])
+        const listener = vi.fn()
 
-      await vi.waitFor(() => {
-        const event = listener.mock.calls.at(-1)?.[0]
-        expect(event.data.BTC).toMatchObject({ marketId: 'BTC' })
-        expect(event.data['PURR/USDC']).toMatchObject({
-          marketId: 'PURR/USDC',
-        })
-      })
+        await provider.subscribe(
+          { channel: 'marketsContext', dex: 'hyperliquid' },
+          listener
+        )
 
-      for (const [event] of listener.mock.calls) {
-        expect(
-          Object.keys(event.data).filter((id: string) => id.startsWith('#'))
-        ).toEqual([])
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'allDexsAssetCtxs',
+            data: {
+              assetCtxs: [
+                ['', [perpCtx('BTC', '95001'), perpCtx('#26140', '0.42')]],
+              ],
+            },
+          })
+        )
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'sac',
+            data: await encodeCompressed({
+              'PURR/USDC': {
+                prevDayPx: '0.09',
+                dayNtlVlm: '2',
+                markPx: '0.1',
+                midPx: '0.11',
+              },
+              '#26140': {
+                prevDayPx: '0.4',
+                dayNtlVlm: '2',
+                markPx: '0.43',
+                midPx: '0.42',
+              },
+            }),
+          })
+        )
+
+        await waitForMarketsContext(() => {
+          const event = listener.mock.calls.at(-1)?.[0]
+          expect(event.data.BTC).toMatchObject({ marketId: 'BTC' })
+          expect(event.data['PURR/USDC']).toMatchObject({
+            marketId: 'PURR/USDC',
+          })
+        })
+
+        for (const [event] of listener.mock.calls) {
+          expect(
+            Object.keys(event.data).filter((id: string) => id.startsWith('#'))
+          ).toEqual([])
+        }
+      } finally {
+        vi.useRealTimers()
       }
     })
 

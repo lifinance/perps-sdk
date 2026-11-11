@@ -1,3 +1,4 @@
+import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -59,6 +60,10 @@ describe('mapPosition', () => {
       leverage: '5',
       marginUsed: '401',
       initialMarginRequirement: '401',
+      positionValue: '2020.5',
+      returnOnEquity: '3.86',
+      effectiveLeverage: '5.04',
+      liquidationDistance: '9.77',
       marginMode: MarginMode.CROSS,
     })
   })
@@ -70,6 +75,79 @@ describe('mapPosition', () => {
     )
     expect(mapped?.side).toBe(PositionSide.SHORT)
     expect(mapped?.size).toBe('2.5')
+  })
+
+  it('sets positionValue to the notionalValue magnitude', () => {
+    expect(
+      mapPosition(positionFixture({ notionalValue: '-2020.5' }), MARKET)
+        ?.positionValue
+    ).toBe('2020.5')
+  })
+
+  it.each([
+    ['0.0386', '3.86'],
+    ['-0.44', '-44'],
+    ['0', '0'],
+  ])('changes the venue returnOnEquity fraction %s to the percent %s', (returnOnEquity, percent) => {
+    expect(
+      mapPosition(positionFixture({ returnOnEquity }), MARKET)?.returnOnEquity
+    ).toBe(percent)
+  })
+
+  // Live positionsPerps row: the venue figure is on the entry notional ÷ leverage
+  // (0.035 × 4045.34 ÷ 25), not on usedMargin, which follows the mark.
+  it('re-marks returnOnEquity on the entry notional ÷ leverage, like the venue figure', () => {
+    const mapped = mapPosition(
+      positionFixture({
+        market: 'XAU-USD.P',
+        direction: 'short',
+        netQuantity: '0.035',
+        averageEntryPrice: '4045.34',
+        usedMargin: '5.60782396',
+        unrealizedPnl: '1.391301',
+        markPrice: '4005.588571',
+        notionalValue: '140.195599',
+        leverage: '25',
+        returnOnEquity: '0.24566202805485535738122665303075355135',
+      }),
+      MARKET
+    )
+    const remarked = mapped && remarkPosition(mapped, '4005.588571')
+
+    expect(Number(mapped?.returnOnEquity)).toBeCloseTo(24.5662, 4)
+    expect(Number(remarked?.returnOnEquity)).toBeCloseTo(24.5662, 4)
+  })
+
+  it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(
+      positionFixture({ notionalValue: 'n/a' }),
+      MARKET
+    )
+    expect(mapped?.positionValue).toBe('2020.5')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('calculates returnOnEquity on the entry notional ÷ leverage when the venue figure is invalid', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = mapPosition(positionFixture({ returnOnEquity: '' }), MARKET)
+    // 15.5 ÷ (10 × 200.5 ÷ 5) × 100
+    expect(mapped?.returnOnEquity).toBe(
+      '3.86533665835411471321695760598503740648'
+    )
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('leaves liquidationDistance absent when liquidationPrice is not a decimal', () => {
+    const mapped = mapPosition(
+      positionFixture({ liquidationPrice: 'NaN' }),
+      MARKET
+    )
+    expect(mapped).not.toHaveProperty('liquidationDistance')
   })
 
   // Ondo already signs funding from the account's point of view, so

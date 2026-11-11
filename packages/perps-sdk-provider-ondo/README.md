@@ -40,6 +40,19 @@ const client = createPerpsClient({
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
 - `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
+## WebSocket market context
+
+The `marketsContext` and `marketContext` channels use two Ondo wire channels:
+
+- `markPricesPerps` gives `markPrice` and `oraclePrice`.
+- `fundingRatesPerps` gives `funding`.
+
+A `marketsContext` subscription sends the two subscribe frames with no
+`markets` filter. A `marketContext` subscription sends them with
+`markets: [marketId]`. The provider emits the context of a market after the
+first mark price of that market. Ondo contexts have no `midPrice` property.
+The best bid and the best ask are on the `orderbook` channel (`depthBooksPerps`).
+
 ## WebSocket account summaries
 
 `accountSummary` seeds from `/v1/perps/balance` and refreshes after fills and
@@ -53,6 +66,24 @@ Authenticated channels reserve their wallet binding while registry and balance
 reads are pending, before acquiring wires. Releasing the last wire does not
 retire a binding still owned by another pending or active channel. A failed
 opening releases only its own reservation, leaving sibling streams intact.
+
+## Positions
+
+`getPositions` and the `positions` stream map each Ondo `ApiPosition` row to a
+`Position`. `marginUsed` and `initialMarginRequirement` are both the venue
+`usedMargin`. `returnOnEquity` is the venue `returnOnEquity` × 100.
+
+The [Ondo Get Positions reference](https://docs.ondoperps.xyz/api-reference/positions/get-positions)
+describes `returnOnEquity` as "Return on equity for this position" and states no
+unit. A live `positionsPerps` message shows that the field is a fraction of the
+entry notional ÷ the current leverage, not of `usedMargin`. For an XAU short with
+`netQuantity` `0.035`, `averageEntryPrice` `4045.34`, `leverage` `25` and
+`unrealizedPnl` `1.391301`, the venue sent `0.245662…`. That is
+`1.391301 ÷ (0.035 × 4045.34 ÷ 25)`. `unrealizedPnl ÷ usedMargin` gives
+`0.248103…`, because `usedMargin` follows the mark price.
+
+`remarkPosition` does not keep the venue figure. It calculates the same formula
+at the new mark: `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
 
 ## Orders
 

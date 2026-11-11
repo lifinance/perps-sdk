@@ -1,5 +1,34 @@
 # @lifi/perps-sdk
 
+## 33.0.0
+
+### Major Changes
+
+- [#711](https://github.com/lifinance/perps-sdk/pull/711) [`8342127`](https://github.com/lifinance/perps-sdk/commit/834212751d932dfe81f8502d714316da08cf396a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext.midPrice` is optional. An absent `midPrice` means that the source gives no order-book midpoint in that message. Code that reads `midPrice` must handle `undefined`. The Hyperliquid and Lighter providers set `midPrice` as before.
+
+### Minor Changes
+
+- [#712](https://github.com/lifinance/perps-sdk/pull/712) [`c2a413a`](https://github.com/lifinance/perps-sdk/commit/c2a413abce7635c1b2148767654c2e31f7efd8ac) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The `marketsContext` channel delivers a maximum of one event each `WS_MARKETS_CONTEXT_INTERVAL_MS` (1,000 ms) for each provider. The first event after the channel opens is immediate. Wire frames inside the gap coalesce, and the newest context map is delivered when the gap ends. `WsProviderBase.emitMarketsContext` holds the one implementation. The `marketContext` channel and all other channels have no limit.
+
+- [#713](https://github.com/lifinance/perps-sdk/pull/713) [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position` has four optional fields: `positionValue`, `returnOnEquity`, `effectiveLeverage` and `liquidationDistance`.
+  Each provider sets them on REST reads and on the `positions` stream.
+  `effectiveLeverage` and `liquidationDistance` use half-up rounding to two decimal places.
+  `buildPosition` removes stale calculated leverage and distance, and omits distance for nonpositive liquidation prices.
+
+  `remarkPosition` recalculates fields for a live mark with the input snapshot's margin.
+  It preserves snapshot PnL when the entry price or size cannot support recalculation.
+
+### Patch Changes
+
+- Updated dependencies [[`8342127`](https://github.com/lifinance/perps-sdk/commit/834212751d932dfe81f8502d714316da08cf396a), [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20)]:
+  - @lifi/perps-types@28.0.0
+
+## 32.0.0
+
+### Major Changes
+
+- [#707](https://github.com/lifinance/perps-sdk/pull/707) [`1230b65`](https://github.com/lifinance/perps-sdk/commit/1230b6517f9c27b6ce53a195a4d9107aa076f44a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `PerpsWsClient.subscribeStatus` for passive, provider-specific socket observation. Custom `WsProvider` implementations must supply the required `subscribeStatus` method. `WsProviderBase` supplies it for all built-in providers.
+
 ## 31.1.1
 
 ### Patch Changes
