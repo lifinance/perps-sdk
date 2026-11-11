@@ -4,6 +4,9 @@ Trading formulas. Every formula takes and gives decimal strings, alone or in a `
 
 Each formula `X` throws `PerpsError(ValidationError)` on an input that does not match the decimal pattern, or on a degenerate input such as a zero divisor. The error message names the parameter. Each `X` has a `safeX` pair that logs a warning and gives `undefined`. A money-path caller uses `X`; a display caller uses `safeX`.
 
+`Position.returnOnEquity` is unrounded. Venue ROE keeps the converted source precision.
+Calculated ROE keeps the decimal helper precision. Consumers choose the display precision.
+
 Some helpers read SDK structures instead:
 
 - `estimateRealizedPnl(order, position)` takes an `Order` and a `Position`, and gives a decimal string, or `undefined` when the order does not reduce the position.

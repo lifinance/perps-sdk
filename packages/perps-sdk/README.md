@@ -428,6 +428,7 @@ and on the `positions` stream:
   Ondo send this figure as a fraction, and the SDK multiplies it by 100. For
   Lighter, the SDK calculates it. Margin that the user adds to an isolated
   position does not change it.
+  The SDK does not round ROE for display.
 - `effectiveLeverage`: `positionValue ÷ marginUsed`, rounded half-up to two
   decimal places for display.
 - `liquidationDistance`: the distance from `markPrice` to `liquidationPrice`,
