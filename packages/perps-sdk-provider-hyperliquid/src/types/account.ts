@@ -25,6 +25,8 @@ export type HlPosition = {
   liquidationPx: string | null
   /** Unrealized PnL in quote-asset units. */
   unrealizedPnl: string
+  /** Return on the initial margin at entry, as a fraction (`'0.1'` is 10%). */
+  returnOnEquity?: string
   /** Margin currently assigned to this position. */
   marginUsed: string
   /** Leverage mode and numeric leverage multiplier. */

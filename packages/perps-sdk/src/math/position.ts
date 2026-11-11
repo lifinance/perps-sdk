@@ -600,6 +600,7 @@ const isPositiveDecimalString = (value: unknown): value is string =>
   isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
 
 /** Complete a position, retaining explicit venue value and ROE.
+ * Calculated ROE uses the initial margin at entry: `|size| × entryPrice ÷ leverage`.
  * Rebuild leverage and liquidation distance with half-up rounding to two decimals.
  * Unusable inputs omit calculated fields. Never throws or warns.
  * @public
@@ -611,8 +612,15 @@ export function buildPosition(position: Position): Position {
     ...fields
   } = position
   const built: Position = fields
-  const { size, markPrice, liquidationPrice, unrealizedPnl, marginUsed } =
-    position
+  const {
+    size,
+    entryPrice,
+    leverage,
+    markPrice,
+    liquidationPrice,
+    unrealizedPnl,
+    marginUsed,
+  } = position
   const hasMarkPrice = isPositiveDecimalString(markPrice)
   const hasMargin = isPositiveDecimalString(marginUsed)
   if (
@@ -624,10 +632,17 @@ export function buildPosition(position: Position): Position {
   }
   if (
     built.returnOnEquity === undefined &&
-    hasMargin &&
-    isDecimalString(unrealizedPnl)
+    isDecimalString(unrealizedPnl) &&
+    isPositiveDecimalString(size) &&
+    isPositiveDecimalString(entryPrice) &&
+    isPositiveDecimalString(leverage)
   ) {
-    built.returnOnEquity = calculateRoe(unrealizedPnl, marginUsed)
+    built.returnOnEquity = calculateInitialMarginRoe(
+      unrealizedPnl,
+      size,
+      entryPrice,
+      leverage
+    )
   }
   if (hasMargin && isDecimalString(built.positionValue)) {
     built.effectiveLeverage = roundDecimalString(
@@ -652,7 +667,8 @@ export function buildPosition(position: Position): Position {
   return built
 }
 
-/** Recalculate mark-dependent fields using the input snapshot's margin.
+/** Recalculate mark-dependent fields. ROE uses the initial margin at entry, and
+ * effective leverage uses the input snapshot's margin.
  * Invalid marks return the input. Invalid entry prices or sizes retain its PnL.
  * The input is unchanged, and valid marks return a new position.
  * @public

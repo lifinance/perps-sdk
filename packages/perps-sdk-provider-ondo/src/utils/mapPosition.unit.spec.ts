@@ -94,28 +94,28 @@ describe('mapPosition', () => {
     ).toBe(percent)
   })
 
-  // Ondo's documented Get Positions example sends returnOnEquity '0.022' for
-  // 25 ÷ 1125 (0.0222…), so the venue figure can differ from the formula.
-  it('replaces the venue returnOnEquity with unrealizedPnl ÷ usedMargin × 100 at the same mark', () => {
+  // Live positionsPerps row: the venue figure is on the initial margin at entry
+  // (0.035 × 4045.34 ÷ 25), not on usedMargin, which follows the mark.
+  it('re-marks returnOnEquity on the initial margin at entry, like the venue figure', () => {
     const mapped = mapPosition(
       positionFixture({
-        averageEntryPrice: '200',
-        markPrice: '200.49',
-        usedMargin: '400',
-        unrealizedPnl: '4.9',
-        notionalValue: '2004.9',
-        returnOnEquity: '0.012',
+        market: 'XAU-USD.P',
+        direction: 'short',
+        netQuantity: '0.035',
+        averageEntryPrice: '4045.34',
+        usedMargin: '5.60782396',
+        unrealizedPnl: '1.391301',
+        markPrice: '4005.588571',
+        notionalValue: '140.195599',
+        leverage: '25',
+        returnOnEquity: '0.24566202805485535738122665303075355135',
       }),
       MARKET
     )
+    const remarked = mapped && remarkPosition(mapped, '4005.588571')
 
-    expect(mapped?.returnOnEquity).toBe('1.2')
-    expect(mapped && remarkPosition(mapped, '200.49')).toMatchObject({
-      markPrice: '200.49',
-      unrealizedPnl: '4.9',
-      marginUsed: '400',
-      returnOnEquity: '1.225',
-    })
+    expect(Number(mapped?.returnOnEquity)).toBeCloseTo(24.5662, 4)
+    expect(Number(remarked?.returnOnEquity)).toBeCloseTo(24.5662, 4)
   })
 
   it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {
@@ -130,11 +130,11 @@ describe('mapPosition', () => {
     warn.mockRestore()
   })
 
-  it('calculates returnOnEquity from unrealizedPnl and usedMargin when the venue figure is invalid', () => {
+  it('calculates returnOnEquity on the initial margin at entry when the venue figure is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const mapped = mapPosition(positionFixture({ returnOnEquity: '' }), MARKET)
-    // 15.5 ÷ 401 × 100
+    // 15.5 ÷ (10 × 200.5 ÷ 5) × 100
     expect(mapped?.returnOnEquity).toBe(
       '3.86533665835411471321695760598503740648'
     )

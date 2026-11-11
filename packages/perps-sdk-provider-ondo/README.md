@@ -75,16 +75,15 @@ opening releases only its own reservation, leaving sibling streams intact.
 
 The [Ondo Get Positions reference](https://docs.ondoperps.xyz/api-reference/positions/get-positions)
 describes `returnOnEquity` as "Return on equity for this position" and states no
-unit. The provider reads the field as a fraction because the documented example
-sends `"0.022"` for an `unrealizedPnl` of `25` on a `usedMargin` of `1125`.
-No captured live payload confirms the unit.
+unit. A live `positionsPerps` message shows that the field is a fraction on the
+initial margin at entry, not on `usedMargin`. For an XAU short with
+`netQuantity` `0.035`, `averageEntryPrice` `4045.34`, `leverage` `25` and
+`unrealizedPnl` `1.391301`, the venue sent `0.245662…`. That is
+`1.391301 ÷ (0.035 × 4045.34 ÷ 25)`. `unrealizedPnl ÷ usedMargin` gives
+`0.248103…`, because `usedMargin` follows the mark price.
 
-`remarkPosition` does not keep the venue figure. It calculates
-`unrealizedPnl ÷ marginUsed × 100` from the `usedMargin` of the mapped snapshot.
-The result can differ at an unchanged mark. In the documented example,
-`25 ÷ 1125` is `0.0222…`, but the venue sends `"0.022"`. Thus, a venue
-`"0.012"` maps to `1.2`, and at the same mark `remarkPosition` gives `1.225` for
-an `unrealizedPnl` of `4.9` on a `usedMargin` of `400`.
+`remarkPosition` does not keep the venue figure. It calculates the same formula
+at the new mark: `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
 
 ## Orders
 

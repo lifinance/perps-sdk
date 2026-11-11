@@ -93,7 +93,7 @@ describe('mapPosition (Hyperliquid)', () => {
       unrealizedPnl: '100',
       marginUsed: '940',
       positionValue: '9500',
-      // 100 ÷ 940 × 100
+      // 100 ÷ (0.1 × 94000 ÷ 10) × 100
       returnOnEquity: '10.63829787234042553191489361702127659574',
       // 9500 ÷ 940
       effectiveLeverage: '10.11',
@@ -102,17 +102,32 @@ describe('mapPosition (Hyperliquid)', () => {
     })
   })
 
+  it('changes the venue returnOnEquity fraction to a percent', () => {
+    // 40x isolated: marginUsed holds the added margin and the unrealized PnL
+    const result = map(
+      makeAp({
+        leverage: { type: 'isolated', value: 40 },
+        marginUsed: '1265',
+        returnOnEquity: '0.0985',
+      })
+    )
+
+    expect(result.returnOnEquity).toBe('9.85')
+  })
+
   it('takes the positionValue magnitude', () => {
     expect(
       map(makeAp({ szi: '-0.25', positionValue: '-23750' })).positionValue
     ).toBe('23750')
   })
 
-  it('leaves returnOnEquity and effectiveLeverage absent when marginUsed is zero', () => {
+  it('leaves effectiveLeverage absent and keeps returnOnEquity when marginUsed is zero', () => {
     const result = map(makeAp({ marginUsed: '0' }))
 
-    expect(result).not.toHaveProperty('returnOnEquity')
     expect(result).not.toHaveProperty('effectiveLeverage')
+    expect(result.returnOnEquity).toBe(
+      '10.63829787234042553191489361702127659574'
+    )
     expect(result.liquidationDistance).toBe('10.53')
   })
 
