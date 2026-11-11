@@ -3,6 +3,7 @@ import {
   createPerpsClient,
   isDecimalString,
   type StorageAdapter,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
 } from '@lifi/perps-sdk'
 import {
   OrderStatus,
@@ -733,6 +734,7 @@ describe('OndoWsProvider', () => {
       listener.mock.calls.at(-1)?.[0].data[market]
 
     it('sets midPrice to the exact top-of-book midpoint', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -746,6 +748,7 @@ describe('OndoWsProvider', () => {
           [['227.60', '80.0']]
         )
       )
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
         provider: 'ondo',
@@ -756,7 +759,31 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', () => {
+      vi.useFakeTimers()
+      const p = makeProvider()
+      const listener = vi.fn()
+      inject(p, 'marketsContext', listener)
+
+      feed(p, markFrame('AAPL-USD.P', '227.50'))
+      expect(listener).toHaveBeenCalledTimes(1)
+      const first = lastContext(listener, 'AAPL-USD.P')
+
+      feed(p, markFrame('AAPL-USD.P', '227.60'))
+      feed(p, markFrame('AAPL-USD.P', '227.70'))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(1)
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(lastContext(listener, 'AAPL-USD.P').markPrice).toBe('227.70')
+      // The delivered snapshot is its own object: later frames do not touch it.
+      expect(first.markPrice).toBe('227.50')
+      p.close()
+    })
+
     it('calculates the mid from the best level of each side when a frame carries several', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -776,6 +803,7 @@ describe('OndoWsProvider', () => {
           ]
         )
       )
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.5')
       p.close()
@@ -803,6 +831,7 @@ describe('OndoWsProvider', () => {
     it.each(
       oneSidedBooks
     )('returns midPrice to the mark price for a one-sided book (%s)', (_, bids, asks) => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -816,12 +845,15 @@ describe('OndoWsProvider', () => {
           [['227.60', '80.0']]
         )
       )
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
       expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.5')
 
       feed(p, topOfBookFrame('AAPL-USD.P', bids, asks))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
       expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.50')
 
       feed(p, markFrame('AAPL-USD.P', '228.00'))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
       expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('228.00')
       p.close()
     })
@@ -852,6 +884,7 @@ describe('OndoWsProvider', () => {
     })
 
     it('keeps the book mid when a later mark price frame arrives', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -866,6 +899,7 @@ describe('OndoWsProvider', () => {
         )
       )
       feed(p, markFrame('AAPL-USD.P', '228.00'))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
         provider: 'ondo',
@@ -938,6 +972,7 @@ describe('OndoWsProvider', () => {
     })
 
     it('drops a known oracle price when a later frame omits it', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -957,6 +992,7 @@ describe('OndoWsProvider', () => {
         channel: 'markPricesPerps',
         data: [{ market: 'AAPL-USD.P', markPrice: '228.00' }],
       })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       const context = listener.mock.calls.at(-1)?.[0].data['AAPL-USD.P']
       expect(context.markPrice).toBe('228.00')
@@ -965,6 +1001,7 @@ describe('OndoWsProvider', () => {
     })
 
     it('merges funding rates into the context once the mark price is known', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -994,6 +1031,7 @@ describe('OndoWsProvider', () => {
         channel: 'markPricesPerps',
         data: [{ market: 'AAPL-USD.P', markPrice: '227.50' }],
       })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
       expect(listener).toHaveBeenLastCalledWith({
         channel: 'marketsContext',
         data: {
@@ -1082,6 +1120,7 @@ describe('OndoWsProvider', () => {
     })
 
     it('stamps the instance provider key on marketsContext and marketContext emits', () => {
+      vi.useFakeTimers()
       const p = new OndoWsProvider(
         'ws://127.0.0.1:1',
         'ondo-testnet',
@@ -1102,6 +1141,7 @@ describe('OndoWsProvider', () => {
           [['227.60', '80.0']]
         )
       )
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       expect(lastContext(allListener, 'AAPL-USD.P').provider).toBe(
         'ondo-testnet'

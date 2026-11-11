@@ -1,4 +1,7 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import {
+  createPerpsClient,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
+} from '@lifi/perps-sdk'
 import type { AccountSummary } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
@@ -330,10 +333,17 @@ describe('Lighter non-settlement margin holdings', () => {
   })
 
   it('revalues margin-only holdings when their spot mark changes', async () => {
-    const { summaries, sendAssets, mark, assets } = await subscribe()
-    sendAssets(assets, true)
-    mark('3000')
-    expect(summaries.at(-1)?.portfolioValue).toBe('43.16460174')
+    vi.useFakeTimers()
+    try {
+      const { summaries, sendAssets, mark, assets } = await subscribe()
+      sendAssets(assets, true)
+      // The second mark lands inside the delivery gap of the spot marks.
+      mark('3000')
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+      expect(summaries.at(-1)?.portfolioValue).toBe('43.16460174')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('upserts both routes and removes zeroed margin holdings in deltas', async () => {

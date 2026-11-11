@@ -969,10 +969,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   private emitContexts(markets: string[]): void {
-    this.emit('marketsContext', {
-      channel: 'marketsContext',
-      data: { ...this.contexts },
-    })
+    this.emitMarketsContext(() => ({ ...this.contexts }))
     for (const market of markets) {
       const context = this.contexts[market]
       if (context !== undefined) {
