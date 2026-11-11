@@ -94,9 +94,9 @@ describe('mapPosition', () => {
     ).toBe(percent)
   })
 
-  // Live positionsPerps row: the venue figure is on the initial margin at entry
+  // Live positionsPerps row: the venue figure is on the entry notional ÷ leverage
   // (0.035 × 4045.34 ÷ 25), not on usedMargin, which follows the mark.
-  it('re-marks returnOnEquity on the initial margin at entry, like the venue figure', () => {
+  it('re-marks returnOnEquity on the entry notional ÷ leverage, like the venue figure', () => {
     const mapped = mapPosition(
       positionFixture({
         market: 'XAU-USD.P',
@@ -130,7 +130,7 @@ describe('mapPosition', () => {
     warn.mockRestore()
   })
 
-  it('calculates returnOnEquity on the initial margin at entry when the venue figure is invalid', () => {
+  it('calculates returnOnEquity on the entry notional ÷ leverage when the venue figure is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const mapped = mapPosition(positionFixture({ returnOnEquity: '' }), MARKET)

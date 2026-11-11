@@ -600,7 +600,7 @@ const isPositiveDecimalString = (value: unknown): value is string =>
   isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
 
 /** Complete a position, retaining explicit venue value and ROE.
- * Calculated ROE uses the initial margin at entry: `|size| × entryPrice ÷ leverage`.
+ * Calculated ROE uses the entry notional ÷ the current leverage: `|size| × entryPrice ÷ leverage`.
  * Rebuild leverage and liquidation distance with half-up rounding to two decimals.
  * Unusable inputs omit calculated fields. Never throws or warns.
  * @public
@@ -667,7 +667,7 @@ export function buildPosition(position: Position): Position {
   return built
 }
 
-/** Recalculate mark-dependent fields. ROE uses the initial margin at entry, and
+/** Recalculate mark-dependent fields. ROE uses the entry notional ÷ the leverage, and
  * effective leverage uses the input snapshot's margin.
  * Invalid marks return the input. Invalid entry prices or sizes retain its PnL.
  * The input is unchanged, and valid marks return a new position.

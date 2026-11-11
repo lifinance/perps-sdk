@@ -1540,7 +1540,7 @@ describe('buildPosition', () => {
     expect(built.positionValue).toBe('100000')
   })
 
-  it('calculates returnOnEquity on the initial margin at entry, not on marginUsed', () => {
+  it('calculates returnOnEquity on the entry notional ÷ leverage, not on marginUsed', () => {
     // Hyperliquid isolated marginUsed: 10000 posted + 100 added + 500 unrealized PnL
     const built = buildPosition(
       isolatedPosition({ marginUsed: '10600', unrealizedPnl: '500' })

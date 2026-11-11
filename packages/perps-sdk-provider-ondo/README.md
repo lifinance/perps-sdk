@@ -75,8 +75,8 @@ opening releases only its own reservation, leaving sibling streams intact.
 
 The [Ondo Get Positions reference](https://docs.ondoperps.xyz/api-reference/positions/get-positions)
 describes `returnOnEquity` as "Return on equity for this position" and states no
-unit. A live `positionsPerps` message shows that the field is a fraction on the
-initial margin at entry, not on `usedMargin`. For an XAU short with
+unit. A live `positionsPerps` message shows that the field is a fraction of the
+entry notional ÷ the current leverage, not of `usedMargin`. For an XAU short with
 `netQuantity` `0.035`, `averageEntryPrice` `4045.34`, `leverage` `25` and
 `unrealizedPnl` `1.391301`, the venue sent `0.245662…`. That is
 `1.391301 ÷ (0.035 × 4045.34 ÷ 25)`. `unrealizedPnl ÷ usedMargin` gives
