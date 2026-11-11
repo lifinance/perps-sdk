@@ -1,4 +1,5 @@
 import type {
+  MarketContext,
   MarketsContextEvent,
   MarketsContextSubscription,
   Subscription,
@@ -14,6 +15,7 @@ import type { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 import type { SubscriptionListener, WsConnectionStatus } from './types.js'
 import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './WsProviderBase.js'
 
@@ -108,6 +110,11 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   /** Test hook into the base's protected fan-out. */
   deliver(key: string, event: SubscriptionEvent) {
     this.emit(key, event)
+  }
+
+  /** Test hook into the base's throttled `marketsContext` delivery. */
+  pushMarketsContext(snapshot: () => Record<string, MarketContext>) {
+    this.emitMarketsContext(snapshot)
   }
 
   /** Test hook into the base's protected idle-channel reclaim. */
@@ -491,6 +498,198 @@ describe('WsProviderBase — emit fan-out', () => {
       expect.any(Error)
     )
     errorLog.mockRestore()
+  })
+})
+
+describe('WsProviderBase — marketsContext delivery gap', () => {
+  const context = (marketId: string, midPrice: string): MarketContext => ({
+    provider: 'test',
+    marketId,
+    midPrice,
+    markPrice: midPrice,
+  })
+  const dataOf = (listener: ReturnType<typeof vi.fn>) =>
+    listener.mock.calls.map(([event]) => event.data)
+
+  it('delivers the first snapshot at once and holds later ones until the gap ends', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '3') }))
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(1)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(dataOf(listener)).toEqual([
+      { BTC: context('BTC', '1') },
+      { BTC: context('BTC', '3') },
+    ])
+  })
+
+  it('delivers at most one event per gap under a steady wire rate, then the newest when the wire stops', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, listener)
+
+    for (let tick = 1; tick <= 25; tick++) {
+      p.pushMarketsContext(() => ({ BTC: context('BTC', String(tick)) }))
+      vi.advanceTimersByTime(100)
+    }
+    // 2,500 ms elapsed: the immediate delivery, then the gap end at 1,000 ms
+    // and at 2,000 ms.
+    expect(listener).toHaveBeenCalledTimes(3)
+    expect(dataOf(listener)).toEqual([
+      { BTC: context('BTC', '1') },
+      { BTC: context('BTC', '10') },
+      { BTC: context('BTC', '20') },
+    ])
+
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+    expect(listener).toHaveBeenCalledTimes(4)
+    expect(dataOf(listener).at(-1)).toEqual({ BTC: context('BTC', '25') })
+
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS * 5)
+    expect(listener).toHaveBeenCalledTimes(4)
+  })
+
+  it('runs the snapshot producer once per delivered event, not per call', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    await p.subscribe(MARKETS_CONTEXT, vi.fn())
+    const snapshot = vi.fn(() => ({ BTC: context('BTC', '1') }))
+
+    for (let call = 0; call < 10; call++) {
+      p.pushMarketsContext(snapshot)
+    }
+    expect(snapshot).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+    expect(snapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it('never runs the snapshot producer while no listener holds the channel', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const snapshot = vi.fn(() => ({}))
+
+    p.pushMarketsContext(snapshot)
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, vi.fn())
+    unsubscribe()
+    p.pushMarketsContext(snapshot)
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+
+    expect(snapshot).not.toHaveBeenCalled()
+  })
+
+  it('drops a held snapshot when the last listener unsubscribes', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    unsubscribe()
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS * 2)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a held snapshot on close()', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    p.close()
+    vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS * 2)
+
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the gap for a listener that re-subscribes inside the linger', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    unsubscribe()
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS - 1)
+    await p.subscribe(MARKETS_CONTEXT, listener)
+    expect(p.openCount).toBe(1)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '3') }))
+    vi.advanceTimersByTime(
+      WS_MARKETS_CONTEXT_INTERVAL_MS - WS_CHANNEL_TEARDOWN_LINGER_MS
+    )
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(1)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(dataOf(listener)).toEqual([
+      { BTC: context('BTC', '1') },
+      { BTC: context('BTC', '3') },
+    ])
+  })
+
+  it('ends the gap with the channel, so a fresh channel delivers at once', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, listener)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    unsubscribe()
+    vi.advanceTimersByTime(WS_CHANNEL_TEARDOWN_LINGER_MS)
+    expect(vi.getTimerCount()).toBe(0)
+    await p.subscribe(MARKETS_CONTEXT, listener)
+    expect(p.openCount).toBe(2)
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '2') }))
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(dataOf(listener).at(-1)).toEqual({ BTC: context('BTC', '2') })
+  })
+
+  it('ends the gap when an idle channel is reclaimed inside the linger', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const unsubscribe = await p.subscribe(MARKETS_CONTEXT, vi.fn())
+
+    p.pushMarketsContext(() => ({ BTC: context('BTC', '1') }))
+    unsubscribe()
+    expect(p.expireIdle('marketsContext')).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('leaves every other channel unlimited', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+    const listener = vi.fn()
+    await p.subscribe(
+      { channel: 'marketContext', dex: 'test', marketId: 'BTC' },
+      listener
+    )
+
+    for (let tick = 1; tick <= 5; tick++) {
+      p.deliver('marketContext', {
+        channel: 'marketContext',
+        data: context('BTC', String(tick)),
+      })
+    }
+
+    expect(listener).toHaveBeenCalledTimes(5)
   })
 })
 

@@ -40,6 +40,19 @@ const client = createPerpsClient({
 - `OndoTokenStore` — persists the session token per wallet address and environment via a `StorageAdapter`; expired tokens read back as absent.
 - `OndoApiKeyStore` — persists the trading API key per wallet address and environment; the key is created on first use via the JWT (the venue reveals the secret only once) and signs mutating requests thereafter.
 
+## WebSocket market context
+
+The `marketsContext` and `marketContext` channels use two Ondo wire channels:
+
+- `markPricesPerps` gives `markPrice` and `oraclePrice`.
+- `fundingRatesPerps` gives `funding`.
+
+A `marketsContext` subscription sends the two subscribe frames with no
+`markets` filter. A `marketContext` subscription sends them with
+`markets: [marketId]`. The provider emits the context of a market after the
+first mark price of that market. Ondo contexts have no `midPrice` property.
+The best bid and the best ask are on the `orderbook` channel (`depthBooksPerps`).
+
 ## WebSocket account summaries
 
 `accountSummary` seeds from `/v1/perps/balance` and refreshes after fills and
