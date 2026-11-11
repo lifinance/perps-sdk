@@ -403,7 +403,8 @@ describe('mapPosition (Lighter)', () => {
         unrealizedPnl: '10',
         marginUsed: '2500',
         positionValue: '50000',
-        returnOnEquity: '0.4',
+        // 10 ÷ (1 × 79000 ÷ 50) × 100: entry notional ÷ leverage, not allocated_margin
+        returnOnEquity: '0.63291139240506329113924050632911392405',
         effectiveLeverage: '20',
         liquidationDistance: '20',
       })

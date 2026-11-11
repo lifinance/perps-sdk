@@ -3934,7 +3934,7 @@ describe('LighterProvider — getPositions keeps a row with a bad position_value
     })
     expect(positions[1].size).toBe('1')
     expect(positions[1].markPrice).toBeUndefined()
-    expect(positions[1]).not.toHaveProperty('returnOnEquity')
+    expect(positions[1].returnOnEquity).toBe('0.4')
     expect(positions[1]).not.toHaveProperty('positionValue')
     expect(positions[1]).not.toHaveProperty('effectiveLeverage')
     expect(positions[1]).not.toHaveProperty('liquidationDistance')

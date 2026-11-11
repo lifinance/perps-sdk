@@ -1530,12 +1530,34 @@ describe('buildPosition', () => {
     '0',
     '-1',
     'none',
-  ])('leaves returnOnEquity and effectiveLeverage absent when marginUsed is %j', (marginUsed) => {
-    const built = buildPosition(isolatedPosition({ marginUsed }))
+  ])('leaves effectiveLeverage absent and keeps returnOnEquity when marginUsed is %j', (marginUsed) => {
+    const built = buildPosition(
+      isolatedPosition({ marginUsed, unrealizedPnl: '500' })
+    )
 
-    expect(built).not.toHaveProperty('returnOnEquity')
     expect(built).not.toHaveProperty('effectiveLeverage')
+    expect(built.returnOnEquity).toBe('5')
     expect(built.positionValue).toBe('100000')
+  })
+
+  it('calculates returnOnEquity on the entry notional ÷ leverage, not on marginUsed', () => {
+    // Hyperliquid isolated marginUsed: 10000 posted + 100 added + 500 unrealized PnL
+    const built = buildPosition(
+      isolatedPosition({ marginUsed: '10600', unrealizedPnl: '500' })
+    )
+
+    expect(built.returnOnEquity).toBe('5')
+  })
+
+  it.each([
+    ['size', { size: '0' }],
+    ['entryPrice', { entryPrice: '0' }],
+    ['leverage', { leverage: '-1' }],
+    ['leverage', { leverage: undefined }],
+  ] as const)('leaves returnOnEquity absent when %s is not above zero', (_, overrides) => {
+    expect(buildPosition(isolatedPosition(overrides))).not.toHaveProperty(
+      'returnOnEquity'
+    )
   })
 
   it('leaves liquidationDistance absent without a liquidationPrice', () => {
@@ -1642,6 +1664,7 @@ describe('remarkPosition', () => {
       markPrice: '95',
       liquidationPrice: '125',
       unrealizedPnl: '-10',
+      leverage: '9',
       marginUsed: '50',
     })
 
@@ -1650,7 +1673,7 @@ describe('remarkPosition', () => {
       markPrice: '100',
       unrealizedPnl: '-20',
       positionValue: '200',
-      returnOnEquity: '-40',
+      returnOnEquity: '-100',
       effectiveLeverage: '4',
       liquidationDistance: '25',
     })
@@ -1692,7 +1715,7 @@ describe('remarkPosition', () => {
     })
   })
 
-  it('keeps the snapshot marginUsed with its unrealized PnL of a Hyperliquid isolated position', () => {
+  it('keeps the snapshot marginUsed with its unrealized PnL of a Hyperliquid isolated position for effectiveLeverage only', () => {
     const snapshot = buildPosition(
       isolatedPosition({
         entryPrice: '100',
@@ -1711,7 +1734,7 @@ describe('remarkPosition', () => {
       marginUsed: '20',
       initialMarginRequirement: '11',
       positionValue: '120',
-      returnOnEquity: '100',
+      returnOnEquity: '200',
       effectiveLeverage: '6',
       liquidationDistance: '20',
     })
@@ -1748,7 +1771,7 @@ describe('remarkPosition', () => {
     )
 
     expect(remarked.unrealizedPnl).toBe('7')
-    expect(remarked.returnOnEquity).toBe('0.07')
+    expect(remarked).not.toHaveProperty('returnOnEquity')
     expect(remarked).not.toHaveProperty('positionValue')
     expect(remarked).not.toHaveProperty('effectiveLeverage')
   })

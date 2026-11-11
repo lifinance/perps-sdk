@@ -423,9 +423,11 @@ and on the `positions` stream:
 - `positionValue`: the absolute position value in quote-asset units.
   Hyperliquid sends `positionValue`, Lighter sends `position_value` and Ondo
   sends `notionalValue`.
-- `returnOnEquity`: a percent (`'10'` is 10%). The SDK interprets Ondo's
-  value as a fraction and multiplies it by 100. For Hyperliquid and Lighter,
-  the SDK calculates `unrealizedPnl ÷ marginUsed × 100`.
+- `returnOnEquity`: a percent (`'10'` is 10%) of the entry notional ÷ the current leverage:
+  `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. Hyperliquid and
+  Ondo send this figure as a fraction, and the SDK multiplies it by 100. For
+  Lighter, the SDK calculates it. Margin that the user adds to an isolated
+  position does not change it.
 - `effectiveLeverage`: `positionValue ÷ marginUsed`, rounded half-up to two
   decimal places for display.
 - `liquidationDistance`: the distance from `markPrice` to `liquidationPrice`,
@@ -446,11 +448,12 @@ gives the input position unchanged.
 
 `remarkPosition` keeps `marginUsed` and `initialMarginRequirement` from the
 input position. The SDK has no venue margin model for a new mark, so
-`returnOnEquity` and `effectiveLeverage` use the margin of the input position
-snapshot. For example, Lighter cross margin follows the position value, so
-the venue figure at the new mark can differ. Read the positions again for
-venue margin figures. When `entryPrice` is not a positive decimal string, or
-`size` is not a decimal string, `unrealizedPnl` keeps the input figure.
+`effectiveLeverage` uses the margin of the input position snapshot. For
+example, Lighter cross margin follows the position value, so the venue figure
+at the new mark can differ. Read the positions again for venue margin figures.
+`returnOnEquity` uses the entry notional ÷ the leverage, which does not change with
+the mark. When `entryPrice` is not a positive decimal string, or `size` is not
+a decimal string, `unrealizedPnl` keeps the input figure.
 
 ```ts
 import { remarkPosition } from '@lifi/perps-sdk'
