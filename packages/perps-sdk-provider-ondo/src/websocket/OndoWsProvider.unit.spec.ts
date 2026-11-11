@@ -834,6 +834,11 @@ describe('OndoWsProvider', () => {
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
+      const lastContext = () => {
+        const event = listener.mock.lastCall?.[0]
+        expect(event).toBeDefined()
+        return event.data['AAPL-USD.P']
+      }
 
       // Funding arriving before any mark price must not fabricate a context
       // entry without prices…
@@ -875,6 +880,93 @@ describe('OndoWsProvider', () => {
           },
         },
       })
+      expect('midPrice' in lastContext()).toBe(false)
+
+      // A later funding frame merges into the known context, and a later mark
+      // frame rebuilds it; neither path adds the key.
+      feed(p, {
+        type: 'update',
+        channel: 'fundingRatesPerps',
+        data: [
+          {
+            market: 'AAPL-USD.P',
+            rate: '0.0000150',
+            intervalEnds: '2025-03-05T16:00:00Z',
+            premiums: [],
+          },
+        ],
+      })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+      const merged = lastContext()
+      expect(merged.funding.rate).toBe('0.0000150')
+      expect('midPrice' in merged).toBe(false)
+
+      feed(p, {
+        type: 'update',
+        channel: 'markPricesPerps',
+        data: [{ market: 'AAPL-USD.P', markPrice: '227.60' }],
+      })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+      const remarked = lastContext()
+      expect(remarked.markPrice).toBe('227.60')
+      expect(remarked.funding.rate).toBe('0.0000150')
+      expect('midPrice' in remarked).toBe(false)
+      p.close()
+    })
+
+    it('replays exactly the two marketContext frames on open and unsubscribes both on teardown', async () => {
+      vi.useFakeTimers()
+      const p = makeProvider()
+      const send = stubConnectingSocket(p)
+      // The open replay and the socket status are private; the spec drives both.
+      const internals = p as unknown as {
+        replaySubs: () => Promise<void>
+        rws: { getStatus: () => string }
+      }
+      const unsubscribe = await p.subscribe(
+        { channel: 'marketContext', dex: 'ondo', marketId: 'AAPL-USD.P' },
+        vi.fn()
+      )
+      expect(send).not.toHaveBeenCalled()
+
+      await internals.replaySubs()
+      expect(send.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'markPricesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'fundingRatesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+      ])
+
+      send.mockClear()
+      internals.rws.getStatus = () => 'connected'
+      unsubscribe()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(send.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            op: 'unsubscribe',
+            channel: 'markPricesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+        [
+          JSON.stringify({
+            op: 'unsubscribe',
+            channel: 'fundingRatesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+      ])
       p.close()
     })
 
