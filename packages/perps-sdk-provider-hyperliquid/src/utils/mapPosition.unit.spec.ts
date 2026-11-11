@@ -96,9 +96,9 @@ describe('mapPosition (Hyperliquid)', () => {
       // 100 ÷ 940 × 100
       returnOnEquity: '10.63829787234042553191489361702127659574',
       // 9500 ÷ 940
-      effectiveLeverage: '10.1063829787234042553191489361702127659574',
+      effectiveLeverage: '10.11',
       // |85000 − 95000| ÷ 95000 × 100
-      liquidationDistance: '10.52631578947368421052631578947368421053',
+      liquidationDistance: '10.53',
     })
   })
 
@@ -113,9 +113,7 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result).not.toHaveProperty('returnOnEquity')
     expect(result).not.toHaveProperty('effectiveLeverage')
-    expect(result.liquidationDistance).toBe(
-      '10.52631578947368421052631578947368421053'
-    )
+    expect(result.liquidationDistance).toBe('10.53')
   })
 
   it('treats szi exactly 0 as LONG (>= 0) and yields markPrice "0"', () => {

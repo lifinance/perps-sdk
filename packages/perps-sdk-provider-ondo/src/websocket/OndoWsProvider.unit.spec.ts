@@ -1497,8 +1497,8 @@ describe('OndoWsProvider', () => {
         markPrice: '227.50',
         positionValue: '2275',
         returnOnEquity: '2.2',
-        effectiveLeverage: '2.0222222222222222222222222222222222222222',
-        liquidationDistance: '20.87912087912087912087912087912087912088',
+        effectiveLeverage: '2.02',
+        liquidationDistance: '20.88',
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
       p.close()

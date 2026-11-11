@@ -80,23 +80,19 @@ export interface Position {
    * sends none and the position has no positive `markPrice`.
    */
   positionValue?: DecimalString
-  /**
-   * Return on equity as a percent (`'10'` is 10%). Ondo: the venue
-   * `returnOnEquity` fraction × 100. Hyperliquid, Lighter and every
-   * `remarkPosition` result: `unrealizedPnl ÷ marginUsed × 100`, so the
-   * venue meaning of `marginUsed` applies. Absent when the venue sends none
-   * and `marginUsed` is not above zero or an input is not a decimal.
+  /** Percent (`'10'` is 10%). Ondo uses its venue fraction × 100.
+   * Other results use `unrealizedPnl ÷ marginUsed × 100` with snapshot margin.
+   * Absent without venue ROE when margin is not positive or PnL is not decimal.
    */
   returnOnEquity?: DecimalString
-  /**
-   * Effective leverage as a multiple: `positionValue ÷ marginUsed`. Absent
-   * when `positionValue` is absent or `marginUsed` is not above zero.
+  /** Display multiple: `positionValue ÷ marginUsed`, rounded half-up to two decimals.
+   * Re-marking retains snapshot margin. Absent without position value or
+   * a positive margin.
    */
   effectiveLeverage?: DecimalString
-  /**
-   * Distance from `markPrice` to `liquidationPrice` as an absolute percent of
-   * `markPrice` (`'10'` is 10%). Absent when the position has no decimal
-   * `liquidationPrice` or no positive `markPrice`.
+  /** Absolute distance to liquidation as a percent of mark (`'10'` is 10%).
+   * Rounded half-up to two decimals for display. Absent without a positive
+   * liquidation price or mark price.
    */
   liquidationDistance?: DecimalString
   marginMode: MarginMode

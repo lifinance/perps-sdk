@@ -1,3 +1,4 @@
+import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -61,8 +62,8 @@ describe('mapPosition', () => {
       initialMarginRequirement: '401',
       positionValue: '2020.5',
       returnOnEquity: '3.86',
-      effectiveLeverage: '5.0386533665835411471321695760598503740648',
-      liquidationDistance: '9.77480821578817124474140064340509774808',
+      effectiveLeverage: '5.04',
+      liquidationDistance: '9.77',
       marginMode: MarginMode.CROSS,
     })
   })
@@ -91,6 +92,30 @@ describe('mapPosition', () => {
     expect(
       mapPosition(positionFixture({ returnOnEquity }), MARKET)?.returnOnEquity
     ).toBe(percent)
+  })
+
+  // Ondo's documented Get Positions example sends returnOnEquity '0.022' for
+  // 25 ÷ 1125 (0.0222…), so the venue figure can differ from the formula.
+  it('replaces the venue returnOnEquity with unrealizedPnl ÷ usedMargin × 100 at the same mark', () => {
+    const mapped = mapPosition(
+      positionFixture({
+        averageEntryPrice: '200',
+        markPrice: '200.49',
+        usedMargin: '400',
+        unrealizedPnl: '4.9',
+        notionalValue: '2004.9',
+        returnOnEquity: '0.012',
+      }),
+      MARKET
+    )
+
+    expect(mapped?.returnOnEquity).toBe('1.2')
+    expect(mapped && remarkPosition(mapped, '200.49')).toMatchObject({
+      markPrice: '200.49',
+      unrealizedPnl: '4.9',
+      marginUsed: '400',
+      returnOnEquity: '1.225',
+    })
   })
 
   it('calculates positionValue from size and markPrice when notionalValue is invalid', () => {

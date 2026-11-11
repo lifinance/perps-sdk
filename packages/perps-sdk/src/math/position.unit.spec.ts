@@ -1501,7 +1501,7 @@ describe('buildPosition', () => {
 
     expect(built.positionValue).toBe('99999')
     expect(built.returnOnEquity).toBe('3.86')
-    expect(built.effectiveLeverage).toBe('9.9999')
+    expect(built.effectiveLeverage).toBe('10')
   })
 
   it('takes the size magnitude for the calculated positionValue', () => {
@@ -1546,6 +1546,60 @@ describe('buildPosition', () => {
     )
   })
 
+  it.each([
+    '0',
+    '-1',
+  ])('leaves liquidationDistance absent and keeps liquidationPrice %j', (liquidationPrice) => {
+    const built = buildPosition(isolatedPosition({ liquidationPrice }))
+
+    expect(built).not.toHaveProperty('liquidationDistance')
+    expect(built.liquidationPrice).toBe(liquidationPrice)
+  })
+
+  it('drops a stale effectiveLeverage of a built position when marginUsed is not above zero', () => {
+    const rebuilt = buildPosition({
+      ...buildPosition(isolatedPosition()),
+      marginUsed: '0',
+    })
+
+    expect(rebuilt).not.toHaveProperty('effectiveLeverage')
+    expect(rebuilt.positionValue).toBe('100000')
+    expect(rebuilt.returnOnEquity).toBe('0')
+  })
+
+  it('drops a stale liquidationDistance of a built position without a markPrice', () => {
+    const { markPrice: _, ...withoutMark } = buildPosition(isolatedPosition())
+
+    const rebuilt = buildPosition(withoutMark)
+
+    expect(rebuilt).not.toHaveProperty('liquidationDistance')
+    expect(rebuilt.effectiveLeverage).toBe('10')
+  })
+
+  it.each([
+    ['100', '30', '3.33'],
+    ['2', '3', '0.67'],
+    ['12.45', '10', '1.25'],
+    ['12.449', '10', '1.24'],
+  ])('rounds effectiveLeverage %s ÷ %s half-up to %s', (positionValue, marginUsed, effectiveLeverage) => {
+    expect(
+      buildPosition(isolatedPosition({ positionValue, marginUsed }))
+        .effectiveLeverage
+    ).toBe(effectiveLeverage)
+  })
+
+  it.each([
+    ['3', '2', '33.33'],
+    ['3', '1', '66.67'],
+    ['1000', '1123.45', '12.35'],
+    ['1000', '1123.449', '12.34'],
+  ])('rounds liquidationDistance at mark %s and liquidation %s half-up to %s', (markPrice, liquidationPrice, liquidationDistance) => {
+    expect(
+      buildPosition(isolatedPosition({ markPrice, liquidationPrice }))
+        .liquidationDistance
+    ).toBe(liquidationDistance)
+  })
+
   it('neither throws nor warns on venue figures that are not decimals', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -1576,18 +1630,30 @@ describe('remarkPosition', () => {
       positionValue: '110000',
       returnOnEquity: '100',
       effectiveLeverage: '11',
-      liquidationDistance: '18.18181818181818181818181818181818181818',
+      liquidationDistance: '18.18',
     })
   })
 
-  it('signs the unrealizedPnl of a short', () => {
-    const remarked = remarkPosition(
-      isolatedPosition({ side: PositionSide.SHORT }),
-      '110000'
-    )
+  it('calculates every mark-dependent field again for a short with the liquidation price above the mark', () => {
+    const short = isolatedPosition({
+      side: PositionSide.SHORT,
+      size: '2',
+      entryPrice: '90',
+      markPrice: '95',
+      liquidationPrice: '125',
+      unrealizedPnl: '-10',
+      marginUsed: '50',
+    })
 
-    expect(remarked.unrealizedPnl).toBe('-10000')
-    expect(remarked.returnOnEquity).toBe('-100')
+    expect(remarkPosition(short, '100')).toEqual({
+      ...short,
+      markPrice: '100',
+      unrealizedPnl: '-20',
+      positionValue: '200',
+      returnOnEquity: '-40',
+      effectiveLeverage: '4',
+      liquidationDistance: '25',
+    })
   })
 
   it('replaces the venue positionValue and returnOnEquity of the input', () => {
@@ -1602,6 +1668,55 @@ describe('remarkPosition', () => {
     expect(remarked.returnOnEquity).toBe('100')
   })
 
+  it('keeps the snapshot marginUsed of a Lighter cross position', () => {
+    const snapshot = buildPosition({
+      ...position(MarginMode.CROSS, PositionMarginAdjustment.NONE),
+      entryPrice: '100',
+      markPrice: '100',
+      liquidationPrice: '50',
+      leverage: '20',
+      marginUsed: '5',
+      initialMarginRequirement: '5',
+    })
+
+    expect(remarkPosition(snapshot, '200')).toEqual({
+      ...snapshot,
+      markPrice: '200',
+      unrealizedPnl: '100',
+      marginUsed: '5',
+      initialMarginRequirement: '5',
+      positionValue: '200',
+      returnOnEquity: '2000',
+      effectiveLeverage: '40',
+      liquidationDistance: '75',
+    })
+  })
+
+  it('keeps the snapshot marginUsed with its unrealized PnL of a Hyperliquid isolated position', () => {
+    const snapshot = buildPosition(
+      isolatedPosition({
+        entryPrice: '100',
+        markPrice: '110',
+        liquidationPrice: '96',
+        unrealizedPnl: '10',
+        marginUsed: '20',
+        initialMarginRequirement: '11',
+      })
+    )
+
+    expect(remarkPosition(snapshot, '120')).toEqual({
+      ...snapshot,
+      markPrice: '120',
+      unrealizedPnl: '20',
+      marginUsed: '20',
+      initialMarginRequirement: '11',
+      positionValue: '120',
+      returnOnEquity: '100',
+      effectiveLeverage: '6',
+      liquidationDistance: '20',
+    })
+  })
+
   it('drops a liquidationDistance that the new mark cannot give', () => {
     const { liquidationPrice: _, ...withoutLiquidation } = isolatedPosition({
       liquidationDistance: '10',
@@ -1612,14 +1727,30 @@ describe('remarkPosition', () => {
     )
   })
 
-  it('keeps the input unrealizedPnl when entryPrice is not a decimal', () => {
+  it.each([
+    '0',
+    '-1',
+    'n/a',
+  ])('keeps the input unrealizedPnl when entryPrice is %j', (entryPrice) => {
     const remarked = remarkPosition(
-      isolatedPosition({ entryPrice: 'n/a', unrealizedPnl: '7' }),
+      isolatedPosition({ entryPrice, unrealizedPnl: '7' }),
       '110000'
     )
 
     expect(remarked.unrealizedPnl).toBe('7')
     expect(remarked.markPrice).toBe('110000')
+  })
+
+  it('keeps the input unrealizedPnl when size is not a decimal', () => {
+    const remarked = remarkPosition(
+      isolatedPosition({ size: 'n/a', unrealizedPnl: '7' }),
+      '110000'
+    )
+
+    expect(remarked.unrealizedPnl).toBe('7')
+    expect(remarked.returnOnEquity).toBe('0.07')
+    expect(remarked).not.toHaveProperty('positionValue')
+    expect(remarked).not.toHaveProperty('effectiveLeverage')
   })
 
   it('does not change its input', () => {

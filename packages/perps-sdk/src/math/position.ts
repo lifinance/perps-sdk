@@ -24,6 +24,7 @@ import {
 } from '../decimal/arithmetic.js'
 import { DivBig } from '../decimal/big.js'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import { roundDecimalString } from '../decimal/convert.js'
 import {
   bigToDecimalString,
   decimalStringToBig,
@@ -598,61 +599,62 @@ export function isPositionMarginRemovable(position: Position): boolean {
 const isPositiveDecimalString = (value: unknown): value is string =>
   isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
 
-/**
- * Complete a mapped position with its calculated fields. A venue
- * `positionValue` or `returnOnEquity` on the input stays. Each other field
- * comes from its formula, and is absent when an input is absent or not a
- * decimal string, or when `markPrice` or `marginUsed` is not above zero.
- * Never throws and never warns.
- *
+/** Complete a position, retaining explicit venue value and ROE.
+ * Rebuild leverage and liquidation distance with half-up rounding to two decimals.
+ * Unusable inputs omit calculated fields. Never throws or warns.
  * @public
  */
 export function buildPosition(position: Position): Position {
+  const {
+    effectiveLeverage: _effectiveLeverage,
+    liquidationDistance: _liquidationDistance,
+    ...fields
+  } = position
+  const built: Position = fields
   const { size, markPrice, liquidationPrice, unrealizedPnl, marginUsed } =
     position
   const hasMarkPrice = isPositiveDecimalString(markPrice)
   const hasMargin = isPositiveDecimalString(marginUsed)
-  const positionValue =
-    position.positionValue ??
-    (hasMarkPrice && isDecimalString(size)
-      ? calculateNotionalValue(size, markPrice)
-      : undefined)
-  const returnOnEquity =
-    position.returnOnEquity ??
-    (hasMargin && isDecimalString(unrealizedPnl)
-      ? calculateRoe(unrealizedPnl, marginUsed)
-      : undefined)
-  const effectiveLeverage =
-    hasMargin && isDecimalString(positionValue)
-      ? calculateEffectiveLeverage({
-          positionValueUsd: positionValue,
-          marginUsd: marginUsed,
-        })
-      : undefined
-  const liquidationDistance =
-    hasMarkPrice && isDecimalString(liquidationPrice)
-      ? calculateLiquidationDistance({
-          liquidationPrice,
-          currentPrice: markPrice,
-        })
-      : undefined
-  return {
-    ...position,
-    ...(positionValue === undefined ? {} : { positionValue }),
-    ...(returnOnEquity === undefined ? {} : { returnOnEquity }),
-    ...(effectiveLeverage === undefined ? {} : { effectiveLeverage }),
-    ...(liquidationDistance === undefined ? {} : { liquidationDistance }),
+  if (
+    built.positionValue === undefined &&
+    hasMarkPrice &&
+    isDecimalString(size)
+  ) {
+    built.positionValue = calculateNotionalValue(size, markPrice)
   }
+  if (
+    built.returnOnEquity === undefined &&
+    hasMargin &&
+    isDecimalString(unrealizedPnl)
+  ) {
+    built.returnOnEquity = calculateRoe(unrealizedPnl, marginUsed)
+  }
+  if (hasMargin && isDecimalString(built.positionValue)) {
+    built.effectiveLeverage = roundDecimalString(
+      calculateEffectiveLeverage({
+        positionValueUsd: built.positionValue,
+        marginUsd: marginUsed,
+      }),
+      2,
+      'round'
+    )
+  }
+  if (hasMarkPrice && isPositiveDecimalString(liquidationPrice)) {
+    built.liquidationDistance = roundDecimalString(
+      calculateLiquidationDistance({
+        liquidationPrice,
+        currentPrice: markPrice,
+      }),
+      2,
+      'round'
+    )
+  }
+  return built
 }
 
-/**
- * The position at another mark price, as a new object: `markPrice`,
- * `positionValue`, `unrealizedPnl`, `returnOnEquity`, `effectiveLeverage` and
- * `liquidationDistance` calculated again by {@link buildPosition}. Gives
- * `position` itself when `markPrice` is not a positive decimal string.
- * `unrealizedPnl` keeps the input figure when `entryPrice` or `size` is not a
- * decimal string.
- *
+/** Recalculate mark-dependent fields using the input snapshot's margin.
+ * Invalid marks return the input. Invalid entry prices or sizes retain its PnL.
+ * The input is unchanged, and valid marks return a new position.
  * @public
  */
 export function remarkPosition(
@@ -665,8 +667,6 @@ export function remarkPosition(
   const {
     positionValue: _positionValue,
     returnOnEquity: _returnOnEquity,
-    effectiveLeverage: _effectiveLeverage,
-    liquidationDistance: _liquidationDistance,
     ...fields
   } = position
   const { entryPrice, size } = position
@@ -674,7 +674,7 @@ export function remarkPosition(
     ...fields,
     markPrice,
     unrealizedPnl:
-      isDecimalString(entryPrice) && isDecimalString(size)
+      isPositiveDecimalString(entryPrice) && isDecimalString(size)
         ? estimateUnrealizedPnl({
             entryPrice,
             markPrice,

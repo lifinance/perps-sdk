@@ -1288,8 +1288,8 @@ describe('OndoProvider — getAccount (logged in)', () => {
         initialMarginRequirement: '401',
         positionValue: '2020.5',
         returnOnEquity: '3.8',
-        effectiveLeverage: '5.0386533665835411471321695760598503740648',
-        liquidationDistance: '9.77480821578817124474140064340509774808',
+        effectiveLeverage: '5.04',
+        liquidationDistance: '9.77',
         marginMode: MarginMode.CROSS,
       },
     ])
@@ -1609,8 +1609,8 @@ describe('OndoProvider — getPositions calculated fields', () => {
       leverage: '5',
       positionValue: '2020.5',
       returnOnEquity: '3.8',
-      effectiveLeverage: '5.0386533665835411471321695760598503740648',
-      liquidationDistance: '9.77480821578817124474140064340509774808',
+      effectiveLeverage: '5.04',
+      liquidationDistance: '9.77',
     })
   })
 })

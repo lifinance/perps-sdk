@@ -116,8 +116,8 @@ describe('getPositions', () => {
       leverage: '10',
       positionValue: '9500',
       returnOnEquity: '10.63829787234042553191489361702127659574',
-      effectiveLeverage: '10.1063829787234042553191489361702127659574',
-      liquidationDistance: '10.52631578947368421052631578947368421053',
+      effectiveLeverage: '10.11',
+      liquidationDistance: '10.53',
     })
   })
 
