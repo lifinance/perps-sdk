@@ -619,7 +619,7 @@ const REPRESENTATIONS = ['decimalString', 'number', 'scaledInteger', 'unknown']
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
-  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round|classify)(?:[A-Z]|$)' +
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round|classify|remark)(?:[A-Z]|$)' +
     `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
 )
 const BANNED_VERB = /^(derive|predict|convert)/
@@ -641,6 +641,10 @@ describe('the vocabulary pattern', () => {
 
   it('admits the domain verb classify', () => {
     expect(VOCABULARY.test('classifyFillFromPosition')).toBe(true)
+  })
+
+  it('admits the domain verb remark', () => {
+    expect(VOCABULARY.test('remarkPosition')).toBe(true)
   })
 
   it.each([

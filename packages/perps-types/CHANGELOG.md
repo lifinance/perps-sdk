@@ -1,5 +1,21 @@
 # @lifi/perps-types
 
+## 28.0.0
+
+### Major Changes
+
+- [#711](https://github.com/lifinance/perps-sdk/pull/711) [`8342127`](https://github.com/lifinance/perps-sdk/commit/834212751d932dfe81f8502d714316da08cf396a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext.midPrice` is optional. An absent `midPrice` means that the source gives no order-book midpoint in that message. Code that reads `midPrice` must handle `undefined`. The Hyperliquid and Lighter providers set `midPrice` as before.
+
+### Minor Changes
+
+- [#713](https://github.com/lifinance/perps-sdk/pull/713) [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position` has four optional fields: `positionValue`, `returnOnEquity`, `effectiveLeverage` and `liquidationDistance`.
+  Each provider sets them on REST reads and on the `positions` stream.
+  `effectiveLeverage` and `liquidationDistance` use half-up rounding to two decimal places.
+  `buildPosition` removes stale calculated leverage and distance, and omits distance for nonpositive liquidation prices.
+
+  `remarkPosition` recalculates fields for a live mark with the input snapshot's margin.
+  It preserves snapshot PnL when the entry price or size cannot support recalculation.
+
 ## 27.2.0
 
 ### Minor Changes

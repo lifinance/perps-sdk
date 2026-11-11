@@ -74,6 +74,27 @@ export interface Position {
    * Unlike `leverage`, this decimal string is safe for risk calculations.
    */
   initialMarginRequirement?: DecimalString
+  /**
+   * Absolute position value in quote-asset units: `size × markPrice`. The
+   * venue figure when the venue sends a decimal one. Absent when the venue
+   * sends none and the position has no positive `markPrice`.
+   */
+  positionValue?: DecimalString
+  /** Percent (`'10'` is 10%). Ondo uses its venue fraction × 100.
+   * Other results use `unrealizedPnl ÷ marginUsed × 100` with snapshot margin.
+   * Absent without venue ROE when margin is not positive or PnL is not decimal.
+   */
+  returnOnEquity?: DecimalString
+  /** Display multiple: `positionValue ÷ marginUsed`, rounded half-up to two decimals.
+   * Re-marking retains snapshot margin. Absent without position value or
+   * a positive margin.
+   */
+  effectiveLeverage?: DecimalString
+  /** Absolute distance to liquidation as a percent of mark (`'10'` is 10%).
+   * Rounded half-up to two decimals for display. Absent without a positive
+   * liquidation price or mark price.
+   */
+  liquidationDistance?: DecimalString
   marginMode: MarginMode
 }
 

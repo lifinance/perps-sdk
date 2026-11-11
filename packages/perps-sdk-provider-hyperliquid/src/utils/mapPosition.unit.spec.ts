@@ -85,6 +85,37 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('95000')
   })
 
+  it('sets positionValue from the venue value and calculates the other fields', () => {
+    const result = map(makeAp({}))
+
+    expect(result).toMatchObject({
+      markPrice: '95000',
+      unrealizedPnl: '100',
+      marginUsed: '940',
+      positionValue: '9500',
+      // 100 ÷ 940 × 100
+      returnOnEquity: '10.63829787234042553191489361702127659574',
+      // 9500 ÷ 940
+      effectiveLeverage: '10.11',
+      // |85000 − 95000| ÷ 95000 × 100
+      liquidationDistance: '10.53',
+    })
+  })
+
+  it('takes the positionValue magnitude', () => {
+    expect(
+      map(makeAp({ szi: '-0.25', positionValue: '-23750' })).positionValue
+    ).toBe('23750')
+  })
+
+  it('leaves returnOnEquity and effectiveLeverage absent when marginUsed is zero', () => {
+    const result = map(makeAp({ marginUsed: '0' }))
+
+    expect(result).not.toHaveProperty('returnOnEquity')
+    expect(result).not.toHaveProperty('effectiveLeverage')
+    expect(result.liquidationDistance).toBe('10.53')
+  })
+
   it('treats szi exactly 0 as LONG (>= 0) and yields markPrice "0"', () => {
     const result = map(makeAp({ szi: '0', positionValue: '0' }))
 
@@ -104,15 +135,21 @@ describe('mapPosition (Hyperliquid)', () => {
     )
   })
 
-  it('keeps the row without markPrice and initialMarginRequirement and warns once when positionValue is invalid', () => {
+  it('keeps the row without markPrice, initialMarginRequirement and the mark-based fields, and warns once, when positionValue is invalid', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const result = map(makeAp({ positionValue: '' }))
 
     expect(result.size).toBe('0.1')
     expect(result.leverage).toBe('10')
+    expect(result.returnOnEquity).toBe(
+      '10.63829787234042553191489361702127659574'
+    )
     expect(result).not.toHaveProperty('markPrice')
     expect(result).not.toHaveProperty('initialMarginRequirement')
+    expect(result).not.toHaveProperty('positionValue')
+    expect(result).not.toHaveProperty('effectiveLeverage')
+    expect(result).not.toHaveProperty('liquidationDistance')
     expect(warn).toHaveBeenCalledOnce()
   })
 

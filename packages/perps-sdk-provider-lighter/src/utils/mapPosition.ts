@@ -1,5 +1,6 @@
 import {
   absDecimalString,
+  buildPosition,
   createWarnOnce,
   divideDecimalString,
   isDecimalString,
@@ -114,7 +115,7 @@ export const mapPosition = (
     ? !isDecimalStringZero(liquidationPrice)
     : liquidationPrice !== ''
 
-  return {
+  return buildPosition({
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size,
@@ -126,6 +127,7 @@ export const mapPosition = (
             isDecimalStringZero(positionValue) || isDecimalStringZero(size)
               ? '0'
               : divideDecimalString(positionValue, size),
+          positionValue,
         }),
     ...(hasLiquidationPrice ? { liquidationPrice } : {}),
     unrealizedPnl: pos.unrealized_pnl,
@@ -138,5 +140,5 @@ export const mapPosition = (
       ? {}
       : { initialMarginRequirement }),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
-  }
+  })
 }
