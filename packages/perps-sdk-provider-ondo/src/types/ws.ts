@@ -9,7 +9,7 @@ import type { OndoFill, OndoOrder, OndoPosition } from './wire.js'
 /** Level tuple as streamed: `[price, size]`, both decimal strings. @public */
 export type OndoBookLevel = [string, string]
 
-/** Streamed order-book snapshot (`depthBooksPerps`/`topOfBooksPerps`). @public */
+/** Streamed order-book snapshot (`depthBooksPerps`). @public */
 export interface OndoBookSnapshot {
   market: string
   time: string
@@ -65,7 +65,6 @@ export interface OndoFundingRate {
 /** Server frame envelope. Non-`update` types are acks or errors. @public */
 export type OndoWsMessage =
   | { type: 'update'; channel: 'depthBooksPerps'; data: OndoBookSnapshot[] }
-  | { type: 'update'; channel: 'topOfBooksPerps'; data: OndoBookSnapshot[] }
   | { type: 'update'; channel: 'tradesPerps'; data: OndoWsTrade[] }
   | { type: 'update'; channel: 'kLinePerps'; data: OndoKline }
   | { type: 'update'; channel: 'markPricesPerps'; data: OndoMarkPrice[] }
