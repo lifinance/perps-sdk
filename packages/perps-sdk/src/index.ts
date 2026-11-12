@@ -79,7 +79,9 @@ export {
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
 export {
+  buildFill,
   calculateAverageFillPrice,
+  calculateFillClosedSize,
   classifyFillFromPosition,
   FillClassification,
 } from './math/fills.js'

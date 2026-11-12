@@ -25,12 +25,33 @@ const client = createPerpsClient({
   retry: false,
 })
 
+const activeAssetData = (body: Record<string, unknown>) => ({
+  user: body.user,
+  coin: body.coin,
+  leverage: { type: 'cross', value: 20 },
+  maxTradeSzs: ['1.5', '1.5'],
+  availableToTrade: ['15000.0', '15000.0'],
+  markPx: '100000.0',
+})
+
 const baseResponses = {
   userFills: HL_USER_FILLS,
   userFillsByTime: HL_USER_FILLS,
   userTwapSliceFills: [],
   userTwapSliceFillsByTime: [],
+  activeAssetData,
 }
+
+const closingBtcFill = (tid: number): HlUserFills[number] => ({
+  ...HL_USER_FILLS[0],
+  tid,
+  side: 'A',
+  sz: '0.1',
+  px: '101000',
+  dir: 'Close Long',
+  closedPnl: '100',
+  startPosition: '0.2',
+})
 
 const ctx = { client, apiUrl: DEFAULT_HYPERLIQUID_API_URL }
 
@@ -204,6 +225,67 @@ describe('getFills', () => {
     const result = await getFills(ctx, { address: ADDRESS })
 
     expect(result.items.map((item) => item.id)).toEqual(['100'])
+  })
+
+  it('gives a closing fill the ROE at the current leverage of its market', async () => {
+    let requests: RecordedRequest[]
+    ;({ restore, requests } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [closingBtcFill(201), closingBtcFill(202), ...HL_USER_FILLS],
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, { address: ADDRESS })
+
+    expect(result.items).toHaveLength(3)
+    for (const fill of result.items.slice(0, 2)) {
+      expect(fill).toMatchObject({
+        closedSize: '0.1',
+        entryPrice: '100000',
+        returnOnEquity: '20',
+      })
+      expect(fill).not.toHaveProperty('leverage')
+    }
+    expect(result.items[2]).not.toHaveProperty('returnOnEquity')
+    expect(
+      requests
+        .filter(({ body }) => body.type === 'activeAssetData')
+        .map(({ body }) => body)
+    ).toEqual([{ type: 'activeAssetData', user: ADDRESS, coin: 'BTC' }])
+  })
+
+  it('reads no leverage for a page without a closing fill', async () => {
+    let requests: RecordedRequest[]
+    ;({ restore, requests } = installInfoFetchMock(baseResponses, HL_MARKETS))
+
+    await getFills(ctx, { address: ADDRESS })
+
+    expect(requests.some(({ body }) => body.type === 'activeAssetData')).toBe(
+      false
+    )
+  })
+
+  it('keeps a closing fill without ROE when the leverage read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...baseResponses,
+        userFills: [closingBtcFill(203)],
+        activeAssetData: new Response('{}', { status: 500 }),
+      },
+      HL_MARKETS
+    ))
+
+    const result = await getFills(ctx, { address: ADDRESS })
+
+    expect(result.items[0]).toMatchObject({
+      closedSize: '0.1',
+      entryPrice: '100000',
+    })
+    expect(result.items[0]).not.toHaveProperty('returnOnEquity')
+    warn.mockRestore()
   })
 
   it('rejects when the TWAP slice fill request fails', async () => {

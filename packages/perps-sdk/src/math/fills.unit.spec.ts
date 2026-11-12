@@ -5,7 +5,12 @@ import {
   OrderSide,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { calculateAverageFillPrice, classifyFillFromPosition } from './fills.js'
+import {
+  buildFill,
+  calculateAverageFillPrice,
+  calculateFillClosedSize,
+  classifyFillFromPosition,
+} from './fills.js'
 
 /**
  * Exhaustive coverage of `classifyFillFromPosition` against the
@@ -177,5 +182,258 @@ describe('calculateAverageFillPrice', () => {
 
   it('gives undefined when every fill is malformed', () => {
     expect(calculateAverageFillPrice([fill('x', '100')])).toBeUndefined()
+  })
+})
+
+const closingFill = (overrides: Partial<Fill>): Fill => ({
+  ...fill('1', '110'),
+  side: OrderSide.SELL,
+  startPosition: '1',
+  classification: FillClassification.CLOSED_LONG,
+  realizedPnl: '10',
+  ...overrides,
+})
+
+describe('calculateFillClosedSize', () => {
+  it.each([
+    ['a full close of a long', '1', OrderSide.SELL, '1', '1'],
+    ['a full close of a short', '-1', OrderSide.BUY, '1', '1'],
+    ['a partial close of a long', '2', OrderSide.SELL, '0.5', '0.5'],
+    ['a partial close of a short', '-2', OrderSide.BUY, '0.5', '0.5'],
+    ['a flip from long to short', '1', OrderSide.SELL, '3', '1'],
+    ['a flip from short to long', '-0.25', OrderSide.BUY, '1', '0.25'],
+  ])('gives the closed part of %s', (_case, startPosition, side, size, closed) => {
+    expect(
+      calculateFillClosedSize({
+        size,
+        startPosition,
+        classification: classifyFillFromPosition(startPosition, side, size),
+      })
+    ).toBe(closed)
+  })
+
+  it.each([
+    ['an opening fill', '0', OrderSide.BUY],
+    ['an increase of a long', '1', OrderSide.BUY],
+    ['an increase of a short', '-1', OrderSide.SELL],
+  ])('gives undefined for %s', (_case, startPosition, side) => {
+    expect(
+      calculateFillClosedSize({
+        size: '1',
+        startPosition,
+        classification: classifyFillFromPosition(startPosition, side, '1'),
+      })
+    ).toBeUndefined()
+  })
+
+  it.each([
+    FillClassification.CLOSED_LONG,
+    FillClassification.CLOSED_SHORT,
+    FillClassification.REDUCED_LONG,
+    FillClassification.REDUCED_SHORT,
+  ])('gives the full size of a %s fill without startPosition', (classification) => {
+    expect(calculateFillClosedSize({ size: '2', classification })).toBe('2')
+  })
+
+  it.each([
+    FillClassification.SWITCHED_LONG,
+    FillClassification.SWITCHED_SHORT,
+    FillClassification.OPENED_LONG,
+    FillClassification.BUY,
+  ])('gives undefined for a %s fill without startPosition', (classification) => {
+    expect(
+      calculateFillClosedSize({ size: '2', classification })
+    ).toBeUndefined()
+  })
+
+  it('gives undefined for a spot fill', () => {
+    expect(
+      calculateFillClosedSize({
+        size: '1',
+        startPosition: '5',
+        classification: FillClassification.SPOT_SELL,
+      })
+    ).toBeUndefined()
+  })
+
+  it.each([
+    { size: 'abc', startPosition: '1' },
+    { size: '0', startPosition: '1' },
+    { size: '1', startPosition: '1e-8' },
+  ])('gives undefined for the malformed input %j', (input) => {
+    expect(
+      calculateFillClosedSize({
+        ...input,
+        classification: FillClassification.CLOSED_LONG,
+      })
+    ).toBeUndefined()
+  })
+})
+
+describe('buildFill', () => {
+  it('calculates the closed size, the entry price and the ROE of a full close of a long', () => {
+    expect(buildFill(closingFill({}), '5')).toMatchObject({
+      closedSize: '1',
+      entryPrice: '100',
+      returnOnEquity: '50',
+    })
+  })
+
+  it('calculates the fields of a partial close of a short', () => {
+    expect(
+      buildFill(
+        closingFill({
+          side: OrderSide.BUY,
+          size: '1',
+          price: '90',
+          startPosition: '-2',
+          classification: FillClassification.REDUCED_SHORT,
+          realizedPnl: '10',
+        }),
+        '10'
+      )
+    ).toMatchObject({
+      closedSize: '1',
+      entryPrice: '100',
+      returnOnEquity: '100',
+    })
+  })
+
+  it('uses only the closed part of a flip', () => {
+    expect(
+      buildFill(
+        closingFill({
+          size: '3',
+          price: '120',
+          classification: FillClassification.SWITCHED_SHORT,
+          realizedPnl: '20',
+        }),
+        '2'
+      )
+    ).toMatchObject({
+      closedSize: '1',
+      entryPrice: '100',
+      returnOnEquity: '40',
+    })
+  })
+
+  it('gives a negative ROE for a loss', () => {
+    expect(
+      buildFill(closingFill({ price: '90', realizedPnl: '-10' }), '5')
+    ).toMatchObject({
+      closedSize: '1',
+      entryPrice: '100',
+      returnOnEquity: '-50',
+    })
+  })
+
+  it('uses the full size of a close without startPosition', () => {
+    expect(
+      buildFill(
+        closingFill({
+          size: '2',
+          price: '105',
+          startPosition: undefined,
+          realizedPnl: '10',
+        }),
+        '4'
+      )
+    ).toMatchObject({
+      closedSize: '2',
+      entryPrice: '100',
+      returnOnEquity: '20',
+    })
+  })
+
+  it('gives none of the fields for a flip without startPosition', () => {
+    const built = buildFill(
+      closingFill({
+        size: '3',
+        startPosition: undefined,
+        classification: FillClassification.SWITCHED_SHORT,
+      }),
+      '5'
+    )
+    expect(built).not.toHaveProperty('closedSize')
+    expect(built).not.toHaveProperty('entryPrice')
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('removes stale fields from an opening fill', () => {
+    const built = buildFill(
+      {
+        ...fill('1', '100'),
+        startPosition: '0',
+        closedSize: '1',
+        entryPrice: '90',
+        returnOnEquity: '10',
+      },
+      '5'
+    )
+    expect(built).not.toHaveProperty('closedSize')
+    expect(built).not.toHaveProperty('entryPrice')
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('keeps a positive input entry price', () => {
+    expect(buildFill(closingFill({ entryPrice: '125' }), '5')).toMatchObject({
+      entryPrice: '125',
+      returnOnEquity: '40',
+    })
+  })
+
+  it('calculates the entry price when the input entry price is not positive', () => {
+    expect(buildFill(closingFill({ entryPrice: '0' }), '5')).toMatchObject({
+      entryPrice: '100',
+    })
+  })
+
+  it('counts a null realized PnL as zero', () => {
+    expect(
+      buildFill(closingFill({ price: '100', realizedPnl: null }), '5')
+    ).toMatchObject({ entryPrice: '100', returnOnEquity: '0' })
+  })
+
+  it.each([
+    undefined,
+    '0',
+    '-2',
+    'abc',
+  ])('gives no ROE for the leverage %j', (leverage) => {
+    const built = buildFill(closingFill({}), leverage)
+    expect(built).toMatchObject({ closedSize: '1', entryPrice: '100' })
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it.each([
+    undefined,
+    'abc',
+  ])('gives only the closed size for the realized PnL %j', (realizedPnl) => {
+    const built = buildFill(closingFill({ realizedPnl }), '5')
+    expect(built.closedSize).toBe('1')
+    expect(built).not.toHaveProperty('entryPrice')
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('gives no entry price when the calculated price is not positive', () => {
+    const built = buildFill(
+      closingFill({ price: '10', realizedPnl: '20' }),
+      '5'
+    )
+    expect(built.closedSize).toBe('1')
+    expect(built).not.toHaveProperty('entryPrice')
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('gives the same fill when it builds a built fill again', () => {
+    const built = buildFill(closingFill({}), '5')
+    expect(buildFill(built, '5')).toEqual(built)
+  })
+
+  it('does not change its input', () => {
+    const input = closingFill({})
+    const copy = { ...input }
+    buildFill(input, '5')
+    expect(input).toEqual(copy)
   })
 })

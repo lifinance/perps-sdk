@@ -1,4 +1,5 @@
 import {
+  buildFill,
   DecodeChain,
   getMarketRegistry,
   isDecimalString,
@@ -21,6 +22,7 @@ import {
   wsLog,
 } from '@lifi/perps-sdk'
 import {
+  type Fill,
   type MarketContext,
   type MarketDisplay,
   type OndoAccountBalance,
@@ -28,7 +30,7 @@ import {
   type PerpsMarketDisplay,
   type Subscription,
 } from '@lifi/perps-types'
-import type { Address } from 'viem'
+import { type Address, isAddress } from 'viem'
 import { OndoTokenStore } from '../auth/OndoTokenStore.js'
 import { ondoSessionRejectedError } from '../auth/sessionToken.js'
 import {
@@ -51,6 +53,7 @@ import type {
   OndoWsMessage,
   OndoWsTrade,
 } from '../types/index.js'
+import { fetchFillLeverages } from '../utils/fillLeverages.js'
 import {
   isOpenPosition,
   mapFill,
@@ -159,6 +162,11 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
    * out of order. `'latest'` coalesces the backlog to one trailing refresh.
    */
   private readonly accountSummaryChain = new DecodeChain('latest', (err) =>
+    wsLog.handlerFailure(this.providerKey, err)
+  )
+
+  // A closing fill waits for a leverage read, so fills frames emit in order.
+  private readonly fillChain = new DecodeChain('every', (err) =>
     wsLog.handlerFailure(this.providerKey, err)
   )
 
@@ -499,6 +507,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.authWireRefs.clear()
     this.authBindingRefs = 0
     this.clearAccountSummary()
+    this.fillChain.reset()
   }
 
   /** Wire subs for `sub`, keyed uniquely for the base's replay registry. */
@@ -1082,7 +1091,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (address === undefined) {
       return
     }
-    const mapped = []
+    const mapped: Fill[] = []
     for (const fill of fills) {
       const market = this.resolveMarket(fill.market)
       const mappedFill = market && mapFill(fill, market)
@@ -1090,7 +1099,21 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         mapped.push(mappedFill)
       }
     }
-    this.emit(`fills:${address}`, { channel: 'fills', data: mapped })
+    this.fillChain.push(async () => {
+      const token = isAddress(address, { strict: false })
+        ? await this.tokenStore.get(address)
+        : null
+      const leverages =
+        token === null
+          ? new Map<string, string>()
+          : await fetchFillLeverages(this.restClient(), token.token, mapped)
+      this.emit(`fills:${address}`, {
+        channel: 'fills',
+        data: mapped.map((fill) =>
+          buildFill(fill, leverages.get(fill.market.id))
+        ),
+      })
+    })
     if (this.accountSummary !== undefined) {
       const generation = this.accountSummaryGeneration
       this.accountSummaryChain.push(() =>

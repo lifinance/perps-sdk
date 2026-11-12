@@ -1648,7 +1648,7 @@ describe('OndoWsProvider', () => {
       )
       feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('fills')
       expect(event.data).toHaveLength(1)
@@ -1661,6 +1661,63 @@ describe('OndoWsProvider', () => {
         fee: { amount: '0.4', asset: 'USD' },
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
+      p.close()
+    })
+
+    it('gives a live closing fill the ROE at the current leverage of its market', async () => {
+      const leverageUrls: string[] = []
+      vi.stubGlobal(
+        'fetch',
+        async (input: RequestInfo | URL): Promise<Response> => {
+          const url = input.toString()
+          if (url.includes('/markets')) {
+            return Response.json({ markets: ONDO_MARKETS })
+          }
+          if (url.includes('/v1/perps/leverage')) {
+            leverageUrls.push(url)
+            return Response.json({
+              success: true,
+              result: [{ market: 'AAPL-USD.P', leverage: '9' }],
+            })
+          }
+          throw new Error(`Unexpected fetch: ${url}`)
+        }
+      )
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await p.subscribe(
+        { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+        listener
+      )
+      feed(p, {
+        type: 'update',
+        channel: 'fillsPerps',
+        data: [
+          {
+            ...RAW_FILL,
+            id: 'fill-2',
+            side: 'sell',
+            direction: 'closeLong',
+            pnl: '12.5',
+          },
+          RAW_FILL,
+        ],
+      })
+
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      const [closing, opening] = listener.mock.calls[0][0].data
+      expect(closing).toMatchObject({
+        id: 'fill-2',
+        closedSize: '5.00',
+        entryPrice: '225',
+        returnOnEquity: '10',
+      })
+      expect(opening).not.toHaveProperty('returnOnEquity')
+      expect(leverageUrls).toEqual([
+        'https://api.ondoperps.xyz/v1/perps/leverage',
+      ])
       p.close()
     })
 
@@ -2061,10 +2118,12 @@ describe('OndoWsProvider', () => {
         )
         await rejected
         feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
-        expect(fills).toHaveBeenCalledWith({
-          channel: 'fills',
-          data: [expect.objectContaining({ id: 'fill-1', size: '5.00' })],
-        })
+        await vi.waitFor(() =>
+          expect(fills).toHaveBeenCalledWith({
+            channel: 'fills',
+            data: [expect.objectContaining({ id: 'fill-1', size: '5.00' })],
+          })
+        )
         releaseFills()
         await p.subscribe(
           { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },

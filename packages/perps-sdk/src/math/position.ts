@@ -596,7 +596,7 @@ export function isPositionMarginRemovable(position: Position): boolean {
   )
 }
 
-const isPositiveDecimalString = (value: unknown): value is string =>
+export const isPositiveDecimalString = (value: unknown): value is string =>
   isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
 
 /** Complete a position, retaining explicit venue value and ROE.

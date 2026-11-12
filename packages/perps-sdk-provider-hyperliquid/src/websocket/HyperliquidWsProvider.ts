@@ -1,6 +1,7 @@
 import {
   type AssetRegistry,
   addDecimalString,
+  buildFill,
   calculateTransferable,
   compareDecimalStrings,
   DecodeChain,
@@ -56,6 +57,7 @@ import {
   HYPERLIQUID_FEE_TIER_FALLBACK,
   PROVIDER_KEY,
 } from '../constants.js'
+import { fetchFillLeverages } from '../services/fillLeverages.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
 import type {
   HlActiveAssetData,
@@ -237,6 +239,11 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.reportDecodeFailure
   )
   private readonly orderUpdateChain = new DecodeChain(
+    'every',
+    this.reportDecodeFailure
+  )
+  // A closing fill waits for a leverage read, so fills frames emit in order.
+  private readonly fillChain = new DecodeChain(
     'every',
     this.reportDecodeFailure
   )
@@ -611,6 +618,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.sacDecodeChain.reset()
     this.orderbookDecodeChain.reset()
     this.orderUpdateChain.reset()
+    this.fillChain.reset()
     this.orderUpdatesEpoch++
     this.orderUpdatesKey = undefined
   }
@@ -1304,9 +1312,22 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           const mapped = market && mapFill(f, market, user)
           return mapped ? [mapped] : []
         })
-    this.emit(`fills:${user.toLowerCase()}`, {
-      channel: 'fills',
-      data: items,
+    const client = this.client
+    this.fillChain.push(async () => {
+      const leverages =
+        client === undefined || !isAddress(user, { strict: false })
+          ? new Map<string, DecimalString>()
+          : await fetchFillLeverages(
+              { client, apiUrl: this.orderApiUrl },
+              user,
+              items
+            )
+      this.emit(`fills:${user.toLowerCase()}`, {
+        channel: 'fills',
+        data: items.map((fill) =>
+          buildFill(fill, leverages.get(fill.market.id))
+        ),
+      })
     })
   }
 

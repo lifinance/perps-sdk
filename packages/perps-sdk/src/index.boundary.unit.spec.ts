@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import * as perpsTypes from '@lifi/perps-types'
 import {
   DECIMAL_PATTERN,
+  FillClassification,
   MarginMode,
   OrderSide,
   OrderStatus,
@@ -312,6 +313,13 @@ const MATH_SAMPLES: Record<string, readonly unknown[]> = {
     { positionValueUsd: '10000', marginUsd: '1000' },
   ],
   calculateExpectedPnl: ['0.77', '0.7', '3', true, '10'],
+  calculateFillClosedSize: [
+    {
+      size: '1',
+      startPosition: '2',
+      classification: FillClassification.REDUCED_LONG,
+    },
+  ],
   calculateInitialMarginRoe: ['50', '1', '100', '5'],
   calculateLiquidationDistance: [
     { liquidationPrice: '45000', currentPrice: '50000' },
