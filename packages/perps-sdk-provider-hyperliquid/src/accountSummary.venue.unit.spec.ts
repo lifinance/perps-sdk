@@ -1,5 +1,5 @@
 import { createPerpsClient } from '@lifi/perps-sdk'
-import type { Market } from '@lifi/perps-types'
+import type { Market, MarketContext } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { afterEach, describe, expect, it } from 'vitest'
 import { installInfoFetchMock } from '../test/mockFetch.js'
@@ -53,7 +53,7 @@ const responsesFor = (snapshot: RecordedSnapshot) => ({
 const spotTotalTimesMid = (
   snapshot: RecordedSnapshot,
   markets: readonly Market[],
-  prices: { marketId: string; midPrice: string; markPrice: string }[]
+  prices: readonly MarketContext[]
 ) => {
   const priceById = spotPriceById(
     markets,
