@@ -267,7 +267,8 @@ async function signStandardWasmAction(
  * through `getOrder` before the venue assigns an `order_index`. Only the
  * order-placing actions carry one, and the value is read back off the params
  * that were signed rather than generated a second time. A grouped step
- * projects the parent order, the first of its `orders`.
+ * projects the first of its `orders`: the parent of an OTO or OTOCO group, or
+ * the first leg of an OCO pair, which has no parent.
  */
 function clientOrderIndexOf(step: WasmBlobActionStep): string | undefined {
   const { orders } = step.wasmSignParams

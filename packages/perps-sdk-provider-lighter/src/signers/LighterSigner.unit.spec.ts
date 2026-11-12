@@ -1562,13 +1562,33 @@ describe('LighterSigner — grouped orders', () => {
       context
     )
 
+    // The literal `SignCreateGroupedOrders` argument list: account index,
+    // grouping type, order count, ten values per order, nonce, integrator.
     expect(grouped.mock.calls).toEqual([
       [
         47,
-        LT_GROUPING_TYPE_OTO,
+        1,
         2,
-        ...wasmOrderArgs(PARENT),
-        ...wasmOrderArgs(STOP_LOSS_CHILD),
+        0,
+        11,
+        '1000',
+        '500000000',
+        0,
+        0,
+        1,
+        0,
+        '0',
+        -1,
+        0,
+        12,
+        '0',
+        '480000000',
+        1,
+        2,
+        0,
+        1,
+        '490000000',
+        -1,
         21,
         7,
         100,
@@ -1688,6 +1708,18 @@ describe('LighterSigner — grouped orders', () => {
         orders: [PARENT, STOP_LOSS_CHILD],
       },
     ],
+    [
+      'a grouping type of null',
+      { grouping_type: null, orders: [PARENT, STOP_LOSS_CHILD], nonce: 1 },
+    ],
+    [
+      'a child with a number above 2^53',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, { ...STOP_LOSS_CHILD, trigger_price: 2 ** 53 + 2 }],
+        nonce: 1,
+      },
+    ],
   ])('rejects a grouped step with %s before the WASM call', async (_, params) => {
     const { grouped } = await spies()
     const failure = signer.sign(ActionType.PLACE_ORDER, params, context)
@@ -1721,6 +1753,96 @@ describe('LighterSigner — grouped orders', () => {
       code: PerpsErrorCode.ValidationError,
       message: expect.stringContaining("field 'price'"),
     })
+  })
+
+  it('names the malformed order field before a malformed integrator field, single and grouped', async () => {
+    const integrator = { integrator_account_index: 'seven' }
+    const single = signer.sign(
+      ActionType.PLACE_ORDER,
+      { ...PARENT, price: undefined, nonce: 1, ...integrator },
+      context
+    )
+    const grouped = signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, { ...STOP_LOSS_CHILD, price: undefined }],
+        nonce: 1,
+        ...integrator,
+      },
+      context
+    )
+    await expect(single).rejects.toMatchObject({
+      message: expect.stringContaining("field 'price'"),
+    })
+    await expect(grouped).rejects.toMatchObject({
+      message: expect.stringContaining("field 'price'"),
+    })
+  })
+
+  it('passes a child int64 decimal string above 2^53 to the WASM unchanged', async () => {
+    const { grouped } = await spies()
+    const child = { ...STOP_LOSS_CHILD, trigger_price: '9007199254740993' }
+    await expect(
+      signer.sign(
+        ActionType.PLACE_ORDER,
+        {
+          grouping_type: LT_GROUPING_TYPE_OTO,
+          orders: [PARENT, child],
+          nonce: 1,
+        },
+        context
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SignatureInvalid })
+    expect(grouped.mock.calls[0]).toContain('9007199254740993')
+  })
+
+  it.each([
+    [
+      'an unknown grouping type',
+      { grouping_type: 99, orders: [PARENT, STOP_LOSS_CHILD] },
+      'GroupingType is not valid',
+    ],
+    [
+      'a grouping type of 0',
+      { grouping_type: 0, orders: [PARENT, STOP_LOSS_CHILD] },
+      'GroupingType is not valid',
+    ],
+    [
+      'a grouping type above uint8',
+      { grouping_type: 300, orders: [PARENT, STOP_LOSS_CHILD] },
+      'uint8 overflow',
+    ],
+    [
+      'an empty orders list',
+      { grouping_type: LT_GROUPING_TYPE_OTO, orders: [] },
+      'OrderGroupSize is not valid',
+    ],
+    [
+      'an OTO group with three orders',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, TAKE_PROFIT_CHILD, STOP_LOSS_CHILD],
+      },
+      'OrderGroupSize is not valid',
+    ],
+    [
+      'an OTOCO group with two orders',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTOCO,
+        orders: [PARENT, STOP_LOSS_CHILD],
+      },
+      'OrderGroupSize is not valid',
+    ],
+  ])('lets the WASM signer reject %s with SignatureInvalid', async (_, params, reason) => {
+    const { grouped } = await spies()
+    await expect(
+      signer.sign(ActionType.PLACE_ORDER, { ...params, nonce: 1 }, context)
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.SignatureInvalid,
+      message: expect.stringContaining(reason),
+    })
+    expect(grouped).toHaveBeenCalledTimes(1)
   })
 
   it('keeps a grouped step on the other order actions out of the grouped path', async () => {

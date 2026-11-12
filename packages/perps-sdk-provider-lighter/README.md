@@ -226,19 +226,23 @@ The backend builds it as a `PLACE_ORDER` step with `SigningMethod.WASM_BLOB`. No
 The signer tells a grouped step from a single order by the `grouping_type` field of `wasmSignParams`.
 `isLtGroupedOrderStep(action, wasmSignParams)` gives that test.
 
-The `wasmSignParams` of a grouped step have the shape `LtCreateGroupedOrdersWasmParams`:
+The `wasmSignParams` of a grouped step hold the `LtCreateGroupedOrdersWasmParams` fields and the `nonce` of the transaction.
+The type omits `nonce`, as `LtCreateOrderWasmParams` does. The backend sends it with every WASM step, and the signer reads it from `wasmSignParams`.
 
 | Field | Value |
 | --- | --- |
 | `grouping_type` | `LT_GROUPING_TYPE_OTO` (`1`), `LT_GROUPING_TYPE_OCO` (`2`), or `LT_GROUPING_TYPE_OTOCO` (`3`) |
 | `orders` | The orders of the group, parent first. Each order has the `LtCreateOrderWasmParamsBase` fields of a single order. |
 | `integrator_account_index`, `integrator_taker_fee`, `integrator_maker_fee` | The integrator fields of the whole transaction, as on a single order |
-| `nonce` | The nonce of the whole transaction |
+| `nonce` | The nonce of the whole transaction. The backend sends it on every WASM step. |
 
 An OTO group holds the parent and one child. An OTOCO group holds the parent, then a take-profit child and a stop-loss child.
 A child has `base_amount` `0`, the opposite `is_ask` of the parent, and `reduce_only` `true`. It takes the filled size of the parent.
-The signer passes the orders to `_signCreateGroupedOrders` in the given sequence. Lighter checks the group rules and rejects an invalid group with `SignatureInvalid`.
+The signer passes the orders to `_signCreateGroupedOrders` in the given sequence.
+The bundled WASM signer owns the group rules (`ValidateOTO`, `ValidateOCO`, `ValidateOTOCO` in `lighter-go`), as it owns the field rules of a single order.
+It rejects an unknown `grouping_type`, an empty `orders` list, or an order count that does not match the grouping type with `SignatureInvalid` before it signs.
 A missing or malformed order field fails with `ValidationError` before the WASM call, as on a single order.
+A `grouping_type` of `null` fails the same way.
 
 The signed transaction of a grouped step has the transaction type `LT_TX_TYPE_CREATE_GROUPED_ORDERS` (`28`).
 A `PLACE_ORDER` step without `grouping_type` keeps the transaction type `LT_TX_TYPE_CREATE_ORDER` (`14`).

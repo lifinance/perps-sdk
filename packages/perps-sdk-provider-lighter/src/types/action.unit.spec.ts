@@ -114,6 +114,18 @@ describe('resolveLtTxType', () => {
     )
   })
 
+  it.each([
+    0,
+    null,
+    'oto',
+  ])('routes a PLACE_ORDER step with grouping_type %s to the grouped path, where the value is checked', (groupingType) => {
+    const params = { grouping_type: groupingType, orders: [], nonce: 1 }
+    expect(isLtGroupedOrderStep(ActionType.PLACE_ORDER, params)).toBe(true)
+    expect(resolveLtTxType(ActionType.PLACE_ORDER, params)).toBe(
+      LT_TX_TYPE_CREATE_GROUPED_ORDERS
+    )
+  })
+
   it.each(
     Object.entries(LT_TX_TYPE_BY_ACTION).filter(
       ([action]) => action !== ActionType.PLACE_ORDER

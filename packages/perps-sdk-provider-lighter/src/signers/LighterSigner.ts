@@ -452,7 +452,6 @@ export class LighterSigner {
       case ActionType.PLACE_ORDER:
       case ActionType.PLACE_TRIGGER_ORDER:
       case ActionType.PLACE_TWAP_ORDER: {
-        const integrator = integratorArgs(p)
         if (isLtGroupedOrderStep(action, p)) {
           const orders = orderListField(p, 'orders')
           const args: Parameters<
@@ -463,7 +462,7 @@ export class LighterSigner {
             orders.length,
             ...orders.flatMap(createOrderArgs),
             nonce,
-            ...integrator,
+            ...integratorArgs(p),
           ]
           return (wasm) => wasm._signCreateGroupedOrders(...args)
         }
@@ -471,7 +470,7 @@ export class LighterSigner {
           ctx.accountIndex,
           ...createOrderArgs(p),
           nonce,
-          ...integrator,
+          ...integratorArgs(p),
         ]
         return (wasm) => wasm._signCreateOrder(...args)
       }
