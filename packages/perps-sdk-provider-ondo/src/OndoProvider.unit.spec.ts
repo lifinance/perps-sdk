@@ -2055,7 +2055,7 @@ describe('OndoProvider — getFills', () => {
         size: '4',
         price: '200.5',
         liquidity: LiquidityRole.TAKER,
-        fee: { amount: '0.3', asset: 'USDC' },
+        fee: { amount: '0.3', rebate: '0.1', asset: 'USDC' },
         realizedPnl: undefined,
         classification: FillClassification.OPENED_LONG,
         createdAt: '2026-07-01T12:01:00.000Z',
