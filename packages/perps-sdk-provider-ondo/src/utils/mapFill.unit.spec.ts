@@ -61,6 +61,9 @@ describe('mapFill', () => {
       createdAt: '2026-07-01T12:00:00.000Z',
     })
   })
+  it('leaves the rebate absent when the venue reports none', () => {
+    expect(mapValidFill(fillFixture(), MARKET).fee).not.toHaveProperty('rebate')
+  })
 
   it('maps maker role and sell side', () => {
     const mapped = mapValidFill(
@@ -101,6 +104,7 @@ describe('mapFill', () => {
     expect(mapValidFill(fillFixture({ feeRebate: '0.1' }), MARKET).fee).toEqual(
       {
         amount: '0.3',
+        rebate: '0.1',
         asset: 'USD',
       }
     )

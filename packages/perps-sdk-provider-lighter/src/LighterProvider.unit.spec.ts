@@ -4297,8 +4297,18 @@ describe('LighterProvider — getPortfolioHistory', () => {
   }
   const EXPECTED_HISTORY = {
     points: [
-      { timestamp: NOW_MS - 2 * HOUR_MS, accountValue: '541.75', pnl: '0' },
-      { timestamp: NOW_MS - HOUR_MS, accountValue: '500', pnl: '-1.75' },
+      {
+        timestamp: NOW_MS - 2 * HOUR_MS,
+        accountValue: '541.75',
+        pnl: '0',
+        netTransfers: '0',
+      },
+      {
+        timestamp: NOW_MS - HOUR_MS,
+        accountValue: '500',
+        pnl: '-1.75',
+        netTransfers: '-40',
+      },
     ],
     volume: '500',
     totalPnl: '-1.75',

@@ -318,8 +318,18 @@ describe('Lighter non-settlement margin holdings', () => {
       range: '24h',
     })
     expect(history.points).toEqual([
-      { timestamp: 1_741_000_000_000, accountValue: '34.07369174', pnl: '0' },
-      { timestamp: 1_741_003_600_000, accountValue: '36.07369174', pnl: '2' },
+      {
+        timestamp: 1_741_000_000_000,
+        accountValue: '34.07369174',
+        pnl: '0',
+        netTransfers: '0',
+      },
+      {
+        timestamp: 1_741_003_600_000,
+        accountValue: '36.07369174',
+        pnl: '2',
+        netTransfers: '0',
+      },
     ])
   })
 

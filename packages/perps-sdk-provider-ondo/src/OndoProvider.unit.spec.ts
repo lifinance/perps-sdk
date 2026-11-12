@@ -2055,7 +2055,7 @@ describe('OndoProvider — getFills', () => {
         size: '4',
         price: '200.5',
         liquidity: LiquidityRole.TAKER,
-        fee: { amount: '0.3', asset: 'USDC' },
+        fee: { amount: '0.3', rebate: '0.1', asset: 'USDC' },
         realizedPnl: undefined,
         classification: FillClassification.OPENED_LONG,
         createdAt: '2026-07-01T12:01:00.000Z',
@@ -2075,11 +2075,13 @@ describe('OndoProvider — getPortfolioHistory', () => {
       timestamp: Date.parse('2025-03-04T00:00:00Z'),
       accountValue: '4800.00',
       pnl: '180.00',
+      netTransfers: '0',
     },
     {
       timestamp: Date.parse('2025-03-05T00:00:00Z'),
       accountValue: '4950.00',
       pnl: '232.00',
+      netTransfers: '0',
     },
   ]
 

@@ -3,6 +3,7 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  Fee,
   FeeActivity,
   Fill,
   FillLiquidation,
@@ -697,6 +698,10 @@ describe('Order read contract', () => {
       | 'createdAt'
       | 'updatedAt'
     >()
+  })
+  it('allows the fee rebate to remain absent', () => {
+    expectTypeOf<Fee['rebate']>().toEqualTypeOf<string | undefined>()
+    expectTypeOf<{ amount: string; asset: string }>().toExtend<Fee>()
   })
   it('marks only a regular order as a venue liquidation', () => {
     expectTypeOf<RegularOrder['isLiquidation']>().toEqualTypeOf<

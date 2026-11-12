@@ -99,6 +99,10 @@ Every row carries the venue `orderId`, sizes, side, market, `reduceOnly`, and
 creation/update times. Ondo's optional `clientOrderId` and `parentOrderId` remain
 separate fields. The mapper omits `explorerLink` because these venue rows carry no transaction hash.
 
+Fills expose the venue rebate as `fee.rebate` when present.
+`fee.amount` remains the net amount charged, after the rebate. The amount is
+negative when the rebate exceeds the fee.
+
 | Ondo status | SDK status |
 | --- | --- |
 | `open`, `untriggered` | `OPEN`, or `PARTIALLY_FILLED` when the filled size is positive |

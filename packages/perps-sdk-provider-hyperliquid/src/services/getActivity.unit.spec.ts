@@ -529,6 +529,80 @@ describe('getActivity — liquidation fills', () => {
     expect(result.items.map((item) => item.id)).toEqual(['0xliq-fill'])
   })
 
+  it('splits a saturated ledger window and excludes a fill whose liquidation row sits in the second half', async () => {
+    const start = 1_704_067_400_000
+    const end = start + 1_000_000
+    const fillers: HlUserNonFundingLedgerUpdates = Array.from(
+      { length: 500 },
+      (_, index) => ({
+        time: start + index * 2_000,
+        hash: `0xfiller-${index}`,
+        delta: { type: 'deposit', usdc: '1' },
+      })
+    )
+    const ledger: HlUserNonFundingLedgerUpdates = [
+      ...fillers,
+      {
+        time: end,
+        hash: '0xliq-second-half',
+        delta: {
+          type: 'liquidation',
+          leverageType: 'cross',
+          liquidatedPositions: [{ coin: 'ETH', szi: '1.5' }],
+        },
+      },
+    ]
+    const mock = installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: (body: Record<string, unknown>) =>
+          ledger
+            .filter(
+              (row) =>
+                row.time >= Number(body.startTime) &&
+                row.time <= Number(body.endTime)
+            )
+            .slice(0, 500),
+        userFillsByTime: [
+          liquidationFill({ tid: 700, oid: 1, hash: '0xliq-first-half' }),
+          liquidationFill({
+            tid: 701,
+            oid: 2,
+            hash: '0xliq-second-half',
+            time: end,
+          }),
+        ],
+      },
+      HL_MARKETS
+    )
+    restore = mock.restore
+
+    const result = await getActivity(ctx, {
+      address: ADDRESS,
+      type: [ActivityType.LIQUIDATION],
+      startTime: start,
+      endTime: end,
+    })
+
+    expect(result.items.map((item) => item.id)).toEqual([
+      '0xliq-second-half',
+      'liquidation:1',
+    ])
+    const windows = mock.requests
+      .filter((r) => r.body.type === 'userNonFundingLedgerUpdates')
+      .map((r) => [r.body.startTime, r.body.endTime])
+      .sort(
+        (a, b) => Number(a[0]) - Number(b[0]) || Number(a[1]) - Number(b[1])
+      )
+    expect(windows).toEqual([
+      [start, start + 500_000],
+      [start, start + 500_000],
+      [start, end],
+      [start, end],
+      [start + 500_001, end],
+      [start + 500_001, end],
+    ])
+  })
+
   it('does not read fills when no requested type is a liquidation', async () => {
     const mock = installInfoFetchMock(baseResponses, HL_MARKETS)
     restore = mock.restore

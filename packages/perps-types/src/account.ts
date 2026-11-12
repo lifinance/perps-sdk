@@ -292,8 +292,16 @@ export interface OrdersResponse {
  * @public
  */
 export interface Fee {
-  /** Decimal string in `asset`'s units. */
+  /**
+   * Net amount charged, after rebates, in `asset`'s units. Negative when the
+   * rebate exceeds the fee.
+   */
   amount: DecimalString
+  /**
+   * Part the venue gave back, in the same asset. Never negative. Absent when
+   * not reported.
+   */
+  rebate?: DecimalString
   /**
    * Display symbol the fee is denominated in, resolved by the provider
    * adapter. Falls back to the venue's own asset id when the registry knows no

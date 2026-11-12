@@ -15,11 +15,7 @@ import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type {
-  HlUserFills,
-  HlUserFunding,
-  HlUserNonFundingLedgerUpdates,
-} from '../types/index.js'
+import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
   isAccountActivationGasDelta,
   isBorrowLendDelta,
@@ -46,6 +42,7 @@ import {
 } from '../utils/infoClient.js'
 import { isFillLiquidatingAccount } from '../utils/isFillLiquidatingAccount.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { getLedgerHistory, getLedgerWindow } from './getLedgerHistory.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
@@ -134,31 +131,23 @@ const fetchLiquidationHistory = async (
     lastTime = Math.max(lastTime, fill.time)
   }
   // Exclusions must cover the entire order, not the current SDK page's ledger window.
-  const ledger = await historyPage(
-    { startTime: firstTime, endTime: lastTime },
-    Number.MAX_SAFE_INTEGER,
-    async (startTime, endTime) => {
-      const updates = await infoRequest<HlUserNonFundingLedgerUpdates>(
-        apiUrl,
-        { type: 'userNonFundingLedgerUpdates', user, startTime, endTime },
-        options
-      )
-      return {
-        items: updates.filter(
-          (entry) => isLiquidationDelta(entry.delta) && hashes.has(entry.hash)
-        ),
-        saturated: updates.length >= 500,
-      }
-    },
-    (entry) => ({ time: entry.time, key: entry.hash }),
-    options?.signal
+  const ledger = await getLedgerHistory(
+    apiUrl,
+    { user, startTime: firstTime, endTime: lastTime },
+    options
   )
   return mapLiquidationFills(
     fills,
     PROVIDER_KEY,
     user,
     resolveMarket,
-    new Set(ledger.items.map((entry) => entry.hash))
+    new Set(
+      ledger
+        .filter(
+          (entry) => isLiquidationDelta(entry.delta) && hashes.has(entry.hash)
+        )
+        .map((entry) => entry.hash)
+    )
   )
 }
 
@@ -175,14 +164,10 @@ const fetchActivityData = async (
     !typeFilter || typeFilter.some((t) => t !== ActivityType.FUNDING)
   const needFunding = !typeFilter || typeFilter.includes(ActivityType.FUNDING)
 
-  const [ledgerUpdates, fundingUpdates, liquidations] = await Promise.all([
+  const [ledgerWindow, fundingUpdates, liquidations] = await Promise.all([
     needLedger
-      ? infoRequest<HlUserNonFundingLedgerUpdates>(
-          apiUrl,
-          { type: 'userNonFundingLedgerUpdates', ...timeParams },
-          options
-        )
-      : Promise.resolve([] as HlUserNonFundingLedgerUpdates),
+      ? getLedgerWindow(apiUrl, timeParams, options)
+      : Promise.resolve({ items: [], saturated: false }),
     needFunding
       ? infoRequest<HlUserFunding>(
           apiUrl,
@@ -192,11 +177,11 @@ const fetchActivityData = async (
       : Promise.resolve([] as HlUserFunding),
     liquidationHistory,
   ])
-  if (ledgerUpdates.length >= 500 || fundingUpdates.length >= 500) {
+  if (ledgerWindow.saturated || fundingUpdates.length >= 500) {
     return { items: [], saturated: true }
   }
 
-  const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
+  const ledgerItems: ActivityItem[] = ledgerWindow.items.flatMap(
     (entry): ActivityItem[] => {
       if (
         typeFilter !== undefined &&
