@@ -66,7 +66,7 @@ summaries also wait for clearinghouse state and venue-reported buying power.
 
 ## Ledger asset identity
 
-Transfers carry the backend registry `Asset`, including its logo, numeric `id`,
+Transfers, fees, and rewards carry the backend registry `Asset`, including its logo, numeric `id`,
 and optional `l1Address`. A Hyperliquid ledger row moves a spot asset, and its
 `token` field holds the bare spot symbol. The mapper resolves that symbol in
 the spot asset registry, which the HIP-1 ticker auction keeps unique. The
@@ -106,11 +106,27 @@ defines token indices and `tokenId`.
 | `vaultWithdraw` | USDC transfer from the vault to the user; use `netWithdrawnUsd` and preserve accounting fields in `meta`. |
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
 | `spotGenesis` | Excluded: token allocation has no source counterparty. |
-| `rewardsClaim` | Excluded: reward income has no source counterparty. |
+| `rewardsClaim` | `REWARD` income with the resolved token asset and unchanged amount. |
 | `cStakingTransfer` | Transfer between the spot and staking balances of one account; resolve the token symbol. `isDeposit` gives the direction. |
 | `borrowLend` | Transfer between the spot balance and the borrow-lend market; resolve the token symbol. `operation` gives the direction; `meta` keeps `operation` and `interestAmount`. |
-| `gossipPriorityGasAuction` | Excluded: a gas fee is not an asset transfer. |
-| `accountActivationGas` | Excluded: a gas fee is not an asset transfer. |
+| `gossipPriorityGasAuction` | `FEE` charge with the resolved token asset and unchanged amount. |
+| `accountActivationGas` | `FEE` charge with the resolved token asset and unchanged amount. |
+
+Fee and reward activities keep the original delta type in `meta.ledgerType`.
+Their amount retains the venue decimal string, including its precision.
+`FEE` identifies a charge, and `REWARD` identifies income. Neither activity
+has a counterparty, direction, or market. Embedded trade, transfer, and
+withdrawal fees retain their current representation without duplicate activities.
+For a zero hash, the mapper uses `<delta type>:<token>:<amount>:<ISO time>`
+as the activity id and omits the explorer link.
+
+Two zero-hash rows with the same delta type, token, amount, and millisecond
+get the same id. If a page boundary falls between them, `getActivity` returns
+only one of the two rows. The venue row has no other field that distinguishes
+them.
+
+The mapper excludes a fee or reward row without a string `token` and a string
+`amount`.
 
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor

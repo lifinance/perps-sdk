@@ -17,11 +17,14 @@ import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
+  isAccountActivationGasDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
   isDepositDelta,
+  isGossipPriorityGasAuctionDelta,
   isLiquidationDelta,
+  isRewardsClaimDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
@@ -70,6 +73,8 @@ const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.DEPOSIT,
   ActivityType.WITHDRAWAL,
   ActivityType.TRANSFER,
+  ActivityType.FEE,
+  ActivityType.REWARD,
 ])
 
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
@@ -184,6 +189,11 @@ const fetchActivityData = async (
           !typeFilter.includes(ActivityType.DEPOSIT)) ||
           (isWithdrawDelta(entry.delta) &&
             !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.FEE) &&
+            (isGossipPriorityGasAuctionDelta(entry.delta) ||
+              isAccountActivationGasDelta(entry.delta))) ||
+          (isRewardsClaimDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.REWARD)) ||
           (!typeFilter.includes(ActivityType.TRANSFER) &&
             (isSpotTransferDelta(entry.delta) ||
               isSendAssetDelta(entry.delta) ||

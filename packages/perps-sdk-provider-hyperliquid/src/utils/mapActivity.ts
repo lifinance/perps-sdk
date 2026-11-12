@@ -13,9 +13,11 @@ import type {
   Asset,
   DepositActivity,
   Fee,
+  FeeActivity,
   FundingActivity,
   LiquidationActivity,
   MarketDisplay,
+  RewardActivity,
   TransferActivity,
   WithdrawalActivity,
 } from '@lifi/perps-types'
@@ -28,11 +30,14 @@ import type {
   HlUserFill,
 } from '../types/index.js'
 import {
+  isAccountActivationGasDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
   isDepositDelta,
+  isGossipPriorityGasAuctionDelta,
   isLiquidationDelta,
+  isRewardsClaimDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
@@ -218,6 +223,36 @@ export const mapLedgerEntry = (
           }
         : {}),
     } satisfies TransferActivity
+  }
+
+  if (
+    isGossipPriorityGasAuctionDelta(delta) ||
+    isAccountActivationGasDelta(delta) ||
+    isRewardsClaimDelta(delta)
+  ) {
+    const asset = resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+    if (asset === null) {
+      return null
+    }
+    const hasTransaction = entry.hash !== zeroHash
+    return {
+      ...base,
+      id: hasTransaction
+        ? entry.hash
+        : `${delta.type}:${delta.token}:${delta.amount}:${timestamp}`,
+      type: isRewardsClaimDelta(delta) ? ActivityType.REWARD : ActivityType.FEE,
+      asset,
+      amount: delta.amount,
+      meta: { ledgerType: delta.type },
+      ...(hasTransaction
+        ? {
+            explorerLink: explorerTxUrl(
+              ExplorerChainId.HYPERLIQUID,
+              entry.hash
+            ),
+          }
+        : {}),
+    } satisfies FeeActivity | RewardActivity
   }
 
   if (isVaultTransferDelta(delta)) {

@@ -345,6 +345,16 @@ describe('mapPortfolioTransfers', () => {
     [{ type: 'rewardsClaim', token: 'USDC', amount: '12' }, true, '0'],
     [{ type: 'vaultLeaderCommission', user: USER, usdc: '12' }, true, '0'],
     [{ type: 'deployGasAuction', token: 'USDC', amount: '12' }, true, '0'],
+    [
+      { type: 'gossipPriorityGasAuction', token: 'HYPE', amount: '0.30773712' },
+      false,
+      '0',
+    ],
+    [
+      { type: 'accountActivationGas', token: 'HYPE', amount: '0.02283782' },
+      true,
+      '0',
+    ],
     [{ type: 'futureMovement', usdc: '12' }, true, undefined],
     [{ type: 'deposit', usdc: '' }, false, undefined],
   ])('classifies %j for combined=%s as %s', (delta, combined, expected) => {
