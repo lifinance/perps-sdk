@@ -9,6 +9,7 @@ import type {
 } from '../types/provider.js'
 import type { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 import type {
+  SubscriptionErrorListener,
   SubscriptionListener,
   WsProvider,
   WsStatusListener,
@@ -41,6 +42,8 @@ interface ChannelEntry {
    * releases may drop it; a `Set` would lose it on the first sibling release.
    */
   listeners: Map<SubscriptionListener, number>
+  errorListeners: Map<SubscriptionErrorListener, number>
+  failure?: { error: unknown }
   /** Wire teardown from {@link WsProviderBase.openChannel}, set once the open resolves. */
   teardown?: () => void
   /** In-flight open, set on the 0→1 transition so concurrent subscribes share it. */
@@ -77,7 +80,7 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
   private readonly channels = new Map<string, ChannelEntry>()
   private readonly statusListeners = new Map<WsStatusListener, number>()
   private readonly statusObservers = new Set<WsStatusListener>()
-  private readonly wireSubs = new Map<string, TSub>()
+  protected readonly wireSubs = new Map<string, TSub>()
 
   constructor(rws: ReconnectingWebSocket, providerKey: string) {
     this.providerKey = providerKey
@@ -120,19 +123,29 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
   async subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
-    onStatus?: WsStatusListener
+    onStatus?: WsStatusListener,
+    onError?: SubscriptionErrorListener
   ): Promise<() => void> {
     this.reconnect()
 
     const key = this.toKey(sub)
-    await this.acquireChannel(key, sub, listener)
+    const entry = await this.acquireChannel(key, sub, listener)
+    if (entry.failure !== undefined) {
+      throw entry.failure.error
+    }
+    if (onError) {
+      entry.errorListeners.set(
+        onError,
+        (entry.errorListeners.get(onError) ?? 0) + 1
+      )
+    }
 
     if (onStatus) {
       this.statusListeners.set(
         onStatus,
         (this.statusListeners.get(onStatus) ?? 0) + 1
       )
-      onStatus(this.rws.getStatus())
+      this.callListener('status', onStatus, this.rws.getStatus())
     }
 
     let released = false
@@ -149,7 +162,15 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
           this.statusListeners.delete(onStatus)
         }
       }
-      this.releaseChannel(key, listener)
+      if (onError) {
+        const remaining = (entry.errorListeners.get(onError) ?? 0) - 1
+        if (remaining > 0) {
+          entry.errorListeners.set(onError, remaining)
+        } else {
+          entry.errorListeners.delete(onError)
+        }
+      }
+      this.releaseChannel(key, entry, listener)
     }
   }
 
@@ -196,6 +217,26 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
     for (const fn of entry.listeners.keys()) {
       this.callListener(`subscription:${key}`, fn, event)
+    }
+  }
+
+  /** Stop a rejected channel immediately without changing transport status. */
+  protected rejectChannel(key: string, error: unknown): void {
+    const entry = this.channels.get(key)
+    if (entry === undefined) {
+      return
+    }
+    entry.failure = { error }
+    this.channels.delete(key)
+    if (entry.pendingTeardown !== undefined) {
+      clearTimeout(entry.pendingTeardown)
+    }
+    this.cancelPendingMarketsContext(entry)
+    if (entry.teardown !== undefined) {
+      this.callListener(`teardown:${key}`, entry.teardown)
+    }
+    for (const listener of entry.errorListeners.keys()) {
+      this.callListener(`subscription-error:${key}`, listener, error)
     }
   }
 
@@ -362,10 +403,10 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     key: string,
     sub: Subscription,
     listener: SubscriptionListener
-  ): Promise<void> {
+  ): Promise<ChannelEntry> {
     let entry = this.channels.get(key)
     if (entry === undefined) {
-      entry = { listeners: new Map() }
+      entry = { listeners: new Map(), errorListeners: new Map() }
       this.channels.set(key, entry)
     }
 
@@ -378,11 +419,14 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
 
     if (entry.teardown !== undefined) {
-      return
+      return entry
     }
     if (entry.opening !== undefined) {
       await entry.opening
-      return
+      if (entry.failure !== undefined) {
+        throw entry.failure.error
+      }
+      return entry
     }
 
     const opening = this.openChannel(sub)
@@ -392,16 +436,20 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       const current = this.channels.get(key)
       if (current !== entry) {
         teardown()
-        return
+        if (entry.failure !== undefined) {
+          throw entry.failure.error
+        }
+        return entry
       }
       if (current.listeners.size === 0) {
         // Every listener released while opening — unwind immediately.
         teardown()
         this.channels.delete(key)
-        return
+        return entry
       }
       current.teardown = teardown
       current.opening = undefined
+      return entry
     } catch (err) {
       // Open failed: drop the channel so all (concurrent) subscribers reject
       // cleanly and a later subscribe re-opens.
@@ -412,9 +460,12 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
   }
 
-  private releaseChannel(key: string, listener: SubscriptionListener): void {
-    const entry = this.channels.get(key)
-    if (entry === undefined) {
+  private releaseChannel(
+    key: string,
+    entry: ChannelEntry,
+    listener: SubscriptionListener
+  ): void {
+    if (this.channels.get(key) !== entry) {
       return
     }
 

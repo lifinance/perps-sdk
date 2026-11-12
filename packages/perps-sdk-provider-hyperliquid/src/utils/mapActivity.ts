@@ -13,9 +13,13 @@ import type {
   Asset,
   DepositActivity,
   Fee,
+  FeeActivity,
   FundingActivity,
+  InternalTransferActivity,
+  InternalTransferBalance,
   LiquidationActivity,
   MarketDisplay,
+  RewardActivity,
   TransferActivity,
   WithdrawalActivity,
 } from '@lifi/perps-types'
@@ -28,11 +32,15 @@ import type {
   HlUserFill,
 } from '../types/index.js'
 import {
+  isAccountActivationGasDelta,
+  isAccountClassTransferDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
   isDepositDelta,
+  isGossipPriorityGasAuctionDelta,
   isLiquidationDelta,
+  isRewardsClaimDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
@@ -56,15 +64,17 @@ const HL_NATIVE_TOKEN_SYMBOL = 'HYPE'
 // Hyperliquid reserves spot token index 0 for USDC.
 const HL_COLLATERAL_ASSET_ID = '0'
 
-/**
- * Direction relative to the account's spot balance, the same frame as an
- * outbound `vaultDeposit`.
- */
-const BORROW_LEND_DIRECTION: Record<HlBorrowLendOperation, 'IN' | 'OUT'> = {
-  supply: 'OUT',
-  withdraw: 'IN',
-  borrow: 'IN',
-  repay: 'OUT',
+const BORROW_LEND_BALANCES: Record<
+  HlBorrowLendOperation,
+  {
+    sourceBalance: InternalTransferBalance
+    destinationBalance: InternalTransferBalance
+  }
+> = {
+  supply: { sourceBalance: 'spot', destinationBalance: 'borrowLend' },
+  withdraw: { sourceBalance: 'borrowLend', destinationBalance: 'spot' },
+  borrow: { sourceBalance: 'borrowLend', destinationBalance: 'spot' },
+  repay: { sourceBalance: 'spot', destinationBalance: 'borrowLend' },
 }
 
 /**
@@ -91,13 +101,7 @@ const resolveLedgerAsset = (
   return asset
 }
 
-/**
- * Map supported ledger entries; exclude same-account moves and unsupported types.
- * Staking and borrow-lend moves map with the queried account as counterparty.
- * Missing collateral throws; an unregistered spot token skips the row, and
- * unresolved liquidation markets omit only those positions.
- * @public
- */
+/** Map supported ledger entries, preserving venue amounts and operation metadata. */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
   providerKey: string,
@@ -176,39 +180,59 @@ export const mapLedgerEntry = (
     } satisfies TransferActivity
   }
 
-  if (isCStakingTransferDelta(delta) || isBorrowLendDelta(delta)) {
-    const asset = resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+  if (
+    isCStakingTransferDelta(delta) ||
+    isBorrowLendDelta(delta) ||
+    isAccountClassTransferDelta(delta)
+  ) {
+    const accountClass = isAccountClassTransferDelta(delta)
+    const staking = isCStakingTransferDelta(delta)
+    const asset = accountClass
+      ? assetRegistry.require(HL_COLLATERAL_ASSET_ID)
+      : resolveLedgerAsset(delta.token, assetRegistry, providerKey)
     if (asset === null) {
       return null
     }
-    // A completed unstake is a system event with the zero hash and no venue
-    // transaction, so the id is synthesized and no explorer link applies.
+    const balances = accountClass
+      ? ({
+          sourceBalance: delta.toPerp ? 'spot' : 'perps',
+          destinationBalance: delta.toPerp ? 'perps' : 'spot',
+        } as const)
+      : staking
+        ? ({
+            sourceBalance: delta.isDeposit ? 'spot' : 'staking',
+            destinationBalance: delta.isDeposit ? 'staking' : 'spot',
+          } as const)
+        : BORROW_LEND_BALANCES[delta.operation]
+    const amount = accountClass ? delta.usdc : delta.amount
+    const token = accountClass ? HL_COLLATERAL_SYMBOL : delta.token
+    // Preserve the staking zero-hash identity's IN/OUT segment.
+    const action = accountClass
+      ? `${balances.sourceBalance}:${balances.destinationBalance}`
+      : staking
+        ? delta.isDeposit
+          ? 'OUT'
+          : 'IN'
+        : delta.operation
     const hasTransaction = entry.hash !== zeroHash
-    const direction = isCStakingTransferDelta(delta)
-      ? delta.isDeposit
-        ? 'OUT'
-        : 'IN'
-      : BORROW_LEND_DIRECTION[delta.operation]
-    const action = isCStakingTransferDelta(delta) ? direction : delta.operation
     return {
       ...base,
       ...(hasTransaction
         ? {}
         : {
-            id: `${delta.type}:${delta.token}:${action}:${delta.amount}:${base.timestamp}`,
+            id: `${delta.type}:${token}:${action}:${amount}:${base.timestamp}`,
           }),
-      type: ActivityType.TRANSFER,
-      direction,
-      counterpartyAddress: queriedAddress.toLowerCase(),
+      type: ActivityType.INTERNAL_TRANSFER,
+      ...balances,
       asset,
-      amount: delta.amount,
-      meta: isCStakingTransferDelta(delta)
-        ? { transferType: delta.type }
-        : {
+      amount,
+      meta: isBorrowLendDelta(delta)
+        ? {
             transferType: delta.type,
             operation: delta.operation,
             interestAmount: delta.interestAmount,
-          },
+          }
+        : { transferType: delta.type },
       ...(hasTransaction
         ? {
             explorerLink: explorerTxUrl(
@@ -217,7 +241,37 @@ export const mapLedgerEntry = (
             ),
           }
         : {}),
-    } satisfies TransferActivity
+    } satisfies InternalTransferActivity
+  }
+
+  if (
+    isGossipPriorityGasAuctionDelta(delta) ||
+    isAccountActivationGasDelta(delta) ||
+    isRewardsClaimDelta(delta)
+  ) {
+    const asset = resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+    if (asset === null) {
+      return null
+    }
+    const hasTransaction = entry.hash !== zeroHash
+    return {
+      ...base,
+      id: hasTransaction
+        ? entry.hash
+        : `${delta.type}:${delta.token}:${delta.amount}:${timestamp}`,
+      type: isRewardsClaimDelta(delta) ? ActivityType.REWARD : ActivityType.FEE,
+      asset,
+      amount: delta.amount,
+      meta: { ledgerType: delta.type },
+      ...(hasTransaction
+        ? {
+            explorerLink: explorerTxUrl(
+              ExplorerChainId.HYPERLIQUID,
+              entry.hash
+            ),
+          }
+        : {}),
+    } satisfies FeeActivity | RewardActivity
   }
 
   if (isVaultTransferDelta(delta)) {

@@ -17,11 +17,15 @@ import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
+  isAccountActivationGasDelta,
+  isAccountClassTransferDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
   isDepositDelta,
+  isGossipPriorityGasAuctionDelta,
   isLiquidationDelta,
+  isRewardsClaimDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
@@ -70,6 +74,9 @@ const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.DEPOSIT,
   ActivityType.WITHDRAWAL,
   ActivityType.TRANSFER,
+  ActivityType.FEE,
+  ActivityType.REWARD,
+  ActivityType.INTERNAL_TRANSFER,
 ])
 
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
@@ -176,6 +183,7 @@ const fetchActivityData = async (
     return { items: [], saturated: true }
   }
 
+  const ledgerKeyCounts = new Map<string, number>()
   const ledgerItems: ActivityItem[] = ledgerWindow.items.flatMap(
     (entry): ActivityItem[] => {
       if (
@@ -184,13 +192,20 @@ const fetchActivityData = async (
           !typeFilter.includes(ActivityType.DEPOSIT)) ||
           (isWithdrawDelta(entry.delta) &&
             !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.FEE) &&
+            (isGossipPriorityGasAuctionDelta(entry.delta) ||
+              isAccountActivationGasDelta(entry.delta))) ||
+          (isRewardsClaimDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.REWARD)) ||
           (!typeFilter.includes(ActivityType.TRANSFER) &&
             (isSpotTransferDelta(entry.delta) ||
               isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
-              isVaultTransferDelta(entry.delta) ||
-              isCStakingTransferDelta(entry.delta) ||
-              isBorrowLendDelta(entry.delta))))
+              isVaultTransferDelta(entry.delta))) ||
+          (!typeFilter.includes(ActivityType.INTERNAL_TRANSFER) &&
+            (isCStakingTransferDelta(entry.delta) ||
+              isBorrowLendDelta(entry.delta) ||
+              isAccountClassTransferDelta(entry.delta))))
       ) {
         return []
       }
@@ -201,7 +216,16 @@ const fetchActivityData = async (
         assetRegistry,
         resolveMarket
       )
-      return item === null ? [] : [item]
+      if (item === null) {
+        return []
+      }
+      // Identical zero-hash rows synthesize one id; a suffix keeps page keys unique.
+      const key = `${item.type}:${item.id}`
+      const occurrence = ledgerKeyCounts.get(key) ?? 0
+      ledgerKeyCounts.set(key, occurrence + 1)
+      return [
+        occurrence === 0 ? item : { ...item, id: `${item.id}:${occurrence}` },
+      ]
     }
   )
 

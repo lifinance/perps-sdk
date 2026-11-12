@@ -18,6 +18,7 @@ import {
   type QuoteListener,
   ReconnectingWebSocket,
   resolveSubscribeQuote,
+  type SubscriptionErrorListener,
   type SubscriptionListener,
   safeAddDecimalString,
   safeDecimalStringToNumber,
@@ -276,9 +277,10 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
   override async subscribe(
     sub: Subscription,
     listener: SubscriptionListener,
-    onStatus?: WsStatusListener
+    onStatus?: WsStatusListener,
+    onError?: SubscriptionErrorListener
   ): Promise<() => void> {
-    const unsubscribe = await super.subscribe(sub, listener, onStatus)
+    const unsubscribe = await super.subscribe(sub, listener, onStatus, onError)
     // The summary source is decided by the abstraction mode, so every
     // summary subscribe (re-)reads it — consumers resubscribe when they
     // observe an account-config change, and the wire channel is usually

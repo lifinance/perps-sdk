@@ -175,7 +175,12 @@ describe('PerpsWsClient', () => {
 
       await ws.subscribe(sub, listener)
 
-      expect(mockSubscribe).toHaveBeenCalledWith(sub, listener, undefined)
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        sub,
+        listener,
+        undefined,
+        undefined
+      )
 
       ws.close()
     })
@@ -205,8 +210,34 @@ describe('PerpsWsClient', () => {
 
       await ws.subscribe(sub, listener, onStatus)
 
-      expect(mockSubscribe).toHaveBeenCalledWith(sub, listener, onStatus)
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        sub,
+        listener,
+        onStatus,
+        undefined
+      )
 
+      ws.close()
+    })
+
+    it('delivers a provider rejection through the fourth callback', async () => {
+      useWsUrlHandler()
+      const ws = makeWs(buildHlFactory())
+      const onError = vi.fn()
+      const error = new Error('credential rejected')
+      mockSubscribe.mockImplementationOnce(
+        async (_sub, _data, _status, reject) => {
+          queueMicrotask(() => reject(error))
+          return () => {}
+        }
+      )
+      await ws.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      expect(onError).toHaveBeenCalledExactlyOnceWith(error)
       ws.close()
     })
 

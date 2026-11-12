@@ -90,6 +90,9 @@ const ONDO_AUTH_FANOUT: readonly string[] = [
   'accountSummary',
 ]
 
+/** Bound on the venue's answer to a `login` op. An unmapped error leaves no other exit. */
+const ONDO_LOGIN_ACK_TIMEOUT_MS = 10_000
+
 const isAuthChannel = (
   channel: Subscription['channel']
 ): channel is AuthChannel => channel in ONDO_AUTH_CHANNEL
@@ -170,6 +173,17 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   /** The single address this connection's login is bound to. */
   private accountAddress: string | undefined
   private loginPromise: Promise<void> | undefined
+  private loginAttempt:
+    | {
+        address: Address
+        token: string
+        accepted: boolean
+        timer: ReturnType<typeof setTimeout>
+        resolve: () => void
+        reject: (error: unknown) => void
+      }
+    | undefined
+  private readonly rejectedTokens = new Set<string>()
   private authGeneration = 0
   private authBindingRefs = 0
   private closeGeneration = 0
@@ -194,6 +208,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     // The venue's login lives and dies with the connection, so a drop must
     // forget both the in-flight login and the address it bound.
     this.rws.on('close', () => {
+      this.takeLoginAttempt()?.reject(
+        new Error('Ondo WebSocket closed during login')
+      )
       this.loginPromise = undefined
       this.accountAddress = undefined
     })
@@ -473,6 +490,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.contexts = {}
     this.pendingFunding.clear()
     this.loginPromise = undefined
+    this.takeLoginAttempt()?.reject(
+      new Error('Ondo WebSocket closed during login')
+    )
     this.accountAddress = undefined
     this.authGeneration += 1
     this.closeGeneration += 1
@@ -602,6 +622,12 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         `No Ondo session for ${address}. Run the SIWE login before subscribing to account channels.`
       )
     }
+    if (this.rejectedTokens.has(token.token)) {
+      throw ondoSessionRejectedError(
+        'WebSocket subscription',
+        new OndoSessionExpiredError('Ondo rejected the session token')
+      )
+    }
     return token
   }
 
@@ -614,11 +640,36 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (this.loginPromise === undefined) {
       const login: Promise<void> = this.requireSession(address).then(
         (token) => {
-          if (this.loginPromise === login) {
+          if (this.loginPromise !== login) {
+            return
+          }
+          return new Promise<void>((resolve, reject) => {
             this.rws.send(
               JSON.stringify({ op: 'login', args: { token: token.token } })
             )
-          }
+            const attempt = {
+              address,
+              token: token.token,
+              accepted: false,
+              timer: setTimeout(() => {
+                if (this.loginAttempt !== attempt) {
+                  return
+                }
+                this.rejectLogin(
+                  new PerpsError(
+                    PerpsErrorCode.TimeoutError,
+                    'Ondo did not acknowledge the WebSocket login.'
+                  ),
+                  false
+                )
+                // The venue may still hold a half-open login on this socket.
+                this.rws.reconnect()
+              }, ONDO_LOGIN_ACK_TIMEOUT_MS),
+              resolve,
+              reject,
+            }
+            this.loginAttempt = attempt
+          })
         }
       )
       this.loginPromise = login
@@ -708,7 +759,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       if (!(err instanceof OndoSessionExpiredError)) {
         throw err
       }
-      await this.tokenStore.remove(address)
+      await this.tokenStore.remove(address, token.token)
       throw ondoSessionRejectedError('account summary', err)
     }
     return {
@@ -738,6 +789,50 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     })
   }
 
+  /** Detach the pending login attempt, if any, and stop its acknowledgement timer. */
+  private takeLoginAttempt(): typeof this.loginAttempt {
+    const attempt = this.loginAttempt
+    if (attempt !== undefined) {
+      clearTimeout(attempt.timer)
+      this.loginAttempt = undefined
+    }
+    return attempt
+  }
+
+  private rejectLogin(error: PerpsError, unauthorized: boolean): void {
+    const attempt = this.takeLoginAttempt()
+    if (attempt === undefined) {
+      wsLog.serverError(
+        this.providerKey,
+        `Login error without a pending login: ${error.message}`
+      )
+      return
+    }
+    this.loginPromise = undefined
+    const address = attempt.address.toLowerCase()
+    if (unauthorized) {
+      this.rejectedTokens.add(attempt.token)
+      void this.tokenStore
+        .remove(attempt.address, attempt.token)
+        .catch((cause) => wsLog.handlerFailure(this.providerKey, cause))
+    }
+    for (const [key, state] of this.wireSubs) {
+      if (state.needsAuth) {
+        this.unregisterSub(key)
+        this.rws.send(JSON.stringify({ op: 'unsubscribe', ...state.frame }))
+      }
+    }
+    this.authWireRefs.clear()
+    this.authBindingRefs = 0
+    this.authGeneration += 1
+    this.accountAddress = undefined
+    this.clearAccountSummary()
+    attempt.reject(error)
+    for (const channel of ONDO_AUTH_FANOUT) {
+      this.rejectChannel(`${channel}:${address}`, error)
+    }
+  }
+
   protected handleMessage(raw: string): void {
     let msg: OndoWsMessage
     try {
@@ -746,8 +841,38 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       wsLog.parseFailure(this.providerKey, raw)
       return
     }
+    if (msg.type === 'loggedIn') {
+      if (this.loginAttempt !== undefined) {
+        clearTimeout(this.loginAttempt.timer)
+        this.loginAttempt.accepted = true
+        this.loginAttempt.resolve()
+      }
+      return
+    }
     if (msg.type === 'error') {
-      wsLog.serverError(this.providerKey, msg.msg ?? 'unknown error')
+      if (msg.msg?.startsWith('error parsing jwt: ')) {
+        this.rejectLogin(
+          ondoSessionRejectedError(
+            'WebSocket subscription',
+            new OndoSessionExpiredError('Ondo rejected the session token')
+          ),
+          true
+        )
+        return
+      }
+      if (
+        this.loginAttempt !== undefined &&
+        !this.loginAttempt.accepted &&
+        (msg.msg === 'already logged in on this connection' ||
+          msg.msg === 'account already has too many connections')
+      ) {
+        this.rejectLogin(
+          new PerpsError(PerpsErrorCode.ThirdPartyError, msg.msg),
+          false
+        )
+        return
+      }
+      wsLog.serverError(this.providerKey, 'Venue rejected a WebSocket request')
       return
     }
     if (msg.type !== 'update') {

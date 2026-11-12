@@ -10,6 +10,7 @@ import type { PerpsSDKClient, QuoteListener } from '../types/provider.js'
 import { cachePromise } from './cachePromise.js'
 import type {
   EventForSubscription,
+  SubscriptionErrorListener,
   SubscriptionListener,
   WsConnectionStatus,
   WsProvider,
@@ -181,14 +182,10 @@ export class PerpsWsClient {
   }
 
   /**
-   * Subscribe to a WebSocket channel, lazily creating the provider's WS
-   * connection. Returns an unsubscribe function.
+   * Subscribe to a WebSocket channel and resolve to an unsubscribe after local registration.
+   * Initial failures reject the promise. Later failures invoke `onError`.
+   * Registration and socket status do not confirm account authorization.
    *
-   * @param onStatus - Optional listener for the underlying connection's
-   *   health. Fires `reconnecting` on a transient drop and the terminal
-   *   `disconnected` once auto-reconnect is abandoned, so consumers can
-   *   surface a reconnecting/disconnected state instead of silently showing
-   *   stale data.
    * @throws {PerpsError} When no WS provider factory is registered for the
    *   subscription's `dex`.
    * @public
@@ -196,12 +193,18 @@ export class PerpsWsClient {
   async subscribe<S extends Subscription>(
     sub: S,
     listener: (event: EventForSubscription<S>) => void,
-    onStatus?: WsStatusListener
+    onStatus?: WsStatusListener,
+    onError?: SubscriptionErrorListener
   ): Promise<() => void> {
     const providerKey = sub.dex
     const provider = await this.getOrCreateProvider(providerKey)
     provider.reconnect()
-    return provider.subscribe(sub, listener as SubscriptionListener, onStatus)
+    return provider.subscribe(
+      sub,
+      listener as SubscriptionListener,
+      onStatus,
+      onError
+    )
   }
 
   /**

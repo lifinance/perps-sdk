@@ -509,6 +509,24 @@ export interface FundingActivity extends BaseActivity {
   fundingRate: DecimalString
 }
 
+/** A standalone charge in asset units; amount retains the venue's decimal string. @public */
+export interface FeeActivity extends BaseActivity {
+  type: ActivityType.FEE
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
+/** Reward income in asset units; amount retains the venue's decimal string. @public */
+export interface RewardActivity extends BaseActivity {
+  type: ActivityType.REWARD
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
 /**
@@ -540,6 +558,27 @@ export type TransferActivity = BaseActivity & {
     | { counterpartyAccountIndex?: number; counterpartyAddress: string }
   )
 
+/** Balance kinds within one account, not provider trading-category identifiers. */
+export type InternalTransferBalance =
+  | 'spot'
+  | 'perps'
+  | 'staking'
+  | 'borrowLend'
+
+/**
+ * Movement between balances of one account, not income or an external transfer.
+ * The venue amount stays unchanged; the balance pair determines direction.
+ */
+export interface InternalTransferActivity extends BaseActivity {
+  type: ActivityType.INTERNAL_TRANSFER
+  asset: Asset
+  amount: DecimalString
+  sourceBalance: InternalTransferBalance
+  destinationBalance: InternalTransferBalance
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
 /**
  * Discriminated union of all activity records returned by a provider.
  *
@@ -551,6 +590,9 @@ export type ActivityItem =
   | LiquidationActivity
   | FundingActivity
   | TransferActivity
+  | FeeActivity
+  | RewardActivity
+  | InternalTransferActivity
 
 /**
  * Paginated account-activity response for one provider and account.
