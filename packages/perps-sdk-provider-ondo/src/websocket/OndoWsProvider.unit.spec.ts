@@ -3,6 +3,7 @@ import {
   createPerpsClient,
   isDecimalString,
   type StorageAdapter,
+  WS_CHANNEL_TEARDOWN_LINGER_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
 } from '@lifi/perps-sdk'
 import {
@@ -1624,6 +1625,69 @@ describe('OndoWsProvider', () => {
 
       // A failed login must not leave the connection bound to TEST_ADDR.
       expect((p as any).accountAddress).toBeUndefined()
+      p.close()
+    })
+
+    it('does not cycle the connection when the session is lost between the open guard and the login', async () => {
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      const rws = Reflect.get(p, 'rws')
+      const wireSubs: Map<string, unknown> = Reflect.get(p, 'wireSubs')
+      // The registry sync runs between the session guard and the login op.
+      marketsFetchMock.mockImplementationOnce(async () => {
+        await storage.remove(SESSION_KEY)
+        return { markets: ONDO_MARKETS }
+      })
+
+      await expect(
+        p.subscribe(
+          { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+          vi.fn()
+        )
+      ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
+
+      expect(send).not.toHaveBeenCalled()
+      expect(rws.reconnect).not.toHaveBeenCalled()
+      expect(Reflect.get(p, 'accountAddress')).toBeUndefined()
+      expect(Reflect.get(p, 'authBindingRefs')).toBe(0)
+      expect(wireSubs.size).toBe(0)
+      p.close()
+    })
+
+    it('cycles the connection when the last private channel releases while the replay login awaits its acknowledgement', async () => {
+      vi.useFakeTimers()
+      const p = makeProvider()
+      const send = stubSocket(p)
+      const rws = Reflect.get(p, 'rws')
+      const unsubscribe = await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        vi.fn()
+      )
+      for (const fn of rws.listeners.close) {
+        fn(1006, 'dropped')
+      }
+      // The venue answers no login on this connection until the test feeds it.
+      send.mockImplementation(() => {})
+      send.mockClear()
+
+      const replay = Reflect.get(p, 'replaySubs').call(p)
+      await vi.waitFor(() =>
+        expect(send).toHaveBeenCalledWith(
+          JSON.stringify({ op: 'login', args: { token: 'jwt-abc' } })
+        )
+      )
+      unsubscribe()
+      await vi.advanceTimersByTimeAsync(WS_CHANNEL_TEARDOWN_LINGER_MS)
+
+      expect(rws.reconnect).toHaveBeenCalledTimes(1)
+      expect(Reflect.get(p, 'wireSubs').size).toBe(0)
+      feed(p, { type: 'loggedIn', msg: 'Login successful' })
+      await replay
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        { op: 'login', args: { token: 'jwt-abc' } },
+        { op: 'unsubscribe', channel: 'ordersPerps' },
+      ])
       p.close()
     })
 

@@ -519,6 +519,56 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('logs a resolver failure at the open replay, keeps the wire registered, and sends it on the next open', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let resolverError: Error | undefined
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        {
+          resolveAuthToken: async () => {
+            if (resolverError !== undefined) {
+              throw resolverError
+            }
+            return 'read-token'
+          },
+        },
+        freshClient()
+      )
+      const { p, internals, send } = connectedProvider(provider)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      resolverError = new Error('token endpoint unreachable')
+      send.mockClear()
+
+      await internals.replaySubs()
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(send).not.toHaveBeenCalled()
+      expect(errSpy).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining("'account_all_orders/42'"),
+        resolverError
+      )
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(true)
+
+      resolverError = undefined
+      await internals.replaySubs()
+      expect(send).toHaveBeenCalledExactlyOnceWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: 'account_all_orders/42',
+          auth: 'read-token',
+        })
+      )
+      errSpy.mockRestore()
+      p.close()
+    })
+
     it('keeps malformed requests and server failures distinct from authentication', async () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
