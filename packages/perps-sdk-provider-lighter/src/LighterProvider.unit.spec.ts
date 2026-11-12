@@ -3899,8 +3899,8 @@ describe('LighterProvider — getPositions keeps a row with a bad position_value
       realized_pnl: '0',
       liquidation_price: '40000',
       total_funding_paid_out: '0',
-      margin_mode: 0,
-      allocated_margin: '2500',
+      margin_mode: LT_MARGIN_MODE_ISOLATED,
+      allocated_margin: '3000',
       total_discount: '0',
     }
     overrideFetch((url) =>
@@ -3928,13 +3928,16 @@ describe('LighterProvider — getPositions keeps a row with a bad position_value
     expect(positions[0]).toMatchObject({
       markPrice: '50000',
       positionValue: '50000',
+      marginUsed: '3000',
+      // 10 ÷ (1 × 50000 ÷ 20) × 100: entry notional ÷ leverage, not allocated_margin
       returnOnEquity: '0.4',
-      effectiveLeverage: '20',
+      effectiveLeverage: '16.67',
       liquidationDistance: '20',
     })
     expect(positions[1].size).toBe('1')
     expect(positions[1].markPrice).toBeUndefined()
-    expect(positions[1]).not.toHaveProperty('returnOnEquity')
+    expect(positions[1].marginUsed).toBe('3000')
+    expect(positions[1].returnOnEquity).toBe('0.4')
     expect(positions[1]).not.toHaveProperty('positionValue')
     expect(positions[1]).not.toHaveProperty('effectiveLeverage')
     expect(positions[1]).not.toHaveProperty('liquidationDistance')

@@ -1,3 +1,4 @@
+import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -48,13 +49,21 @@ const makeAp = (
   },
 })
 
-const map = (ap: HlAssetPosition): Position => {
-  const position = mapPosition(ap, BTC_MARKET)
+const map = (ap: HlAssetPosition, mapper = mapPosition): Position => {
+  const position = mapper(ap, BTC_MARKET)
   if (position === undefined) {
     throw new Error('expected a mapped position')
   }
   return position
 }
+
+// A fresh module instance gives the warn-once state of the mapper a clean start.
+const freshMapPosition = async (): Promise<typeof mapPosition> => {
+  vi.resetModules()
+  return (await import('./mapPosition.js')).mapPosition
+}
+
+const CALCULATED_ROE = '10.63829787234042553191489361702127659574'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -93,7 +102,7 @@ describe('mapPosition (Hyperliquid)', () => {
       unrealizedPnl: '100',
       marginUsed: '940',
       positionValue: '9500',
-      // 100 ÷ 940 × 100
+      // 100 ÷ (0.1 × 94000 ÷ 10) × 100
       returnOnEquity: '10.63829787234042553191489361702127659574',
       // 9500 ÷ 940
       effectiveLeverage: '10.11',
@@ -102,17 +111,145 @@ describe('mapPosition (Hyperliquid)', () => {
     })
   })
 
+  it('changes the venue returnOnEquity fraction to a percent', () => {
+    // 40x isolated: marginUsed holds the added margin and the unrealized PnL
+    const result = map(
+      makeAp({
+        leverage: { type: 'isolated', value: 40 },
+        marginUsed: '1265',
+        returnOnEquity: '0.0985',
+      })
+    )
+
+    expect(result.returnOnEquity).toBe('9.85')
+  })
+
+  it('matches the venue ROE at the same mark despite added isolated margin', () => {
+    // 0.1 BTC at 10x, entry 100000, mark 105000: PnL 500 on initial margin 1000
+    const isolatedRow = (marginUsed: string): HlAssetPosition =>
+      makeAp({
+        entryPx: '100000',
+        positionValue: '10500',
+        unrealizedPnl: '500',
+        returnOnEquity: '0.5',
+        marginUsed,
+        leverage: { type: 'isolated', value: 10 },
+      })
+    // 1050 initial margin at the mark + 1000 added margin + 500 PnL
+    const mapped = map(isolatedRow('2550'))
+    const snapshot = { ...mapped }
+
+    expect(mapped.markPrice).toBe('105000')
+    expect(mapped.returnOnEquity).toBe('50')
+
+    const remarked = remarkPosition(mapped, '105000')
+
+    expect(remarked.unrealizedPnl).toBe('500')
+    expect(remarked.returnOnEquity).toBe('50')
+    expect(remarked.marginUsed).toBe('2550')
+    expect(mapped).toEqual(snapshot)
+
+    expect(
+      remarkPosition(map(isolatedRow('1050')), '105000').returnOnEquity
+    ).toBe('50')
+  })
+
+  it('matches the negative venue ROE at the same mark', () => {
+    // 0.1 BTC at 10x, entry 100000, mark 97500: PnL -250 on initial margin 1000
+    const mapped = map(
+      makeAp({
+        entryPx: '100000',
+        positionValue: '9750',
+        unrealizedPnl: '-250',
+        returnOnEquity: '-0.25',
+        marginUsed: '1975',
+        leverage: { type: 'isolated', value: 10 },
+      })
+    )
+
+    expect(mapped.returnOnEquity).toBe('-25')
+    expect(remarkPosition(mapped, '97500').returnOnEquity).toBe('-25')
+  })
+
+  it.each([
+    '',
+    'NaN',
+    '1e-2',
+  ])('keeps the row with the calculated returnOnEquity and warns once when returnOnEquity is %j', async (returnOnEquity) => {
+    const mapper = await freshMapPosition()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = map(makeAp({ returnOnEquity }), mapper)
+
+    expect(result.size).toBe('0.1')
+    expect(result.returnOnEquity).toBe(CALCULATED_ROE)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('returnOnEquity'))
+  })
+
+  it('warns once per market across repeated malformed ROE values', async () => {
+    const mapper = await freshMapPosition()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const ethMarket: PerpsMarketDisplay = {
+      ...BTC_MARKET,
+      id: 'ETH',
+      baseAsset: {
+        ...BTC_MARKET.baseAsset,
+        id: 'ETH',
+        displaySymbol: 'ETH',
+        logoURI: 'https://app.hyperliquid.xyz/coins/ETH.svg',
+      },
+    }
+
+    mapper(makeAp({ returnOnEquity: 'NaN' }), BTC_MARKET)
+    mapper(makeAp({ coin: 'ETH', returnOnEquity: 'NaN' }), ethMarket)
+    mapper(makeAp({ returnOnEquity: '1e-2' }), BTC_MARKET)
+
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenNthCalledWith(1, expect.stringContaining('BTC'))
+    expect(warn).toHaveBeenNthCalledWith(2, expect.stringContaining('ETH'))
+  })
+
+  it('does not warn when returnOnEquity is absent', async () => {
+    const mapper = await freshMapPosition()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(map(makeAp({}), mapper).returnOnEquity).toBe(CALCULATED_ROE)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('keeps a valid venue returnOnEquity when leverage.value is zero, and remarkPosition leaves it absent', async () => {
+    const mapper = await freshMapPosition()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const mapped = map(
+      makeAp({
+        returnOnEquity: '0.0985',
+        leverage: { type: 'isolated', value: 0 },
+      }),
+      mapper
+    )
+
+    expect(mapped.returnOnEquity).toBe('9.85')
+    expect(mapped).not.toHaveProperty('leverage')
+
+    const remarked = remarkPosition(mapped, '95000')
+
+    expect(remarked.unrealizedPnl).toBe('100')
+    expect(remarked).not.toHaveProperty('returnOnEquity')
+  })
+
   it('takes the positionValue magnitude', () => {
     expect(
       map(makeAp({ szi: '-0.25', positionValue: '-23750' })).positionValue
     ).toBe('23750')
   })
 
-  it('leaves returnOnEquity and effectiveLeverage absent when marginUsed is zero', () => {
+  it('leaves effectiveLeverage absent and keeps returnOnEquity when marginUsed is zero', () => {
     const result = map(makeAp({ marginUsed: '0' }))
 
-    expect(result).not.toHaveProperty('returnOnEquity')
     expect(result).not.toHaveProperty('effectiveLeverage')
+    expect(result.returnOnEquity).toBe(CALCULATED_ROE)
     expect(result.liquidationDistance).toBe('10.53')
   })
 
@@ -142,9 +279,7 @@ describe('mapPosition (Hyperliquid)', () => {
 
     expect(result.size).toBe('0.1')
     expect(result.leverage).toBe('10')
-    expect(result.returnOnEquity).toBe(
-      '10.63829787234042553191489361702127659574'
-    )
+    expect(result.returnOnEquity).toBe(CALCULATED_ROE)
     expect(result).not.toHaveProperty('markPrice')
     expect(result).not.toHaveProperty('initialMarginRequirement')
     expect(result).not.toHaveProperty('positionValue')
@@ -250,18 +385,6 @@ describe('mapPosition (Hyperliquid)', () => {
 
       expect(result.accruedFunding).toBe('-22')
     })
-  })
-
-  it('defaults entryPrice to "0" and leaves liquidationPrice absent when null', () => {
-    const result = map(
-      makeAp({
-        entryPx: null as unknown as string,
-        liquidationPx: null,
-      })
-    )
-
-    expect(result.entryPrice).toBe('0')
-    expect(result).not.toHaveProperty('liquidationPrice')
   })
 
   it('leaves liquidationPrice absent for a cross position with a null liquidationPx', () => {

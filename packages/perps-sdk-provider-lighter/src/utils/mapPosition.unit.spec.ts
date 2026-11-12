@@ -1,4 +1,4 @@
-import { decimalStringToNumber } from '@lifi/perps-sdk'
+import { decimalStringToNumber, remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -403,7 +403,8 @@ describe('mapPosition (Lighter)', () => {
         unrealizedPnl: '10',
         marginUsed: '2500',
         positionValue: '50000',
-        returnOnEquity: '0.4',
+        // 10 ÷ (1 × 79000 ÷ 50) × 100: entry notional ÷ leverage, not allocated_margin
+        returnOnEquity: '0.63291139240506329113924050632911392405',
         effectiveLeverage: '20',
         liquidationDistance: '20',
       })
@@ -425,6 +426,32 @@ describe('mapPosition (Lighter)', () => {
       expect(result.effectiveLeverage).toBe('50')
       expect(result.returnOnEquity).toBe('0')
       expect(result).not.toHaveProperty('liquidationDistance')
+    })
+
+    it('calculates returnOnEquity on the two-decimal display leverage at each mark', () => {
+      const mapped = map(
+        basePosition({
+          position: '1',
+          avg_entry_price: '100',
+          position_value: '107',
+          unrealized_pnl: '7',
+          initial_margin_fraction: '7',
+        }),
+        MARKET
+      )
+
+      // 100 ÷ 7 = 14.2857… displays as 14.29, so ROE is 7 × 14.29 = 100.03, not 100
+      expect(mapped).toMatchObject({
+        leverage: '14.29',
+        markPrice: '107',
+        returnOnEquity: '100.03',
+      })
+      expect(remarkPosition(mapped, '107').returnOnEquity).toBe('100.03')
+      expect(remarkPosition(mapped, '114')).toMatchObject({
+        leverage: '14.29',
+        unrealizedPnl: '14',
+        returnOnEquity: '200.06',
+      })
     })
   })
 })

@@ -80,9 +80,10 @@ export interface Position {
    * sends none and the position has no positive `markPrice`.
    */
   positionValue?: DecimalString
-  /** Percent (`'10'` is 10%). Ondo uses its venue fraction × 100.
-   * Other results use `unrealizedPnl ÷ marginUsed × 100` with snapshot margin.
-   * Absent without venue ROE when margin is not positive or PnL is not decimal.
+  /** Percent (`'10'` is 10%), without display rounding.
+   * `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
+   * Hyperliquid and Ondo fractions become percents; re-marking recalculates.
+   * Absent without venue ROE when PnL, size, entry price or leverage is unusable.
    */
   returnOnEquity?: DecimalString
   /** Display multiple: `positionValue ÷ marginUsed`, rounded half-up to two decimals.
