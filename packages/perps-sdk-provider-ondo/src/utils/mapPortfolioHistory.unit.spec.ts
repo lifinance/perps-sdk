@@ -57,11 +57,13 @@ describe('mapPortfolioHistory', () => {
           timestamp: Date.parse('2025-03-04T00:00:00Z'),
           accountValue: '4800.00',
           pnl: '180.00',
+          netTransfers: '0',
         },
         {
           timestamp: Date.parse('2025-03-05T00:00:00Z'),
           accountValue: '4950.00',
           pnl: '232.00',
+          netTransfers: '0',
         },
       ],
       volume: '15000.00',
@@ -91,6 +93,7 @@ describe('mapPortfolioHistory', () => {
         timestamp: Date.parse('2025-03-05T00:00:00Z'),
         accountValue: '4950.00',
         pnl: '232.00',
+        netTransfers: '0',
       },
     ])
     expect(warn).toHaveBeenCalledOnce()
@@ -113,14 +116,80 @@ describe('mapPortfolioHistory', () => {
         timestamp: Date.parse('2025-03-04T00:00:00Z'),
         accountValue,
         pnl,
+        netTransfers: '0',
       },
       {
         timestamp: Date.parse('2025-03-05T00:00:00Z'),
         accountValue: '4950.00',
         pnl: '232.00',
+        netTransfers: '0',
       },
     ])
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+  it('calculates exact inflow and outflow relative to the first retained point', () => {
+    const result = mapPortfolioHistory(
+      'all',
+      [
+        point({ time: 'invalid', allTimeDeposits: '9000' }),
+        point({
+          allTimeDeposits: '9007199254740993.1',
+          allTimeWithdrawals: '0.1',
+        }),
+        point({
+          time: '2025-03-05',
+          allTimeDeposits: '9007199254740993.3',
+          allTimeWithdrawals: '0.1',
+        }),
+        point({
+          time: '2025-03-06',
+          allTimeDeposits: '9007199254740993.3',
+          allTimeWithdrawals: '0.5',
+        }),
+      ],
+      SUMMARY
+    )
+    expect(result.points.map((p) => p.netTransfers)).toEqual([
+      '0',
+      '0.2',
+      '-0.2',
+    ])
+  })
+
+  it('retains other fields when transfer totals are invalid', () => {
+    const result = mapPortfolioHistory(
+      'all',
+      [
+        point({}),
+        point({ time: '2025-03-05', allTimeWithdrawals: 'n/a' }),
+        point({ time: '2025-03-06', allTimeDeposits: '5001' }),
+      ],
+      SUMMARY
+    )
+    expect(result.points.map((p) => p.netTransfers)).toEqual([
+      '0',
+      undefined,
+      '1',
+    ])
+    expect(result.points[1]).toEqual({
+      timestamp: Date.parse('2025-03-05'),
+      accountValue: '4800.00',
+      pnl: '180.00',
+    })
+  })
+
+  it.each([
+    '',
+    'NaN',
+    '1e3',
+  ])('does not replace an invalid first baseline: %s', (invalid) => {
+    const result = mapPortfolioHistory(
+      'all',
+      [point({ allTimeDeposits: invalid }), GRAPH[1]],
+      SUMMARY
+    )
+    expect(result.points.every((p) => !('netTransfers' in p))).toBe(true)
+    expect(result.totalPnl).toBe('232.00')
   })
 })

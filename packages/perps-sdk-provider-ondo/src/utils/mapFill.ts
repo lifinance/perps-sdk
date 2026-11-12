@@ -1,7 +1,7 @@
-import { safeSubtractDecimalString } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import type { OndoFill, OndoFillDirection } from '../types/wire.js'
+import { buildFee } from './buildFee.js'
 import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
 
 const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
@@ -13,10 +13,6 @@ const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
     flipLongToShort: FillClassification.SWITCHED_SHORT,
     flipShortToLong: FillClassification.SWITCHED_LONG,
   }
-
-/** Ondo's `fee` net of `feeRebate`, or `undefined` when either is malformed. */
-const netFeeAmount = (fill: OndoFill): string | undefined =>
-  safeSubtractDecimalString(fill.fee, fill.feeRebate ?? '0')
 
 /**
  * Map a raw Ondo fill to the generic {@link Fill}. The fee is netted against
@@ -40,7 +36,6 @@ export const mapFill = (
   if (createdAt === undefined) {
     return undefined
   }
-  const feeAmount = netFeeAmount(fill)
   return {
     id: fill.id,
     orderId: fill.orderId,
@@ -51,10 +46,7 @@ export const mapFill = (
     price: fill.price,
     liquidity: fill.isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
     // Ondo charges the fill fee in the market's quote asset.
-    fee:
-      feeAmount === undefined
-        ? undefined
-        : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
+    fee: buildFee(fill, market.quoteAsset.displaySymbol),
     realizedPnl: fill.pnl,
     classification:
       fill.direction !== undefined

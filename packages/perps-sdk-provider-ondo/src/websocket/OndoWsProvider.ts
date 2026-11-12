@@ -1,7 +1,5 @@
 import {
-  addDecimalString,
   DecodeChain,
-  divideDecimalString,
   getMarketRegistry,
   isDecimalString,
   localStorageAdapter,
@@ -65,10 +63,8 @@ import { intervalFromBarSpan, mapInterval } from '../utils/ohlcvInterval.js'
 
 // Public channels (per market, demuxed from the frame's `market` field):
 //   orderbook → depthBooksPerps, trades → tradesPerps, candle → kLinePerps.
-// `marketsContext`/`marketContext` merge three wire channels — markPricesPerps,
-// fundingRatesPerps and topOfBooksPerps — into the aggregated context emit.
-// `midPrice` is the top-of-book mid; the mark price stands in until a
-// two-sided book arrives for the market.
+// `marketsContext`/`marketContext` merge two wire channels — markPricesPerps
+// and fundingRatesPerps — into the aggregated context emit, with no `midPrice`.
 // Authenticated channels (account-wide, no market filter):
 //   orderUpdates → ordersPerps, fills → fillsPerps, positions → positionsPerps.
 //
@@ -173,8 +169,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     string,
     { rate: string; nextFundingTime: number }
   >()
-  /** Latest two-sided top-of-book mid, keyed by venue market symbol. */
-  private bookMids = new Map<string, string>()
 
   /** The single address this connection's login is bound to. */
   private accountAddress: string | undefined
@@ -495,7 +489,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   protected override onClose(): void {
     this.contexts = {}
     this.pendingFunding.clear()
-    this.bookMids.clear()
     this.loginPromise = undefined
     this.takeLoginAttempt()?.reject(
       new Error('Ondo WebSocket closed during login')
@@ -521,10 +514,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
             'fundingRatesPerps',
             { frame: { channel: 'fundingRatesPerps' }, needsAuth: false },
           ],
-          [
-            'topOfBooksPerps',
-            { frame: { channel: 'topOfBooksPerps' }, needsAuth: false },
-          ],
         ]
       case 'marketContext':
         return [
@@ -539,13 +528,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
             `fundingRatesPerps:${sub.marketId}`,
             {
               frame: { channel: 'fundingRatesPerps', markets: [sub.marketId] },
-              needsAuth: false,
-            },
-          ],
-          [
-            `topOfBooksPerps:${sub.marketId}`,
-            {
-              frame: { channel: 'topOfBooksPerps', markets: [sub.marketId] },
               needsAuth: false,
             },
           ],
@@ -901,9 +883,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         case 'depthBooksPerps':
           this.handleBooks(msg.data as OndoBookSnapshot[])
           break
-        case 'topOfBooksPerps':
-          this.handleTopOfBooks(msg.data as OndoBookSnapshot[])
-          break
         case 'tradesPerps':
           this.handleTrades(msg.data as OndoWsTrade[])
           break
@@ -981,36 +960,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     }
   }
 
-  private handleTopOfBooks(snapshots: OndoBookSnapshot[]): void {
-    const touched: string[] = []
-    for (const { market, bids, asks } of snapshots) {
-      const bestBid = this.toBookLevels(market, bids, -1)[0]
-      const bestAsk = this.toBookLevels(market, asks, 1)[0]
-      if (bestBid === undefined || bestAsk === undefined) {
-        this.bookMids.delete(market)
-      } else {
-        this.bookMids.set(
-          market,
-          divideDecimalString(
-            addDecimalString(bestBid.price, bestAsk.price),
-            '2'
-          )
-        )
-      }
-      const context = this.contexts[market]
-      if (context !== undefined) {
-        this.contexts[market] = {
-          ...context,
-          midPrice: this.bookMids.get(market) ?? context.markPrice,
-        }
-        touched.push(market)
-      }
-    }
-    if (touched.length > 0) {
-      this.emitContexts(touched)
-    }
-  }
-
   private handleTrades(trades: OndoWsTrade[]): void {
     const byMarket = new Map<string, OndoWsTrade[]>()
     for (const trade of trades) {
@@ -1061,8 +1010,6 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
         ...this.contexts[market],
         provider: this.providerKey,
         marketId: market,
-        // The mark price stands in until a two-sided top-of-book arrives.
-        midPrice: this.bookMids.get(market) ?? markPrice,
         markPrice,
         oraclePrice,
       }
@@ -1094,10 +1041,7 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
   }
 
   private emitContexts(markets: string[]): void {
-    this.emit('marketsContext', {
-      channel: 'marketsContext',
-      data: { ...this.contexts },
-    })
+    this.emitMarketsContext(() => ({ ...this.contexts }))
     for (const market of markets) {
       const context = this.contexts[market]
       if (context !== undefined) {

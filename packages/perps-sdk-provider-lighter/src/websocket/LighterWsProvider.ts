@@ -1134,10 +1134,7 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       const ctx = mapMarketContext(this.providerKey, entry)
       this.marketsContext[ctx.marketId] = ctx
     }
-    this.emit('marketsContext', {
-      channel: 'marketsContext',
-      data: this.marketsContext,
-    })
+    this.emitMarketsContext(() => this.marketsContext)
   }
 
   private handleOrderBook(

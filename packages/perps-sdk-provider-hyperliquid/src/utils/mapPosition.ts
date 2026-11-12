@@ -1,9 +1,11 @@
 import {
   absDecimalString,
+  buildPosition,
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
   isDecimalStringZero,
+  multiplyDecimalString,
   safeAbsDecimalString,
   safeDivideDecimalString,
   safeIsDecimalStringZero,
@@ -17,6 +19,7 @@ import { PROVIDER_KEY } from '../constants.js'
 import type { HlAssetPosition } from '../types/index.js'
 
 const warnNonPositiveLeverageOnce = createWarnOnce()
+const warnInvalidReturnOnEquityOnce = createWarnOnce()
 
 const skipPosition = (
   marketId: string,
@@ -36,14 +39,9 @@ const skipPosition = (
 export const isOpenAssetPosition = (ap: HlAssetPosition): boolean =>
   safeIsDecimalStringZero(ap.position.szi) !== true
 
-/**
- * Map a non-zero Hyperliquid position payload to the SDK's normalized
- * position. Signed wire size determines side; decimal strings remain strings
- * in the normalized response. `cumFunding.sinceOpen` is negated because
- * Hyperliquid signs funding paid as positive and `accruedFunding` signs it as
- * negative. A row with an invalid size gives `undefined`; an invalid position
- * value, a non-positive leverage or an invalid funding leaves the derived field
- * absent, and a `null` or empty `liquidationPx` leaves `liquidationPrice` absent.
+/** Map a Hyperliquid position; invalid size omits the row.
+ * Funding uses the opposite venue sign. Venue ROE fractions become percents.
+ * Invalid venue ROE warns once per market and uses the calculated fallback.
  * @public
  */
 export const mapPosition = (
@@ -82,10 +80,19 @@ export const mapPosition = (
     positionValue === undefined || leverage === undefined
       ? undefined
       : safeDivideDecimalString(positionValue, leverage)
+  if (
+    pos.returnOnEquity !== undefined &&
+    !isDecimalString(pos.returnOnEquity)
+  ) {
+    warnInvalidReturnOnEquityOnce(
+      `${PROVIDER_KEY}|position.returnOnEquity|${market.id}`,
+      `[${PROVIDER_KEY}] position \`returnOnEquity\` on market '${market.id}' is not a valid decimal, so the SDK calculates it when the other ROE inputs are valid: '${String(pos.returnOnEquity).slice(0, 64)}'`
+    )
+  }
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
 
-  return {
+  return buildPosition({
     market,
     side: isDecimalStringGreaterThan('0', pos.szi)
       ? PositionSide.SHORT
@@ -93,8 +100,12 @@ export const mapPosition = (
     size,
     entryPrice: pos.entryPx ?? '0',
     ...(markPrice === undefined ? {} : { markPrice }),
+    ...(positionValue === undefined ? {} : { positionValue }),
     ...(pos.liquidationPx ? { liquidationPrice: pos.liquidationPx } : {}),
     unrealizedPnl: pos.unrealizedPnl,
+    ...(isDecimalString(pos.returnOnEquity)
+      ? { returnOnEquity: multiplyDecimalString(pos.returnOnEquity, '100') }
+      : {}),
     ...(accruedFunding === undefined ? {} : { accruedFunding }),
     ...(leverage === undefined ? {} : { leverage }),
     marginUsed: pos.marginUsed,
@@ -102,5 +113,5 @@ export const mapPosition = (
       ? {}
       : { initialMarginRequirement }),
     marginMode,
-  }
+  })
 }

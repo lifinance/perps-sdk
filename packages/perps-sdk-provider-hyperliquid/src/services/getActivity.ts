@@ -15,17 +15,17 @@ import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
-import type {
-  HlUserFills,
-  HlUserFunding,
-  HlUserNonFundingLedgerUpdates,
-} from '../types/index.js'
+import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
+  isAccountActivationGasDelta,
+  isAccountClassTransferDelta,
   isBorrowLendDelta,
   isCollateralTransferDelta,
   isCStakingTransferDelta,
   isDepositDelta,
+  isGossipPriorityGasAuctionDelta,
   isLiquidationDelta,
+  isRewardsClaimDelta,
   isSendAssetDelta,
   isSpotTransferDelta,
   isVaultTransferDelta,
@@ -43,6 +43,7 @@ import {
 } from '../utils/infoClient.js'
 import { isFillLiquidatingAccount } from '../utils/isFillLiquidatingAccount.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { getLedgerHistory, getLedgerWindow } from './getLedgerHistory.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
 /**
@@ -73,6 +74,9 @@ const ASSET_BEARING_TYPES: ReadonlySet<ActivityType> = new Set([
   ActivityType.DEPOSIT,
   ActivityType.WITHDRAWAL,
   ActivityType.TRANSFER,
+  ActivityType.FEE,
+  ActivityType.REWARD,
+  ActivityType.INTERNAL_TRANSFER,
 ])
 
 const needsMarkets = (typeFilter: ActivityType[] | undefined): boolean =>
@@ -129,31 +133,23 @@ const fetchLiquidationHistory = async (
     lastTime = Math.max(lastTime, fill.time)
   }
   // Exclusions must cover the entire order, not the current SDK page's ledger window.
-  const ledger = await historyPage(
-    { startTime: firstTime, endTime: lastTime },
-    Number.MAX_SAFE_INTEGER,
-    async (startTime, endTime) => {
-      const updates = await infoRequest<HlUserNonFundingLedgerUpdates>(
-        apiUrl,
-        { type: 'userNonFundingLedgerUpdates', user, startTime, endTime },
-        options
-      )
-      return {
-        items: updates.filter(
-          (entry) => isLiquidationDelta(entry.delta) && hashes.has(entry.hash)
-        ),
-        saturated: updates.length >= 500,
-      }
-    },
-    (entry) => ({ time: entry.time, key: entry.hash }),
-    options?.signal
+  const ledger = await getLedgerHistory(
+    apiUrl,
+    { user, startTime: firstTime, endTime: lastTime },
+    options
   )
   return mapLiquidationFills(
     fills,
     PROVIDER_KEY,
     user,
     resolveMarket,
-    new Set(ledger.items.map((entry) => entry.hash))
+    new Set(
+      ledger
+        .filter(
+          (entry) => isLiquidationDelta(entry.delta) && hashes.has(entry.hash)
+        )
+        .map((entry) => entry.hash)
+    )
   )
 }
 
@@ -170,14 +166,10 @@ const fetchActivityData = async (
     !typeFilter || typeFilter.some((t) => t !== ActivityType.FUNDING)
   const needFunding = !typeFilter || typeFilter.includes(ActivityType.FUNDING)
 
-  const [ledgerUpdates, fundingUpdates, liquidations] = await Promise.all([
+  const [ledgerWindow, fundingUpdates, liquidations] = await Promise.all([
     needLedger
-      ? infoRequest<HlUserNonFundingLedgerUpdates>(
-          apiUrl,
-          { type: 'userNonFundingLedgerUpdates', ...timeParams },
-          options
-        )
-      : Promise.resolve([] as HlUserNonFundingLedgerUpdates),
+      ? getLedgerWindow(apiUrl, timeParams, options)
+      : Promise.resolve({ items: [], saturated: false }),
     needFunding
       ? infoRequest<HlUserFunding>(
           apiUrl,
@@ -187,11 +179,12 @@ const fetchActivityData = async (
       : Promise.resolve([] as HlUserFunding),
     liquidationHistory,
   ])
-  if (ledgerUpdates.length >= 500 || fundingUpdates.length >= 500) {
+  if (ledgerWindow.saturated || fundingUpdates.length >= 500) {
     return { items: [], saturated: true }
   }
 
-  const ledgerItems: ActivityItem[] = ledgerUpdates.flatMap(
+  const ledgerKeyCounts = new Map<string, number>()
+  const ledgerItems: ActivityItem[] = ledgerWindow.items.flatMap(
     (entry): ActivityItem[] => {
       if (
         typeFilter !== undefined &&
@@ -199,13 +192,20 @@ const fetchActivityData = async (
           !typeFilter.includes(ActivityType.DEPOSIT)) ||
           (isWithdrawDelta(entry.delta) &&
             !typeFilter.includes(ActivityType.WITHDRAWAL)) ||
+          (!typeFilter.includes(ActivityType.FEE) &&
+            (isGossipPriorityGasAuctionDelta(entry.delta) ||
+              isAccountActivationGasDelta(entry.delta))) ||
+          (isRewardsClaimDelta(entry.delta) &&
+            !typeFilter.includes(ActivityType.REWARD)) ||
           (!typeFilter.includes(ActivityType.TRANSFER) &&
             (isSpotTransferDelta(entry.delta) ||
               isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
-              isVaultTransferDelta(entry.delta) ||
-              isCStakingTransferDelta(entry.delta) ||
-              isBorrowLendDelta(entry.delta))))
+              isVaultTransferDelta(entry.delta))) ||
+          (!typeFilter.includes(ActivityType.INTERNAL_TRANSFER) &&
+            (isCStakingTransferDelta(entry.delta) ||
+              isBorrowLendDelta(entry.delta) ||
+              isAccountClassTransferDelta(entry.delta))))
       ) {
         return []
       }
@@ -216,7 +216,16 @@ const fetchActivityData = async (
         assetRegistry,
         resolveMarket
       )
-      return item === null ? [] : [item]
+      if (item === null) {
+        return []
+      }
+      // Identical zero-hash rows synthesize one id; a suffix keeps page keys unique.
+      const key = `${item.type}:${item.id}`
+      const occurrence = ledgerKeyCounts.get(key) ?? 0
+      ledgerKeyCounts.set(key, occurrence + 1)
+      return [
+        occurrence === 0 ? item : { ...item, id: `${item.id}:${occurrence}` },
+      ]
     }
   )
 
