@@ -1,5 +1,20 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 36.1.0
+
+### Minor Changes
+
+- [#706](https://github.com/lifinance/perps-sdk/pull/706) [`08776f0`](https://github.com/lifinance/perps-sdk/commit/08776f00e6cb485bf7916205c25cd1729e377339) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `rebate` to `Fee`, and expose the Ondo fill rebate as `fee.rebate`. `fee.amount` stays the net amount charged. Ondo leaves out `fee` when `feeRebate` is negative.
+
+- [#703](https://github.com/lifinance/perps-sdk/pull/703) [`09c13fc`](https://github.com/lifinance/perps-sdk/commit/09c13fcecd74cc9c8692a1129651f35afed0d30a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional cumulative net transfer amounts in USD to portfolio history, with account-specific scope and explicit unavailable coverage.
+
+- [#705](https://github.com/lifinance/perps-sdk/pull/705) [`f9594b4`](https://github.com/lifinance/perps-sdk/commit/f9594b40b624442e76d112e33e00d707be108ca2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional subscription-error callback. Report venue authentication rejection without a change to socket status, stop rejected private feeds, and resolve current credentials for explicit subscriptions after recovery. `WsProviderBase` exposes `rejectChannel` and `wireSubs` to subclasses. The Ondo provider waits for the venue login acknowledgement and reports a missing acknowledgement as `TimeoutError`.
+
+### Patch Changes
+
+- Updated dependencies [[`08776f0`](https://github.com/lifinance/perps-sdk/commit/08776f00e6cb485bf7916205c25cd1729e377339), [`09c13fc`](https://github.com/lifinance/perps-sdk/commit/09c13fcecd74cc9c8692a1129651f35afed0d30a), [`0a124cd`](https://github.com/lifinance/perps-sdk/commit/0a124cdd1b3384c1aaf2170c8d8d8844fcfd0eaf), [`d7f06c6`](https://github.com/lifinance/perps-sdk/commit/d7f06c652528b9d5271e281d35780da66c9c583b)]:
+  - @lifi/perps-types@29.0.0
+
 ## 36.0.0
 
 ### Major Changes

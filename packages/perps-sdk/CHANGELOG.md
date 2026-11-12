@@ -1,5 +1,18 @@
 # @lifi/perps-sdk
 
+## 33.1.0
+
+### Minor Changes
+
+- [#705](https://github.com/lifinance/perps-sdk/pull/705) [`f9594b4`](https://github.com/lifinance/perps-sdk/commit/f9594b40b624442e76d112e33e00d707be108ca2) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional subscription-error callback. Report venue authentication rejection without a change to socket status, stop rejected private feeds, and resolve current credentials for explicit subscriptions after recovery. `WsProviderBase` exposes `rejectChannel` and `wireSubs` to subclasses. The Ondo provider waits for the venue login acknowledgement and reports a missing acknowledgement as `TimeoutError`.
+
+- [#709](https://github.com/lifinance/perps-sdk/pull/709) [`de22371`](https://github.com/lifinance/perps-sdk/commit/de22371eec3b6ddc25a71134f6dec1ba89f3d347) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Declare the optional `assetId` market context on `ModifyOrdersParams`. Use the order's opaque `market.id`, not a display symbol.
+
+### Patch Changes
+
+- Updated dependencies [[`08776f0`](https://github.com/lifinance/perps-sdk/commit/08776f00e6cb485bf7916205c25cd1729e377339), [`09c13fc`](https://github.com/lifinance/perps-sdk/commit/09c13fcecd74cc9c8692a1129651f35afed0d30a), [`0a124cd`](https://github.com/lifinance/perps-sdk/commit/0a124cdd1b3384c1aaf2170c8d8d8844fcfd0eaf), [`d7f06c6`](https://github.com/lifinance/perps-sdk/commit/d7f06c652528b9d5271e281d35780da66c9c583b)]:
+  - @lifi/perps-types@29.0.0
+
 ## 33.0.1
 
 ### Patch Changes
