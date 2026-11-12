@@ -1,5 +1,19 @@
 # @lifi/perps-types
 
+## 29.0.0
+
+### Major Changes
+
+- [#704](https://github.com/lifinance/perps-sdk/pull/704) [`d7f06c6`](https://github.com/lifinance/perps-sdk/commit/d7f06c652528b9d5271e281d35780da66c9c583b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `InternalTransferActivity` and `InternalTransferBalance` to the shared activity contract. Hyperliquid staking, borrow-lend, and spot/perps movements return `INTERNAL_TRANSFER` with source and destination balances, not a counterparty. Include `INTERNAL_TRANSFER` in activity filters and handle the new union member. `TRANSFER` retains its counterparty requirement and returns genuine transfers only. Venue amounts and borrow-lend metadata remain unchanged. A repeated Hyperliquid ledger row id gets an occurrence suffix (`:1`, `:2`), so identical zero-hash rows stay distinct across pages.
+
+### Minor Changes
+
+- [#706](https://github.com/lifinance/perps-sdk/pull/706) [`08776f0`](https://github.com/lifinance/perps-sdk/commit/08776f00e6cb485bf7916205c25cd1729e377339) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `rebate` to `Fee`, and expose the Ondo fill rebate as `fee.rebate`. `fee.amount` stays the net amount charged. Ondo leaves out `fee` when `feeRebate` is negative.
+
+- [#703](https://github.com/lifinance/perps-sdk/pull/703) [`09c13fc`](https://github.com/lifinance/perps-sdk/commit/09c13fcecd74cc9c8692a1129651f35afed0d30a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add optional cumulative net transfer amounts in USD to portfolio history, with account-specific scope and explicit unavailable coverage.
+
+- [#702](https://github.com/lifinance/perps-sdk/pull/702) [`0a124cd`](https://github.com/lifinance/perps-sdk/commit/0a124cdd1b3384c1aaf2170c8d8d8844fcfd0eaf) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add standalone fee and reward activities for Hyperliquid priority gas, activation gas, and reward claims, with resolved assets and unchanged decimal amounts.
+
 ## 28.0.1
 
 ### Patch Changes
