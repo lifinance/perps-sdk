@@ -1442,34 +1442,89 @@ describe('OndoWsProvider', () => {
       p.close()
     })
 
-    it('logs a resubscribe failure when the session expires after the sub registered', async () => {
+    it('reports a session lost before the open replay through the error callback and keeps public channels', async () => {
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       const storage = seededStorage()
       const p = makeProvider(storage)
       const send = stubSocket(p)
-
+      const rws = Reflect.get(p, 'rws')
+      const wireSubs: Map<string, unknown> = Reflect.get(p, 'wireSubs')
+      const replay = Reflect.get(p, 'replaySubs').bind(p)
+      const data = vi.fn()
+      const onError = vi.fn()
       await p.subscribe(
         { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
-        vi.fn()
+        data,
+        undefined,
+        onError
       )
-      expect([...(p as any).wireSubs.keys()]).toEqual(['ordersPerps'])
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderbook', dex: 'ondo', marketId: 'BTC-PERP' },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      expect([...wireSubs.keys()]).toEqual([
+        'ordersPerps',
+        'depthBooksPerps:BTC-PERP',
+      ])
 
       // The session goes away while the sub is registered, and the drop that
-      // triggers the replay clears the connection's login (the `close`
-      // handler's job on a live socket).
+      // triggers the replay clears the connection's login.
       await storage.remove(SESSION_KEY)
-      ;(p as any).loginPromise = undefined
+      for (const fn of rws.listeners.close) {
+        fn(1006, 'dropped')
+      }
       send.mockClear()
 
-      await (p as any).replaySubs()
+      await replay()
 
-      expect(send).not.toHaveBeenCalled()
-      expect(errSpy).toHaveBeenCalledWith(
-        expect.stringContaining("resubscribe failed for channel 'ordersPerps'"),
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
+          code: PerpsErrorCode.SetupRequired,
           message: expect.stringMatching(/No Ondo session/),
         })
       )
+      expect(publicError).not.toHaveBeenCalled()
+      expect(errSpy).not.toHaveBeenCalled()
+      const ops = send.mock.calls.map(([raw]) => JSON.parse(raw))
+      expect(ops).not.toContainEqual(expect.objectContaining({ op: 'login' }))
+      expect(ops).toContainEqual({
+        op: 'subscribe',
+        channel: 'depthBooksPerps',
+        markets: ['BTC-PERP'],
+      })
+      expect(ops).not.toContainEqual({
+        op: 'subscribe',
+        channel: 'ordersPerps',
+      })
+      expect([...wireSubs.keys()]).toEqual(['depthBooksPerps:BTC-PERP'])
+      expect(rws.reconnect).not.toHaveBeenCalled()
+      feed(p, { type: 'update', channel: 'ordersPerps', data: [RAW_ORDER] })
+      expect(data).not.toHaveBeenCalled()
+
+      send.mockClear()
+      await replay()
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        { op: 'subscribe', channel: 'depthBooksPerps', markets: ['BTC-PERP'] },
+      ])
+      expect(onError).toHaveBeenCalledTimes(1)
+
+      await storage.set(SESSION_KEY, JSON.stringify(validToken('jwt-new')))
+      send.mockClear()
+      const restored = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'ondo', address: TEST_ADDR },
+        restored
+      )
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        { op: 'login', args: { token: 'jwt-new' } },
+        { op: 'subscribe', channel: 'ordersPerps' },
+      ])
+      feed(p, { type: 'update', channel: 'ordersPerps', data: [RAW_ORDER] })
+      expect(restored).toHaveBeenCalledTimes(1)
+      expect(data).not.toHaveBeenCalled()
       errSpy.mockRestore()
       p.close()
     })
@@ -1820,6 +1875,53 @@ describe('OndoWsProvider', () => {
       send.mockClear()
       await Reflect.get(p, 'replaySubs').call(p)
       expect(send).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('reports a session lost before the open replay to the summary and positions listeners', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      stubFetch(() => BALANCE)
+      const storage = seededStorage()
+      const p = makeProvider(storage)
+      const send = stubSocket(p)
+      const rws = Reflect.get(p, 'rws')
+      const wireSubs: Map<string, unknown> = Reflect.get(p, 'wireSubs')
+      const summaryError = vi.fn()
+      const positionsError = vi.fn()
+      await p.subscribe(
+        { channel: 'accountSummary', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        summaryError
+      )
+      await p.subscribe(
+        { channel: 'positions', dex: 'ondo', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        positionsError
+      )
+      expect([...wireSubs.keys()]).toEqual(['positionsPerps', 'fillsPerps'])
+
+      await storage.remove(SESSION_KEY)
+      for (const fn of rws.listeners.close) {
+        fn(1006, 'dropped')
+      }
+      send.mockClear()
+      await Reflect.get(p, 'replaySubs').call(p)
+
+      expect(summaryError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.SetupRequired })
+      )
+      expect(positionsError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.SetupRequired })
+      )
+      expect(errSpy).not.toHaveBeenCalled()
+      expect(wireSubs.size).toBe(0)
+      expect(rws.reconnect).not.toHaveBeenCalled()
+      send.mockClear()
+      await Reflect.get(p, 'replaySubs').call(p)
+      expect(send).not.toHaveBeenCalled()
+      errSpy.mockRestore()
       p.close()
     })
 

@@ -410,6 +410,115 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('reports a credential lost before the open replay and stops only that account', async () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let token: string | undefined = 'read-token'
+      const other = '0xcafecafecafecafecafecafecafecafecafecafe'
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        {
+          resolveAuthToken: async (address) =>
+            address.toLowerCase() === other ? 'other-token' : token,
+        },
+        freshClient()
+      )
+      const { p, internals, send } = connectedProvider(provider)
+      internals.accountIndexCache.set(other, 43)
+      const data = vi.fn()
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        data,
+        undefined,
+        onError
+      )
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      const otherError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: other },
+        vi.fn(),
+        undefined,
+        otherError
+      )
+      token = undefined
+      send.mockClear()
+
+      await internals.replaySubs()
+
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          code: PerpsErrorCode.SetupRequired,
+          message: expect.stringContaining('no token was available'),
+        })
+      )
+      expect(publicError).not.toHaveBeenCalled()
+      expect(otherError).not.toHaveBeenCalled()
+      expect(errSpy).not.toHaveBeenCalled()
+      const frames = send.mock.calls.map(([raw]) => JSON.parse(raw))
+      expect(frames).not.toContainEqual(
+        expect.objectContaining({ channel: 'account_all_orders/42' })
+      )
+      expect(frames).toContainEqual({
+        type: 'subscribe',
+        channel: 'account_all_trades/42',
+      })
+      expect(frames).toContainEqual({
+        type: 'subscribe',
+        channel: 'account_all_orders/43',
+        auth: 'other-token',
+      })
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: 'account_all_orders:42',
+          orders: { 0: [RAW_ORDER] },
+        })
+      )
+      expect(data).not.toHaveBeenCalled()
+
+      send.mockClear()
+      await internals.replaySubs()
+      await internals.replaySubs()
+      expect(
+        send.mock.calls.map(([raw]) => JSON.parse(raw))
+      ).not.toContainEqual(
+        expect.objectContaining({ channel: 'account_all_orders/42' })
+      )
+      expect(onError).toHaveBeenCalledTimes(1)
+
+      token = 'fresh-token'
+      const restored = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        restored
+      )
+      expect(send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: 'subscribe',
+          channel: 'account_all_orders/42',
+          auth: 'fresh-token',
+        })
+      )
+      internals.handleMessage(
+        JSON.stringify({
+          type: 'update/account_all_orders',
+          channel: 'account_all_orders:42',
+          orders: { 0: [RAW_ORDER] },
+        })
+      )
+      expect(restored).toHaveBeenCalledTimes(1)
+      expect(data).not.toHaveBeenCalled()
+      errSpy.mockRestore()
+      p.close()
+    })
+
     it('keeps malformed requests and server failures distinct from authentication', async () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
