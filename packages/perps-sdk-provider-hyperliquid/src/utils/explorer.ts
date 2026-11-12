@@ -2,6 +2,7 @@ import {
   createWarnOnce,
   ExplorerChainId,
   explorerTxUrl,
+  isAbortRejection,
   PerpsError,
 } from '@lifi/perps-sdk'
 import type { Order, OrderBase } from '@lifi/perps-types'
@@ -119,9 +120,12 @@ export const withExplorerLinks = async (
   try {
     txs = await fetchUserTransactions(address, options)
   } catch (error) {
-    // A cancel arrives as the abort reason, not a `PerpsError`. An explorer
-    // failure while the signal is aborted also rejects: the caller cancelled.
-    if (!(error instanceof PerpsError) || options.signal?.aborted) {
+    // A caller can abort with a `PerpsError` reason, so the type alone does
+    // not tell a cancel from an explorer failure.
+    if (
+      isAbortRejection(error, options.signal) ||
+      !(error instanceof PerpsError)
+    ) {
       throw error
     }
     // The message stays out of the key: a transport failure names hosts and

@@ -1,4 +1,4 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
 import { OrderStatus, OrderType, PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -403,5 +403,62 @@ describe('getOrder', () => {
     ).rejects.toBe(reason)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('returns the order unlinked when the explorer read fails before the caller aborts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;({ restore } = installInfoFetchMock(
+      { orderStatus: HL_ORDER_STATUS_FOUND_WITH_CLOID },
+      HL_MARKETS
+    ))
+    const controller = new AbortController()
+    const fetchMock = vi.mocked(globalThis.fetch)
+    const serve = fetchMock.getMockImplementation()
+    if (serve === undefined) {
+      throw new Error('installInfoFetchMock installed no implementation')
+    }
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(init?.body).includes('userDetails')) {
+        controller.abort(new Error('user cancelled'))
+        return new Response('{}', { status: 503 })
+      }
+      return serve(input, init)
+    })
+    const order = await getOrder(
+      ctx,
+      { address: ADDRESS, id: '1' },
+      { signal: controller.signal }
+    )
+    expect(order).toMatchObject({ orderId: '1', clientOrderId: CLOID })
+    expect(order).not.toHaveProperty('explorerLink')
+    warn.mockRestore()
+  })
+
+  it('rejects with a PerpsError abort reason during the explorer read', async () => {
+    ;({ restore } = installInfoFetchMock(
+      { orderStatus: HL_ORDER_STATUS_FOUND_WITH_CLOID },
+      HL_MARKETS
+    ))
+    const controller = new AbortController()
+    const reason = new PerpsError(PerpsErrorCode.TimeoutError, 'deadline')
+    const fetchMock = vi.mocked(globalThis.fetch)
+    const serve = fetchMock.getMockImplementation()
+    if (serve === undefined) {
+      throw new Error('installInfoFetchMock installed no implementation')
+    }
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(init?.body).includes('userDetails')) {
+        controller.abort(reason)
+        throw reason
+      }
+      return serve(input, init)
+    })
+    await expect(
+      getOrder(
+        ctx,
+        { address: ADDRESS, id: '1' },
+        { signal: controller.signal }
+      )
+    ).rejects.toBe(reason)
   })
 })

@@ -2,7 +2,7 @@ import { DISABLED_RETRY } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
-import { infoRequest } from './infoClient.js'
+import { HYPERLIQUID_RETRY_DEFAULTS, infoRequest } from './infoClient.js'
 
 describe('infoRequest', () => {
   afterEach(() => {
@@ -208,6 +208,35 @@ describe('infoRequest', () => {
       )
     ).rejects.toBe(reason)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason during a retry backoff', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      setTimeout(() => controller.abort(reason), 0)
+      return new Response(null, {
+        status: 503,
+        headers: { 'Retry-After': '10' },
+      })
+    })
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        {
+          signal: controller.signal,
+          policy: { ...HYPERLIQUID_RETRY_DEFAULTS, shouldRetry },
+          fetchImpl,
+        }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).toHaveBeenCalledOnce()
   })
 
   it('wraps a network failure as a ServerError when the signal aborts afterwards', async () => {

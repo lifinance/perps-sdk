@@ -323,6 +323,33 @@ describe('request — error rehydration', () => {
     expect(error).toMatchObject({ name: 'TimeoutError' })
   })
 
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason during a retry backoff', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      setTimeout(() => controller.abort(reason), 0)
+      return new Response(null, {
+        status: 503,
+        headers: { 'Retry-After': '60' },
+      })
+    })
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(
+      request(
+        config,
+        url,
+        { retry: { maxAttempts: 3, maxDelayMs: 60_000, shouldRetry } },
+        { signal: controller.signal }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).toHaveBeenCalledOnce()
+  })
+
   it('wraps a network failure as a ServerError when the signal aborts afterwards', async () => {
     const controller = new AbortController()
     const fetchImpl = vi.fn<typeof fetch>(async () => {

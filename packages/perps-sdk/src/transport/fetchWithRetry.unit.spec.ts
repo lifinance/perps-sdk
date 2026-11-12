@@ -234,6 +234,39 @@ describe('fetchWithRetry — abort handling', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    ['an Error', new Error('user cancelled')],
+    ['a TimeoutError', new DOMException('signal timed out', 'TimeoutError')],
+  ])('rejects with %s reason that aborts a between-retries backoff', async (_name, reason) => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.999999)
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    })
+
+    const promise = fetchWithRetry('https://x', undefined, {
+      policy: policy({
+        maxAttempts: 5,
+        baseDelayMs: 10_000,
+        maxDelayMs: 60_000,
+        shouldRetry,
+      }),
+      fetchImpl,
+      signal: controller.signal,
+    })
+    const assertion = expect(promise).rejects.toBe(reason)
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(scheduledDelays()).toEqual([9_999])
+
+    controller.abort(reason)
+    await assertion
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).toHaveBeenCalledOnce()
+  })
 })
 
 describe('fetchWithRetry — classification', () => {
