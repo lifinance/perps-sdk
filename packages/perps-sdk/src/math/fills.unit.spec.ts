@@ -5,7 +5,12 @@ import {
   OrderSide,
 } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
-import { calculateAverageFillPrice, classifyFillFromPosition } from './fills.js'
+import {
+  calculateAverageFillPrice,
+  classifyFillFromPosition,
+  isClosingFillClassification,
+  isLongSideFillClassification,
+} from './fills.js'
 
 /**
  * Exhaustive coverage of `classifyFillFromPosition` against the
@@ -112,6 +117,51 @@ describe('classifyFillFromPosition with a malformed input', () => {
     expect(
       classifyFillFromPosition('1.0000000000000001', OrderSide.SELL, '1')
     ).toBe(FillClassification.REDUCED_LONG)
+  })
+})
+
+interface TaxonomyCase {
+  c: FillClassification
+  closing: boolean
+  long: boolean
+}
+
+const taxonomy: TaxonomyCase[] = [
+  { c: FillClassification.OPENED_LONG, closing: false, long: true },
+  { c: FillClassification.INCREASED_LONG, closing: false, long: true },
+  { c: FillClassification.REDUCED_LONG, closing: true, long: true },
+  { c: FillClassification.CLOSED_LONG, closing: true, long: true },
+  { c: FillClassification.SWITCHED_LONG, closing: true, long: true },
+  { c: FillClassification.OPENED_SHORT, closing: false, long: false },
+  { c: FillClassification.INCREASED_SHORT, closing: false, long: false },
+  { c: FillClassification.REDUCED_SHORT, closing: true, long: false },
+  { c: FillClassification.CLOSED_SHORT, closing: true, long: false },
+  { c: FillClassification.SWITCHED_SHORT, closing: true, long: false },
+  { c: FillClassification.SPOT_BUY, closing: false, long: true },
+  { c: FillClassification.SPOT_SELL, closing: false, long: false },
+  { c: FillClassification.BUY, closing: false, long: true },
+  { c: FillClassification.SELL, closing: false, long: false },
+]
+
+describe('fill taxonomy predicates', () => {
+  it('covers every FillClassification member', () => {
+    expect(taxonomy.map((row) => row.c).sort()).toEqual(
+      Object.values(FillClassification).sort()
+    )
+  })
+
+  it.each(taxonomy)('isClosingFillClassification($c) is $closing', ({
+    c,
+    closing,
+  }) => {
+    expect(isClosingFillClassification(c)).toBe(closing)
+  })
+
+  it.each(taxonomy)('isLongSideFillClassification($c) is $long', ({
+    c,
+    long,
+  }) => {
+    expect(isLongSideFillClassification(c)).toBe(long)
   })
 })
 

@@ -77,6 +77,41 @@ export function classifyFillFromPosition(
 }
 
 /**
+ * Fill classifications that reduce or remove an open position: a partial
+ * reduce, a full close, or a switch to the opposite side.
+ *
+ * @public
+ */
+export function isClosingFillClassification(c: FillClassification): boolean {
+  return (
+    c === FillClassification.REDUCED_LONG ||
+    c === FillClassification.REDUCED_SHORT ||
+    c === FillClassification.CLOSED_LONG ||
+    c === FillClassification.CLOSED_SHORT ||
+    c === FillClassification.SWITCHED_LONG ||
+    c === FillClassification.SWITCHED_SHORT
+  )
+}
+
+/**
+ * True for a fill on the long or buy side, false for the short or sell side.
+ * The widget uses this value for the badge color only.
+ *
+ * @public
+ */
+export function isLongSideFillClassification(c: FillClassification): boolean {
+  return (
+    c === FillClassification.OPENED_LONG ||
+    c === FillClassification.INCREASED_LONG ||
+    c === FillClassification.REDUCED_LONG ||
+    c === FillClassification.CLOSED_LONG ||
+    c === FillClassification.SWITCHED_LONG ||
+    c === FillClassification.SPOT_BUY ||
+    c === FillClassification.BUY
+  )
+}
+
+/**
  * Size-weighted average price of `fills`, Σ(size × price) / Σ size, to the
  * 40 decimal places of division with no display rounding. A fill whose `size`
  * or `price` does not match the decimal pattern is skipped.
