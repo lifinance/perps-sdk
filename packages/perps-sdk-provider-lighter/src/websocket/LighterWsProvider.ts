@@ -447,6 +447,13 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
     this.accountSummaryInputs.clear()
   }
 
+  protected override resolveChannelKeys(
+    _key: string,
+    state: SubState
+  ): string[] {
+    return state.key === undefined ? [] : [state.key]
+  }
+
   protected async sendSubscribe(state: SubState): Promise<void> {
     const { channel, needsAuth, address } = state
     const payload: { type: 'subscribe'; channel: string; auth?: string } = {

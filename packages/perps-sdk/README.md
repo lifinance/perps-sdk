@@ -593,6 +593,25 @@ rejected private subscriptions and removes their wires from reconnect replay.
 Public subscriptions remain active. A network reconnect does not restore the
 rejected subscriptions.
 
+A reconnect sends each registered wire subscription again. A replay send that
+throws `SetupRequired` or `Unauthorized` delivers that error, with its code,
+to the `onError` listeners of each affected subscription. The provider removes
+the wire from replay and tears the channel down. The subscribe promise
+resolved earlier, so `onError` is the only delivery path at this stage.
+Lighter reads its credential on each send, so a deleted or expired read token
+produces `SetupRequired` at the replay. Ondo reads its session again after
+each socket close, so a removed or expired session produces `SetupRequired`
+at the replay. A failure on one account or channel does not stop the replay
+of other accounts or public channels. A replay that fails after `unsubscribe`
+or `close` delivers no callback.
+
+Any other replay failure, for example a closed socket, keeps the wire
+registered and logs the failure. The next socket open sends the wire again.
+
+The consumer owns the recovery. The SDK does not retry a subscription after a
+credential failure, and it does not read a new credential for the stopped
+subscription.
+
 After successful credential recovery, refresh account access and call
 `subscribe` again. The new subscription obtains the current credential.
 It does not restore the old listeners. Ondo removes only the rejected session.
@@ -605,8 +624,12 @@ protected `rejectChannel(key, error)`. The call invokes the channel teardown,
 delivers `error` to each registered `onError` listener once, and drops the
 channel without a change to the transport status. The subclass removes the
 rejected wire from the protected `wireSubs` registry, or calls
-`unregisterSub(key)`, before the teardown runs. The Lighter and Ondo provider
-READMEs describe each venue rejection frame and recovery path.
+`unregisterSub(key)`, before the teardown runs. A subclass whose registry
+keys differ from its channel keys overrides the protected
+`resolveChannelKeys(key, state)`. It returns the channel keys that a
+credential failure on that wire stops. The default returns the wire key.
+The Lighter and Ondo provider READMEs describe each venue rejection frame and
+recovery path.
 
 ### Venue rejection evidence
 
