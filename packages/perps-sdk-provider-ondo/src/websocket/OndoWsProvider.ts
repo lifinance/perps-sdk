@@ -404,24 +404,49 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     if (bound === undefined) {
       return true
     }
-    for (const channel of ONDO_AUTH_FANOUT) {
-      if (!this.closeChannelIfIdle(`${channel}:${bound}`)) {
+    for (const key of this.authChannelKeys(bound)) {
+      if (!this.closeChannelIfIdle(key)) {
         return false
       }
     }
     return true
   }
 
-  /** Release a channel's binding reservation, including one still opening. */
+  /**
+   * Release a channel's binding reservation, including one still opening.
+   * The last release cycles the connection only when a login was sent on it,
+   * because the venue holds that login until the socket closes.
+   */
   private releaseBinding(): void {
     this.authBindingRefs -= 1
     if (this.authBindingRefs > 0) {
       return
     }
     this.accountAddress = undefined
+    const login = this.loginPromise
     this.loginPromise = undefined
     this.authGeneration += 1
-    this.rws.reconnect()
+    if (login !== undefined) {
+      this.rws.reconnect()
+    }
+  }
+
+  private authChannelKeys(address: string): string[] {
+    return ONDO_AUTH_FANOUT.map((channel) => `${channel}:${address}`)
+  }
+
+  /**
+   * The venue login is per connection, so one credential failure stops every
+   * private channel of the address.
+   */
+  protected override resolveChannelKeys(
+    key: string,
+    state: SubState
+  ): string[] {
+    if (!state.needsAuth || state.address === undefined) {
+      return super.resolveChannelKeys(key, state)
+    }
+    return this.authChannelKeys(state.address.toLowerCase())
   }
 
   /** Register a wire sub, ref-counting the shared authenticated channels. */
@@ -828,8 +853,8 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     this.accountAddress = undefined
     this.clearAccountSummary()
     attempt.reject(error)
-    for (const channel of ONDO_AUTH_FANOUT) {
-      this.rejectChannel(`${channel}:${address}`, error)
+    for (const key of this.authChannelKeys(address)) {
+      this.rejectChannel(key, error)
     }
   }
 

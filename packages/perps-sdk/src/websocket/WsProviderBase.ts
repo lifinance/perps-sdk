@@ -1,8 +1,10 @@
-import type {
-  MarketContext,
-  Subscription,
-  SubscriptionEvent,
+import {
+  type MarketContext,
+  PerpsErrorCode,
+  type Subscription,
+  type SubscriptionEvent,
 } from '@lifi/perps-types'
+import { PerpsError } from '../errors/PerpsError.js'
 import type {
   ProviderGetQuoteParams,
   QuoteListener,
@@ -63,7 +65,9 @@ interface ChannelEntry {
  * number of consumers (and StrictMode double-mounts) collapse to exactly one
  * wire subscribe/unsubscribe per key, and the wire-subscription registry:
  * subs recorded via {@link WsProviderBase.registerSub} are sent only while
- * connected and replayed (failure-isolated) on every (re)open. Subclasses own
+ * connected and replayed (failure-isolated) on every (re)open. A replay send
+ * that throws `SetupRequired` or `Unauthorized` drops the sub and rejects the
+ * channels from {@link WsProviderBase.resolveChannelKeys}. Subclasses own
  * everything wire-specific via {@link WsProviderBase.openChannel}, {@link
  * WsProviderBase.sendSubscribe} and {@link WsProviderBase.handleMessage}:
  * payload framing, frame validation and dispatch.
@@ -336,6 +340,15 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     this.wireSubs.delete(key)
   }
 
+  /**
+   * Channel keys that lose their stream when the replay of the wire sub
+   * `key` throws a credential error. The default treats the wire key as the
+   * channel key; a subclass whose registry uses other keys overrides it.
+   */
+  protected resolveChannelKeys(key: string, _state: TSub): string[] {
+    return [key]
+  }
+
   private async replaySubs(): Promise<void> {
     // Snapshot at replay start, and re-check the live registry before each
     // send. An async sendSubscribe (e.g. Lighter's auth-token fetch) suspends
@@ -352,7 +365,21 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
       try {
         await this.sendSubscribe(state)
       } catch (err) {
-        wsLog.subscribeFailure(this.providerKey, key, err)
+        if (
+          err instanceof PerpsError &&
+          (err.code === PerpsErrorCode.SetupRequired ||
+            err.code === PerpsErrorCode.Unauthorized) &&
+          this.wireSubs.get(key) === state
+        ) {
+          // Unregister before the teardown runs, so no later open replays the
+          // wire and a registry-checking teardown sends no `unsubscribe` frame.
+          this.wireSubs.delete(key)
+          for (const channelKey of this.resolveChannelKeys(key, state)) {
+            this.rejectChannel(channelKey, err)
+          }
+        } else {
+          wsLog.subscribeFailure(this.providerKey, key, err)
+        }
       }
     }
   }
