@@ -420,6 +420,53 @@ Each one throws `PerpsError(ValidationError)` when an input does not match the
 decimal pattern. `calculateRefuelAmount` also throws when a
 base-unit input is not an integer string.
 
+### Position values
+
+Each provider sets four calculated fields on a `Position`, on the REST reads
+and on the `positions` stream:
+
+- `positionValue`: the absolute position value in quote-asset units.
+  Hyperliquid sends `positionValue`, Lighter sends `position_value` and Ondo
+  sends `notionalValue`.
+- `returnOnEquity`: a percent (`'10'` is 10%) of the entry notional ÷ the current leverage:
+  `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. Hyperliquid and
+  Ondo send this figure as a fraction, and the SDK multiplies it by 100. For
+  Lighter, the SDK calculates it. Margin that the user adds to an isolated
+  position does not change it.
+  The SDK does not round ROE for display.
+- `effectiveLeverage`: `positionValue ÷ marginUsed`, rounded half-up to two
+  decimal places for display.
+- `liquidationDistance`: the distance from `markPrice` to `liquidationPrice`,
+  as a percent of `markPrice`, rounded half-up to two decimal places for
+  display.
+
+A field is absent when one of its inputs is absent or is not usable. A
+`liquidationPrice` that is not above zero gives no `liquidationDistance`.
+`buildPosition(position)` calculates each field that the venue does not send.
+It always calculates `effectiveLeverage` and `liquidationDistance` again. All
+three providers use it.
+
+`remarkPosition(position, markPrice)` gives a new `Position` for a live mark
+price. It calculates `markPrice`, `positionValue`, `unrealizedPnl`,
+`returnOnEquity`, `effectiveLeverage` and `liquidationDistance` again. It does
+not change its input. When `markPrice` is not a positive decimal string, it
+gives the input position unchanged.
+
+`remarkPosition` keeps `marginUsed` and `initialMarginRequirement` from the
+input position. The SDK has no venue margin model for a new mark, so
+`effectiveLeverage` uses the margin of the input position snapshot. For
+example, Lighter cross margin follows the position value, so the venue figure
+at the new mark can differ. Read the positions again for venue margin figures.
+`returnOnEquity` uses the entry notional ÷ the leverage, which does not change with
+the mark. When `entryPrice` is not a positive decimal string, or `size` is not
+a decimal string, `unrealizedPnl` keeps the input figure.
+
+```ts
+import { remarkPosition } from '@lifi/perps-sdk'
+
+const livePosition = remarkPosition(position, liveMarkPrice)
+```
+
 ## Numbers
 
 ### Decimal strings
@@ -495,11 +542,12 @@ One verb names one kind of transformation.
 | `is<X>`                     | value → `boolean`, a pattern test                  | no                                | `isDecimalString`                                          |
 | `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
 | `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
-| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`                                               |
+| `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`, `buildPosition`                              |
 | `aggregate<X>`              | collection → total                                 | throws; `safe` form               | —                                                          |
 | `add` `subtract` `multiply` `divide` `abs` `compare` `round` | decimal strings → exact `DecimalString`, or `-1 \| 0 \| 1` for `compare` | throws; `safe` form | `addDecimalString`, `addDecimalStrings`, `compareDecimalStrings`, `roundDecimalString` |
 | `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
 | `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
+| `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `remarkPosition`                         |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every
@@ -523,6 +571,45 @@ const unsubscribe = await ws.subscribe(
   (event) => console.log(event.data)
 )
 ```
+
+### Status-only observation
+
+`PerpsWsClient.subscribeStatus(provider, listener)` observes one provider socket without a data subscription.
+It returns an idempotent release function synchronously.
+The listener immediately receives the current `WsConnectionStatus`, or `null` when the provider does not exist.
+This includes unknown provider keys.
+
+```ts
+const releaseStatus = ws.subscribeStatus('hyperliquid', (status) => {
+  console.log(status)
+})
+releaseStatus()
+```
+
+Registration and release do not create a provider, request discovery, open a socket, acquire a channel, or initiate reconnect.
+An observer follows provider creation when a real data or quote consumer subscribes later.
+Observers remain separate by provider key.
+Multiple registrations remain independent, even with the same callback.
+
+`connected` means that the transport socket is open.
+It does not prove channel freshness or authentication.
+`reconnecting` includes the initial connection and automatic recovery.
+`disconnected` means explicit closure or an exhausted retry budget.
+Observation does not recover this state. Call `ws.reconnect(provider)` to request recovery.
+The Online indicator and the `/providers` response describe separate concerns.
+
+`ws.close()` silently releases all status-only observers.
+It does not send a final status to them.
+Later status-only registration throws `PerpsError`, as data subscriptions do after close.
+An initialization that completes after close cannot restore observers or create a socket.
+
+Custom `WsProvider` implementations must implement `subscribeStatus(listener: WsStatusListener): () => void`.
+The method must report the current transport status synchronously and return an idempotent release function.
+It must observe transport transitions without data demand or reconnect.
+If the method throws, the SDK logs the failure and that observer receives no transport status.
+The failure does not reject a data or quote subscription, and other observers continue.
+`WsProviderBase` supplies this method for Hyperliquid, Lighter, and Ondo.
+This required contract method is a breaking SDK change for custom providers.
 
 ## Architecture
 

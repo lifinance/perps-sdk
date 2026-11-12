@@ -92,8 +92,8 @@ defines token indices and `tokenId`.
 
 | Delta | Activity or explicit exclusion |
 | --- | --- |
-| `spotTransfer` | Transfer between distinct accounts; resolve the token wire ID. |
-| `send` | Transfer between distinct accounts; resolve the token wire ID or reserved USDC identity. |
+| `spotTransfer` | Transfer between distinct accounts. Resolve the bare token symbol. |
+| `send` | Transfer between distinct accounts. Resolve the bare token symbol. |
 | `internalTransfer` | USDC transfer between distinct accounts; resolve token index `0`. |
 | `subAccountTransfer` | USDC transfer between master and subaccount addresses; resolve token index `0`. |
 | `deposit` | Deposit with the USDC registry asset at token index `0`. |
@@ -126,8 +126,9 @@ inbound. A completed unstake carries the zero hash, so its id is
 `cStakingTransfer:<token>:IN:<amount>:<ISO time>` and it has no explorer link.
 A zero-hash `borrowLend` row gets `borrowLend:<token>:<operation>:<amount>:<ISO time>`.
 Unknown future delta types remain outside the supported activity model.
-These exclusions do not apply to missing assets in supported transfer rows:
-the mapper rejects those rows with an error instead of silently omitting them.
+For a supported row with an unknown ledger token, the mapper skips the row and
+writes a warning. Missing fixed collateral instead raises a stale or mis-keyed
+registry error.
 
 ## History pagination
 

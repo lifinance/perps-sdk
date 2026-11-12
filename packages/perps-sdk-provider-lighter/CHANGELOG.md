@@ -1,5 +1,38 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 47.1.0
+
+### Minor Changes
+
+- [#716](https://github.com/lifinance/perps-sdk/pull/716) [`2f41ef6`](https://github.com/lifinance/perps-sdk/commit/2f41ef6d28512c2ac75066bbd96b07e468bcf1db) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `LtPerpsOrderBookDetail` declares the `mark_price` and `index_price` decimal strings that Lighter sends on each perps row of `/api/v1/orderBookDetails`.
+
+## 47.0.0
+
+### Minor Changes
+
+- [#712](https://github.com/lifinance/perps-sdk/pull/712) [`c2a413a`](https://github.com/lifinance/perps-sdk/commit/c2a413abce7635c1b2148767654c2e31f7efd8ac) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The `marketsContext` channel delivers a maximum of one event each `WS_MARKETS_CONTEXT_INTERVAL_MS` (1,000 ms) for each provider. The first event after the channel opens is immediate. Wire frames inside the gap coalesce, and the newest context map is delivered when the gap ends. `WsProviderBase.emitMarketsContext` holds the one implementation. The `marketContext` channel and all other channels have no limit.
+
+- [#713](https://github.com/lifinance/perps-sdk/pull/713) [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position` has four optional fields: `positionValue`, `returnOnEquity`, `effectiveLeverage` and `liquidationDistance`.
+  Each provider sets them on REST reads and on the `positions` stream.
+  `effectiveLeverage` and `liquidationDistance` use half-up rounding to two decimal places.
+  `buildPosition` removes stale calculated leverage and distance, and omits distance for nonpositive liquidation prices.
+
+  `remarkPosition` recalculates fields for a live mark with the input snapshot's margin.
+  It preserves snapshot PnL when the entry price or size cannot support recalculation.
+
+### Patch Changes
+
+- Updated dependencies [[`8342127`](https://github.com/lifinance/perps-sdk/commit/834212751d932dfe81f8502d714316da08cf396a), [`c2a413a`](https://github.com/lifinance/perps-sdk/commit/c2a413abce7635c1b2148767654c2e31f7efd8ac), [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20)]:
+  - @lifi/perps-types@28.0.0
+  - @lifi/perps-sdk@33.0.0
+
+## 46.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`1230b65`](https://github.com/lifinance/perps-sdk/commit/1230b6517f9c27b6ce53a195a4d9107aa076f44a)]:
+  - @lifi/perps-sdk@32.0.0
+
 ## 45.0.0
 
 ### Major Changes
