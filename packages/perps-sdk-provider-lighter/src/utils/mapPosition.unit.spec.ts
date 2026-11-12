@@ -1,4 +1,4 @@
-import { decimalStringToNumber } from '@lifi/perps-sdk'
+import { decimalStringToNumber, remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -381,6 +381,77 @@ describe('mapPosition (Lighter)', () => {
       for (const field of REQUIRED_STRINGS) {
         expect(typeof result[field]).toBe('string')
       }
+    })
+  })
+
+  describe('positionValue and the calculated fields', () => {
+    it('sets positionValue from position_value and calculates the rest for an isolated row', () => {
+      const result = map(
+        basePosition({
+          margin_mode: LT_MARGIN_MODE_ISOLATED,
+          position: '1.0',
+          position_value: '50000',
+          allocated_margin: '2500',
+          unrealized_pnl: '10',
+          liquidation_price: '40000',
+        }),
+        MARKET
+      )
+
+      expect(result).toMatchObject({
+        markPrice: '50000',
+        unrealizedPnl: '10',
+        marginUsed: '2500',
+        positionValue: '50000',
+        // 10 ÷ (1 × 79000 ÷ 50) × 100: entry notional ÷ leverage, not allocated_margin
+        returnOnEquity: '0.63291139240506329113924050632911392405',
+        effectiveLeverage: '20',
+        liquidationDistance: '20',
+      })
+    })
+
+    it('takes the position_value magnitude for a short row', () => {
+      const result = map(
+        basePosition({ sign: -1, position_value: '-83.961964' }),
+        MARKET
+      )
+
+      expect(result.positionValue).toBe('83.961964')
+    })
+
+    it('gives a cross row the effective leverage of its initial margin and no liquidationDistance', () => {
+      const result = map(basePosition({ liquidation_price: '0' }), MARKET)
+
+      // 83.961964 ÷ (83.961964 × 2.00 ÷ 100)
+      expect(result.effectiveLeverage).toBe('50')
+      expect(result.returnOnEquity).toBe('0')
+      expect(result).not.toHaveProperty('liquidationDistance')
+    })
+
+    it('calculates returnOnEquity on the two-decimal display leverage at each mark', () => {
+      const mapped = map(
+        basePosition({
+          position: '1',
+          avg_entry_price: '100',
+          position_value: '107',
+          unrealized_pnl: '7',
+          initial_margin_fraction: '7',
+        }),
+        MARKET
+      )
+
+      // 100 ÷ 7 = 14.2857… displays as 14.29, so ROE is 7 × 14.29 = 100.03, not 100
+      expect(mapped).toMatchObject({
+        leverage: '14.29',
+        markPrice: '107',
+        returnOnEquity: '100.03',
+      })
+      expect(remarkPosition(mapped, '107').returnOnEquity).toBe('100.03')
+      expect(remarkPosition(mapped, '114')).toMatchObject({
+        leverage: '14.29',
+        unrealizedPnl: '14',
+        returnOnEquity: '200.06',
+      })
     })
   })
 })

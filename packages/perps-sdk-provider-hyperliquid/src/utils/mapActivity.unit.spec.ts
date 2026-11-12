@@ -147,6 +147,169 @@ const fundingUpdate = (coin: string, time: number): HlFundingUpdate => ({
   },
 })
 
+describe('mapLedgerEntry — fees and rewards', () => {
+  // Recorded `userNonFundingLedgerUpdates` rows from the public `/info` endpoint.
+  const cases = [
+    {
+      entry: {
+        time: 1777575767045,
+        hash: '0x298562a202dad0762aff043a58e40702012a00879dddef48cd4e0df4c1deaa60',
+        delta: {
+          type: 'gossipPriorityGasAuction',
+          token: 'HYPE',
+          amount: '0.30773712',
+        },
+      },
+      type: ActivityType.FEE,
+      asset: HYPE,
+      amount: '0.30773712',
+      ledgerType: 'gossipPriorityGasAuction',
+      timestamp: '2026-04-30T19:02:47.045Z',
+    },
+    {
+      entry: {
+        time: 1778857074057,
+        hash: '0x358fca921369ed063709043b7612810204390077ae6d0bd8d95875e4d26dc6f0',
+        delta: {
+          type: 'accountActivationGas',
+          amount: '0.02283782',
+          token: 'HYPE',
+        },
+      },
+      type: ActivityType.FEE,
+      asset: HYPE,
+      amount: '0.02283782',
+      ledgerType: 'accountActivationGas',
+      timestamp: '2026-05-15T14:57:54.057Z',
+    },
+    {
+      entry: {
+        time: 1762336872722,
+        hash: '0x546aff0681417b4155e4042ee191e702094900ec1c449a13f833aa594045552b',
+        delta: {
+          type: 'rewardsClaim',
+          amount: '18.40514403',
+          token: 'USDC',
+        },
+      },
+      type: ActivityType.REWARD,
+      asset: USDC,
+      amount: '18.40514403',
+      ledgerType: 'rewardsClaim',
+      timestamp: '2025-11-05T10:01:12.722Z',
+    },
+  ]
+
+  it.each(cases)('maps recorded $ledgerType', ({
+    entry,
+    type,
+    asset,
+    amount,
+    ledgerType,
+    timestamp,
+  }) => {
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: entry.hash,
+      provider: PROVIDER,
+      timestamp,
+      type,
+      asset,
+      amount,
+      meta: { ledgerType },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${entry.hash}`,
+    })
+  })
+
+  it.each(
+    cases
+  )('preserves precision and zero-hash identity for $ledgerType', ({
+    entry: recorded,
+    type,
+    ledgerType,
+    timestamp,
+  }) => {
+    const delta = {
+      ...recorded.delta,
+      token: 'PURR',
+      amount: '123456789.0000000001234500',
+    }
+    const entry = { time: recorded.time, hash: ZERO_HASH, delta }
+    const result = mapLedgerEntry(
+      entry,
+      PROVIDER,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toEqual({
+      id: `${ledgerType}:PURR:123456789.0000000001234500:${timestamp}`,
+      provider: PROVIDER,
+      timestamp,
+      type,
+      asset: PURR,
+      amount: '123456789.0000000001234500',
+      meta: { ledgerType },
+    })
+    expect(
+      mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
+    ).toEqual(result)
+  })
+
+  it.each(cases)('skips an unresolved token for $ledgerType', ({
+    entry,
+    ledgerType,
+  }) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const provider = `hyperliquid-${ledgerType}`
+    const result = mapLedgerEntry(
+      { ...entry, delta: { ...entry.delta, token: 'UNLISTED' } },
+      provider,
+      QUERIED,
+      assetRegistry,
+      resolveMarket
+    )
+    expect(result).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('UNLISTED'))
+  })
+
+  it.each(
+    cases.flatMap(({ entry, ledgerType }) => {
+      const { delta } = entry
+      return [
+        {
+          label: `${ledgerType} without an amount`,
+          delta: { type: delta.type, token: delta.token },
+        },
+        {
+          label: `${ledgerType} with a numeric amount`,
+          delta: { ...delta, amount: Number(delta.amount) },
+        },
+        {
+          label: `${ledgerType} without a token`,
+          delta: { type: delta.type, amount: delta.amount },
+        },
+      ]
+    })
+  )('excludes $label', ({ delta }) => {
+    expect(
+      mapLedgerEntry(
+        { time: 1_760_000_000_000, hash: ZERO_HASH, delta },
+        PROVIDER,
+        QUERIED,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // mapLedgerEntry — spotTransfer
 // ---------------------------------------------------------------------------

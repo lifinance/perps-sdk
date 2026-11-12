@@ -78,9 +78,24 @@ describe('mapPortfolioHistory', () => {
     expect(mapPortfolioHistory('7d', snapshots, '562.25')).toEqual({
       range: '7d',
       points: [
-        { timestamp: 1_700_000_000_000, accountValue: '588.5', pnl: '0' },
-        { timestamp: 1_700_003_600_000, accountValue: '537.5', pnl: '-1' },
-        { timestamp: 1_700_007_200_000, accountValue: '562.25', pnl: '3.75' },
+        {
+          timestamp: 1_700_000_000_000,
+          accountValue: '588.5',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        {
+          timestamp: 1_700_003_600_000,
+          accountValue: '537.5',
+          pnl: '-1',
+          netTransfers: '-50',
+        },
+        {
+          timestamp: 1_700_007_200_000,
+          accountValue: '562.25',
+          pnl: '3.75',
+          netTransfers: '-30',
+        },
       ],
       volume: '750.5',
       totalPnl: '3.75',
@@ -103,8 +118,18 @@ describe('mapPortfolioHistory', () => {
     expect(mapPortfolioHistory('24h', snapshots, '6.02')).toEqual({
       range: '24h',
       points: [
-        { timestamp: 1_700_000_000_000, accountValue: '6.02', pnl: '0' },
-        { timestamp: 1_700_003_600_000, accountValue: '6.02', pnl: '0' },
+        {
+          timestamp: 1_700_000_000_000,
+          accountValue: '6.02',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        {
+          timestamp: 1_700_003_600_000,
+          accountValue: '6.02',
+          pnl: '0',
+          netTransfers: '0',
+        },
       ],
       volume: '0',
       totalPnl: '0',
@@ -118,8 +143,18 @@ describe('mapPortfolioHistory', () => {
     ]
 
     expect(mapPortfolioHistory('24h', snapshots, '100').points).toEqual([
-      { timestamp: 1_700_000_000_000, accountValue: '96', pnl: '0' },
-      { timestamp: 1_700_003_600_000, accountValue: '100', pnl: '4' },
+      {
+        timestamp: 1_700_000_000_000,
+        accountValue: '96',
+        pnl: '0',
+        netTransfers: '0',
+      },
+      {
+        timestamp: 1_700_003_600_000,
+        accountValue: '100',
+        pnl: '4',
+        netTransfers: '0',
+      },
     ])
   })
 
@@ -140,7 +175,14 @@ describe('mapPortfolioHistory', () => {
       )
     ).toEqual({
       range: '24h',
-      points: [{ timestamp: 1_700_000_000_000, accountValue: '250', pnl: '0' }],
+      points: [
+        {
+          timestamp: 1_700_000_000_000,
+          accountValue: '250',
+          pnl: '0',
+          netTransfers: '0',
+        },
+      ],
       volume: '0',
       totalPnl: '0',
     })
@@ -173,9 +215,35 @@ describe('mapPortfolioHistory', () => {
         timestamp: 1_764_892_800_000,
         accountValue: earlierValue,
         pnl: '0',
+        netTransfers: '0',
       },
-      { timestamp: 1_764_979_200_000, accountValue: '5000', pnl: '0' },
+      {
+        timestamp: 1_764_979_200_000,
+        accountValue: '5000',
+        pnl: '0',
+        netTransfers: earlierValue === '4897' ? '103' : '0',
+      },
     ])
+  })
+
+  it('anchors flow to the first valid snapshot and preserves fractional precision', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = mapPortfolioHistory(
+      'all',
+      [
+        snapshot({ timestamp: 0, inflow: Infinity }),
+        snapshot({ timestamp: 1, inflow: 0.1 }),
+        snapshot({ timestamp: 2, inflow: 0.3, spot_outflow: 0.01 }),
+        snapshot({ timestamp: 3, inflow: 0.3, spot_outflow: 0.31 }),
+      ],
+      '100'
+    )
+    expect(result.points.map((p) => p.netTransfers)).toEqual([
+      '0',
+      '0.19',
+      '-0.11',
+    ])
+    warn.mockRestore()
   })
 
   it('returns no totalPnl and zero volume without snapshots', () => {

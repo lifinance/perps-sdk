@@ -162,6 +162,27 @@ export type HlBorrowLendDelta = {
   interestAmount: string
 }
 
+/** A priority gas charge in the specified token's units. @public */
+export type HlGossipPriorityGasAuctionDelta = {
+  type: 'gossipPriorityGasAuction'
+  token: string
+  amount: string
+}
+
+/** An account activation charge in the specified token's units. @public */
+export type HlAccountActivationGasDelta = {
+  type: 'accountActivationGas'
+  token: string
+  amount: string
+}
+
+/** Claimed reward income in the specified token's units. @public */
+export type HlRewardsClaimDelta = {
+  type: 'rewardsClaim'
+  token: string
+  amount: string
+}
+
 /** USDC movement between one account's spot and perps balances. @public */
 export type HlAccountClassTransferDelta = {
   type: 'accountClassTransfer'
@@ -193,6 +214,9 @@ export type HlLedgerDelta =
   | HlLiquidationDelta
   | HlCStakingTransferDelta
   | HlBorrowLendDelta
+  | HlGossipPriorityGasAuctionDelta
+  | HlAccountActivationGasDelta
+  | HlRewardsClaimDelta
   | HlAccountClassTransferDelta
   | {
       type: string
@@ -279,6 +303,42 @@ export const isBorrowLendDelta = (
   delta.type === 'borrowLend' &&
   'operation' in delta &&
   HL_BORROW_LEND_OPERATIONS.has(delta.operation)
+
+const hasTokenAmount = (delta: HlLedgerDelta): boolean =>
+  'token' in delta &&
+  typeof delta.token === 'string' &&
+  'amount' in delta &&
+  typeof delta.amount === 'string'
+
+/**
+ * Type guard for `HlGossipPriorityGasAuctionDelta`. The token and amount are
+ * part of the guard: a row without them names no charge.
+ * @public
+ */
+export const isGossipPriorityGasAuctionDelta = (
+  delta: HlLedgerDelta
+): delta is HlGossipPriorityGasAuctionDelta =>
+  delta.type === 'gossipPriorityGasAuction' && hasTokenAmount(delta)
+
+/**
+ * Type guard for `HlAccountActivationGasDelta`. Same token-and-amount
+ * requirement as `isGossipPriorityGasAuctionDelta`.
+ * @public
+ */
+export const isAccountActivationGasDelta = (
+  delta: HlLedgerDelta
+): delta is HlAccountActivationGasDelta =>
+  delta.type === 'accountActivationGas' && hasTokenAmount(delta)
+
+/**
+ * Type guard for `HlRewardsClaimDelta`. Same token-and-amount requirement as
+ * `isGossipPriorityGasAuctionDelta`.
+ * @public
+ */
+export const isRewardsClaimDelta = (
+  delta: HlLedgerDelta
+): delta is HlRewardsClaimDelta =>
+  delta.type === 'rewardsClaim' && hasTokenAmount(delta)
 
 /**
  * One timestamped non-funding ledger update. `time` is milliseconds since

@@ -146,7 +146,8 @@ export interface MarketsResponse {
 }
 
 /**
- * Live per-market context: `midPrice` is the order-book mid, `markPrice` the
+ * Live per-market context: `midPrice` is the order-book mid and is absent
+ * when the source gives no order-book midpoint, `markPrice` the
  * venue mark, `oraclePrice` the venue oracle/index price where the venue
  * publishes one. `prevDayPrice`, `priceChange24h` and `volume24h` apply to
  * every market type; `marketCap` is present when the venue publishes
@@ -159,8 +160,11 @@ export interface MarketContext {
   provider: ProviderId
   /** Opaque provider market identifier, unique only within `provider`. */
   marketId: string
-  /** Current order-book midpoint, as a decimal quote string. */
-  midPrice: DecimalString
+  /**
+   * Current order-book midpoint, as a decimal quote string. Absent when the
+   * source gives no order-book midpoint in this message.
+   */
+  midPrice?: DecimalString
   /** Provider mark price, as a decimal quote string. */
   markPrice: DecimalString
   oraclePrice?: DecimalString

@@ -1,5 +1,32 @@
 # @lifi/perps-types
 
+## 28.0.1
+
+### Patch Changes
+
+- [#718](https://github.com/lifinance/perps-sdk/pull/718) [`d959e5a`](https://github.com/lifinance/perps-sdk/commit/d959e5a50443ca86d8ef69db85b41a5a94abe0de) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position.returnOnEquity` uses the entry notional ÷ the current leverage: `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. `buildPosition` and `remarkPosition` calculate it with `calculateInitialMarginRoe`, so margin that the user adds to an isolated position does not change it. The Hyperliquid mapper passes the venue `returnOnEquity` as a percent, and `HlPosition` declares it. Hyperliquid and Ondo use the same formula for their venue figure.
+
+  `buildPosition` omits calculated ROE when PnL is not decimal, or size, entry price, or leverage is not positive.
+  `remarkPosition` applies the same rule.
+
+  Hyperliquid warns once per market when a present venue ROE is not decimal, then uses the calculated fallback when inputs permit.
+
+## 28.0.0
+
+### Major Changes
+
+- [#711](https://github.com/lifinance/perps-sdk/pull/711) [`8342127`](https://github.com/lifinance/perps-sdk/commit/834212751d932dfe81f8502d714316da08cf396a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketContext.midPrice` is optional. An absent `midPrice` means that the source gives no order-book midpoint in that message. Code that reads `midPrice` must handle `undefined`. The Hyperliquid and Lighter providers set `midPrice` as before.
+
+### Minor Changes
+
+- [#713](https://github.com/lifinance/perps-sdk/pull/713) [`be3da03`](https://github.com/lifinance/perps-sdk/commit/be3da034991fa396ada33b4e963880d609cd3c20) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Position` has four optional fields: `positionValue`, `returnOnEquity`, `effectiveLeverage` and `liquidationDistance`.
+  Each provider sets them on REST reads and on the `positions` stream.
+  `effectiveLeverage` and `liquidationDistance` use half-up rounding to two decimal places.
+  `buildPosition` removes stale calculated leverage and distance, and omits distance for nonpositive liquidation prices.
+
+  `remarkPosition` recalculates fields for a live mark with the input snapshot's margin.
+  It preserves snapshot PnL when the entry price or size cannot support recalculation.
+
 ## 27.2.0
 
 ### Minor Changes

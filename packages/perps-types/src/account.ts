@@ -74,6 +74,28 @@ export interface Position {
    * Unlike `leverage`, this decimal string is safe for risk calculations.
    */
   initialMarginRequirement?: DecimalString
+  /**
+   * Absolute position value in quote-asset units: `size × markPrice`. The
+   * venue figure when the venue sends a decimal one. Absent when the venue
+   * sends none and the position has no positive `markPrice`.
+   */
+  positionValue?: DecimalString
+  /** Percent (`'10'` is 10%), without display rounding.
+   * `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
+   * Hyperliquid and Ondo fractions become percents; re-marking recalculates.
+   * Absent without venue ROE when PnL, size, entry price or leverage is unusable.
+   */
+  returnOnEquity?: DecimalString
+  /** Display multiple: `positionValue ÷ marginUsed`, rounded half-up to two decimals.
+   * Re-marking retains snapshot margin. Absent without position value or
+   * a positive margin.
+   */
+  effectiveLeverage?: DecimalString
+  /** Absolute distance to liquidation as a percent of mark (`'10'` is 10%).
+   * Rounded half-up to two decimals for display. Absent without a positive
+   * liquidation price or mark price.
+   */
+  liquidationDistance?: DecimalString
   marginMode: MarginMode
 }
 
@@ -270,8 +292,16 @@ export interface OrdersResponse {
  * @public
  */
 export interface Fee {
-  /** Decimal string in `asset`'s units. */
+  /**
+   * Net amount charged, after rebates, in `asset`'s units. Negative when the
+   * rebate exceeds the fee.
+   */
   amount: DecimalString
+  /**
+   * Part the venue gave back, in the same asset. Never negative. Absent when
+   * not reported.
+   */
+  rebate?: DecimalString
   /**
    * Display symbol the fee is denominated in, resolved by the provider
    * adapter. Falls back to the venue's own asset id when the registry knows no
@@ -479,6 +509,24 @@ export interface FundingActivity extends BaseActivity {
   fundingRate: DecimalString
 }
 
+/** A standalone charge in asset units; amount retains the venue's decimal string. @public */
+export interface FeeActivity extends BaseActivity {
+  type: ActivityType.FEE
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
+/** Reward income in asset units; amount retains the venue's decimal string. @public */
+export interface RewardActivity extends BaseActivity {
+  type: ActivityType.REWARD
+  asset: Asset
+  amount: DecimalString
+  meta?: Record<string, unknown>
+  explorerLink?: string
+}
+
 // At least one of `counterpartyAccountIndex` / `counterpartyAddress` is always
 // present; both may appear together.
 /**
@@ -542,6 +590,8 @@ export type ActivityItem =
   | LiquidationActivity
   | FundingActivity
   | TransferActivity
+  | FeeActivity
+  | RewardActivity
   | InternalTransferActivity
 
 /**

@@ -3,6 +3,8 @@ import type {
   AccountConfig,
   ActivityItem,
   DepositActivity,
+  Fee,
+  FeeActivity,
   Fill,
   FillLiquidation,
   InternalTransferActivity,
@@ -14,6 +16,7 @@ import type {
   OrderBase,
   OrdersResponse,
   RegularOrder,
+  RewardActivity,
   TransferActivity,
   TriggerOrder,
   TwapOrder,
@@ -572,6 +575,10 @@ describe('exhaustive narrowing across ActivityItem', () => {
           return `funding:${item.fundingRate}`
         case ActivityType.TRANSFER:
           return `transfer:${item.direction}:${item.counterpartyAccountIndex}:${item.amount}`
+        case ActivityType.FEE:
+          return `fee:${item.asset.id}:${item.amount}`
+        case ActivityType.REWARD:
+          return `reward:${item.asset.id}:${item.amount}`
         case ActivityType.INTERNAL_TRANSFER:
           return `internal:${item.sourceBalance}:${item.destinationBalance}:${item.amount}`
         default: {
@@ -631,6 +638,33 @@ describe('exhaustive narrowing across ActivityItem', () => {
       fee: { amount: '0.1', asset: 'USDC' },
     }
     expect(route(withdrawal)).toBe('withdrawal:50:0.1:USDC')
+
+    const fee: FeeActivity = {
+      id: 'fee-1',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:10:00.000Z',
+      type: ActivityType.FEE,
+      asset: USDC_ASSET,
+      amount: '1.00000000',
+      meta: { ledgerType: 'accountActivationGas' },
+      explorerLink: 'https://app.hyperliquid.xyz/explorer/tx/0xfee',
+    }
+    const reward: RewardActivity = {
+      id: 'reward-1',
+      provider: 'hyperliquid',
+      timestamp: '2026-05-07T12:11:00.000Z',
+      type: ActivityType.REWARD,
+      asset: USDC_ASSET,
+      amount: '18.4051440300',
+    }
+    expect(route(fee)).toBe('fee:0:1.00000000')
+    expect(route(reward)).toBe('reward:0:18.4051440300')
+    expectTypeOf<
+      Extract<ActivityItem, { type: ActivityType.FEE }>
+    >().toEqualTypeOf<FeeActivity>()
+    expectTypeOf<
+      Extract<ActivityItem, { type: ActivityType.REWARD }>
+    >().toEqualTypeOf<RewardActivity>()
   })
 })
 
@@ -689,6 +723,10 @@ describe('Order read contract', () => {
       | 'createdAt'
       | 'updatedAt'
     >()
+  })
+  it('allows the fee rebate to remain absent', () => {
+    expectTypeOf<Fee['rebate']>().toEqualTypeOf<string | undefined>()
+    expectTypeOf<{ amount: string; asset: string }>().toExtend<Fee>()
   })
   it('marks only a regular order as a venue liquidation', () => {
     expectTypeOf<RegularOrder['isLiquidation']>().toEqualTypeOf<

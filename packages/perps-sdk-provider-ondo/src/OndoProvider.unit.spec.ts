@@ -1286,6 +1286,10 @@ describe('OndoProvider — getAccount (logged in)', () => {
         leverage: '5',
         marginUsed: '401',
         initialMarginRequirement: '401',
+        positionValue: '2020.5',
+        returnOnEquity: '3.8',
+        effectiveLeverage: '5.04',
+        liquidationDistance: '9.77',
         marginMode: MarginMode.CROSS,
       },
     ])
@@ -1589,6 +1593,25 @@ describe('OndoProvider — getPositions skips a bad row', () => {
       )
     )
     warn.mockRestore()
+  })
+})
+
+describe('OndoProvider — getPositions calculated fields', () => {
+  it('returns the venue positionValue and returnOnEquity with the calculated fields', async () => {
+    const { provider } = await loggedInProvider()
+
+    const { positions } = await provider.getPositions({ address: ADDRESS })
+
+    expect(positions[0]).toMatchObject({
+      markPrice: '202.05',
+      unrealizedPnl: '15.5',
+      marginUsed: '401',
+      leverage: '5',
+      positionValue: '2020.5',
+      returnOnEquity: '3.8',
+      effectiveLeverage: '5.04',
+      liquidationDistance: '9.77',
+    })
   })
 })
 
@@ -2032,7 +2055,7 @@ describe('OndoProvider — getFills', () => {
         size: '4',
         price: '200.5',
         liquidity: LiquidityRole.TAKER,
-        fee: { amount: '0.3', asset: 'USDC' },
+        fee: { amount: '0.3', rebate: '0.1', asset: 'USDC' },
         realizedPnl: undefined,
         classification: FillClassification.OPENED_LONG,
         createdAt: '2026-07-01T12:01:00.000Z',
@@ -2052,11 +2075,13 @@ describe('OndoProvider — getPortfolioHistory', () => {
       timestamp: Date.parse('2025-03-04T00:00:00Z'),
       accountValue: '4800.00',
       pnl: '180.00',
+      netTransfers: '0',
     },
     {
       timestamp: Date.parse('2025-03-05T00:00:00Z'),
       accountValue: '4950.00',
       pnl: '232.00',
+      netTransfers: '0',
     },
   ]
 

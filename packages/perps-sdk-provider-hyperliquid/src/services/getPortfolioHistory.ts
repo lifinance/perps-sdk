@@ -21,7 +21,9 @@ import type {
 } from '../types/index.js'
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { mapPortfolioTransfers } from '../utils/mapPortfolioTransfers.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { getLedgerHistory } from './getLedgerHistory.js'
 
 /** Parameters for {@link getPortfolioHistory}. @public */
 export interface GetPortfolioHistoryParams {
@@ -134,12 +136,34 @@ export async function getPortfolioHistory(
   }
 
   const pnlHistory = validSamples(window.pnlHistory, 'portfolio PnL sample')
+  const points = joinWindow(
+    validSamples(window.accountValueHistory, 'portfolio value sample'),
+    pnlHistory,
+    period
+  )
+  const first = points[0]
+  const last = points.at(-1)
+  const ledger =
+    first !== undefined &&
+    last !== undefined &&
+    last.timestamp > first.timestamp
+      ? await getLedgerHistory(
+          apiUrl,
+          {
+            user: params.address,
+            startTime: first.timestamp,
+            endTime: last.timestamp,
+          },
+          infoOpts
+        )
+      : []
   return {
     range: params.range,
-    points: joinWindow(
-      validSamples(window.accountValueHistory, 'portfolio value sample'),
-      pnlHistory,
-      period
+    points: mapPortfolioTransfers(
+      points,
+      ledger,
+      params.address,
+      isUnifiedAbstraction(abstraction)
     ),
     volume: window.vlm,
     totalPnl: pnlHistory.at(-1)?.[1],

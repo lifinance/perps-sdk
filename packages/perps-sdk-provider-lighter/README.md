@@ -154,6 +154,23 @@ Active reads return the complete snapshot and do not apply `limit` or `cursor`.
 History reads apply `limit` and `cursor`; the response retains the venue continuation cursor even when filtering removes rows.
 WebSocket order updates contain `{ orders, terminated }`, including terminal order rows and their ids.
 
+## Position leverage and return on equity
+
+`Position.leverage` shows `100 ÷ initial_margin_fraction`, rounded half-up to two decimal places.
+A client reads back the leverage that it saved.
+`initialMarginRequirement` and the cross `marginUsed` use the unrounded `initial_margin_fraction`.
+
+`returnOnEquity` uses the rounded `leverage`: `unrealizedPnl × leverage ÷ (|size| × entryPrice) × 100`.
+`remarkPosition` uses the same `leverage` at each mark.
+When `100 ÷ initial_margin_fraction` has more than two decimal places, `returnOnEquity` is different from the value of the unrounded fraction.
+For an `initial_margin_fraction` of `7`, the normalized `leverage` is `14.29`.
+For a position with `size` `1` and `entryPrice` `100`, the results differ:
+
+| Mark price | Unrealized PnL | SDK ROE (%) | ROE from the unrounded fraction (%) |
+| --- | --- | --- | --- |
+| 107 | 7 | 100.03 | 100 |
+| 114 | 14 | 200.06 | 200 |
+
 ## Fill and trade prices
 
 `Fill.price` shows the venue `price` of the trade, with one exception.
