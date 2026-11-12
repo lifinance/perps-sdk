@@ -99,7 +99,7 @@ defines token indices and `tokenId`.
 | `deposit` | Deposit with the USDC registry asset at token index `0`. |
 | `withdraw` | Withdrawal with the USDC registry asset at token index `0`. |
 | `liquidation` | Liquidation with resolved positions. |
-| `accountClassTransfer` | Excluded: `toPerp` describes a spot/perp movement within one account, not a counterparty transfer. |
+| `accountClassTransfer` | `INTERNAL_TRANSFER` between spot and perps. Resolve collateral token index `0` and retain `usdc`. |
 | `vaultCreate` | Excluded: vault creation and capital allocation require a vault activity model. |
 | `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. |
 | `vaultDistribution` | Excluded: a vault distribution requires vault identity and investment semantics. |
@@ -107,8 +107,8 @@ defines token indices and `tokenId`.
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
 | `spotGenesis` | Excluded: token allocation has no source counterparty. |
 | `rewardsClaim` | `REWARD` income with the resolved token asset and unchanged amount. |
-| `cStakingTransfer` | Transfer between the spot and staking balances of one account; resolve the token symbol. `isDeposit` gives the direction. |
-| `borrowLend` | Transfer between the spot balance and the borrow-lend market; resolve the token symbol. `operation` gives the direction; `meta` keeps `operation` and `interestAmount`. |
+| `cStakingTransfer` | `INTERNAL_TRANSFER` between spot and staking. Resolve `token` and retain `amount`. |
+| `borrowLend` | `INTERNAL_TRANSFER` between spot and borrow-lend. Resolve `token` and retain `amount`, `meta.operation`, and `meta.interestAmount`. |
 | `gossipPriorityGasAuction` | `FEE` charge with the resolved token asset and unchanged amount. |
 | `accountActivationGas` | `FEE` charge with the resolved token asset and unchanged amount. |
 
@@ -120,11 +120,6 @@ withdrawal fees retain their current representation without duplicate activities
 For a zero hash, the mapper uses `<delta type>:<token>:<amount>:<ISO time>`
 as the activity id and omits the explorer link.
 
-Two zero-hash rows with the same delta type, token, amount, and millisecond
-get the same id. If a page boundary falls between them, `getActivity` returns
-only one of the two rows. The venue row has no other field that distinguishes
-them.
-
 The mapper excludes a fee or reward row without a string `token` and a string
 `amount`.
 
@@ -133,14 +128,41 @@ outbound for the vault. The documented `vaultDeposit` payload has no depositor
 field. A query for the vault account therefore raises `ValidationError` for that
 row instead of inventing a counterparty. Depositor-account queries map normally.
 
-The mapper excludes same-account movements in the transfer variants.
-`cStakingTransfer` and `borrowLend` rows are the exception: they always
-move value within one account, so they map with the queried account as
-`counterpartyAddress`. The direction is relative to the spot balance: a stake,
-a supply and a repay are outbound; an unstake, a withdrawal and a borrow are
-inbound. A completed unstake carries the zero hash, so its id is
-`cStakingTransfer:<token>:IN:<amount>:<ISO time>` and it has no explorer link.
-A zero-hash `borrowLend` row gets `borrowLend:<token>:<operation>:<amount>:<ISO time>`.
+`TRANSFER` describes movements between distinct accounts and requires a counterparty.
+The mapper excludes same-account `send` and `spotTransfer` rows.
+`INTERNAL_TRANSFER` describes movements between balances of the queried account, without a counterparty or `IN`/`OUT` direction.
+Its balance identifiers are not trading-category identifiers.
+
+| Delta condition | `sourceBalance` | `destinationBalance` |
+| --- | --- | --- |
+| `cStakingTransfer`, `isDeposit: true` | `spot` | `staking` |
+| `cStakingTransfer`, `isDeposit: false` | `staking` | `spot` |
+| `borrowLend`, `operation: 'supply'` | `spot` | `borrowLend` |
+| `borrowLend`, `operation: 'withdraw'` | `borrowLend` | `spot` |
+| `borrowLend`, `operation: 'borrow'` | `borrowLend` | `spot` |
+| `borrowLend`, `operation: 'repay'` | `spot` | `borrowLend` |
+| `accountClassTransfer`, `toPerp: true` | `spot` | `perps` |
+| `accountClassTransfer`, `toPerp: false` | `perps` | `spot` |
+
+All internal rows preserve `meta.transferType`.
+The balance pair determines direction. The amount retains the venue decimal string, including its sign and precision.
+Borrow-lend amounts already include reported interest. The mapper does not apply interest again.
+A borrow or repayment also affects a liability. Internal transfers are not income, expenses, or trading profit.
+Unknown operations, missing or non-boolean direction flags, and account-class rows without a `usdc` string produce no row.
+
+Include `INTERNAL_TRANSFER` in activity filters to retain staking, borrow-lend, and spot/perps history.
+`[TRANSFER]` returns genuine transfers only.
+Use `[TRANSFER, INTERNAL_TRANSFER]` to request both types, or omit the filter.
+An internal-transfer-only request synchronizes assets without markets.
+
+Zero-hash staking and borrow-lend rows retain their synthesized identifiers:
+`cStakingTransfer:<token>:<IN or OUT>:<amount>:<ISO time>` and
+`borrowLend:<token>:<operation>:<amount>:<ISO time>`.
+A zero-hash account-class row uses
+`accountClassTransfer:USDC:<sourceBalance>:<destinationBalance>:<usdc>:<ISO time>`.
+These rows have no explorer link.
+Within one ledger response, a repeated row id of one activity type gets an occurrence suffix (`:1`, `:2`) after the first row.
+Identical zero-hash rows in one millisecond therefore stay distinct across pages.
 Unknown future delta types remain outside the supported activity model.
 For a supported row with an unknown ledger token, the mapper skips the row and
 writes a warning. Missing fixed collateral instead raises a stale or mis-keyed

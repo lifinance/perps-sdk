@@ -183,6 +183,22 @@ export type HlRewardsClaimDelta = {
   amount: string
 }
 
+/** USDC movement between one account's spot and perps balances. @public */
+export type HlAccountClassTransferDelta = {
+  type: 'accountClassTransfer'
+  usdc: string
+  toPerp: boolean
+}
+
+/** Narrow account-class transfers only when the venue gives a direction and an amount. @public */
+export const isAccountClassTransferDelta = (
+  delta: HlLedgerDelta
+): delta is HlAccountClassTransferDelta =>
+  delta.type === 'accountClassTransfer' &&
+  'toPerp' in delta &&
+  typeof delta.toPerp === 'boolean' &&
+  hasUsdcAmount(delta)
+
 /**
  * Union of known Hyperliquid non-funding ledger deltas plus an open fallback
  * for endpoint variants the provider does not map.
@@ -201,6 +217,7 @@ export type HlLedgerDelta =
   | HlGossipPriorityGasAuctionDelta
   | HlAccountActivationGasDelta
   | HlRewardsClaimDelta
+  | HlAccountClassTransferDelta
   | {
       type: string
       usdc?: string

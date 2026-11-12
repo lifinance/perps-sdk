@@ -674,9 +674,16 @@ describe('getActivity — transfer registry identity', () => {
     )
   })
 
-  it('returns staking and borrow-lend rows in a transfer-only request', async () => {
-    installInfoFetchMock(
+  it.each([
+    { type: undefined },
+    { type: [ActivityType.INTERNAL_TRANSFER] },
+    { type: [ActivityType.TRANSFER] },
+    { type: [ActivityType.TRANSFER, ActivityType.INTERNAL_TRANSFER] },
+  ])('filters internal movements with type=$type', async ({ type }) => {
+    const mock = installInfoFetchMock(
       {
+        userFunding: [],
+        userFillsByTime: [],
         userNonFundingLedgerUpdates: [
           ...ledger,
           {
@@ -700,33 +707,150 @@ describe('getActivity — transfer registry identity', () => {
               interestAmount: '0.0',
             },
           },
+          {
+            time: 1704067000000,
+            hash: '0xaccount-class',
+            delta: { type: 'accountClassTransfer', usdc: '1.57', toPerp: true },
+          },
         ],
       },
       [],
       [],
-      [token]
+      [token, USDC_ASSET]
     )
     const result = await getActivity(ctx, {
       address: ADDRESS,
-      type: [ActivityType.TRANSFER],
+      type,
     })
-    expect(result.items).toMatchObject([
-      { id: '0xtransfer', type: ActivityType.TRANSFER },
+    const internalItems = [
       {
         id: '0xstake',
-        type: ActivityType.TRANSFER,
-        direction: 'OUT',
+        type: ActivityType.INTERNAL_TRANSFER,
+        sourceBalance: 'spot',
+        destinationBalance: 'staking',
         asset: token,
         amount: '5.0',
       },
       {
         id: '0xsupply',
-        type: ActivityType.TRANSFER,
-        direction: 'OUT',
+        type: ActivityType.INTERNAL_TRANSFER,
+        sourceBalance: 'spot',
+        destinationBalance: 'borrowLend',
         asset: token,
         amount: '100.0',
       },
+      {
+        id: '0xaccount-class',
+        type: ActivityType.INTERNAL_TRANSFER,
+        sourceBalance: 'spot',
+        destinationBalance: 'perps',
+        asset: USDC_ASSET,
+        amount: '1.57',
+      },
+    ]
+    expect(result.items).toMatchObject([
+      ...(!type || type.includes(ActivityType.TRANSFER)
+        ? [{ id: '0xtransfer', type: ActivityType.TRANSFER }]
+        : []),
+      ...(!type || type.includes(ActivityType.INTERNAL_TRANSFER)
+        ? internalItems
+        : []),
     ])
+    expect(mock.referenceRequests.some((url) => url.includes('/assets'))).toBe(
+      true
+    )
+    if (type !== undefined) {
+      expect(
+        mock.referenceRequests.some((url) => url.includes('/markets'))
+      ).toBe(false)
+    }
+  })
+
+  it.each([
+    { type: [ActivityType.TRANSFER] },
+    { type: [ActivityType.WITHDRAWAL] },
+    { type: [ActivityType.LIQUIDATION] },
+  ])('skips internal assets before mapping for type=$type', async ({
+    type,
+  }) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    installInfoFetchMock(
+      {
+        userNonFundingLedgerUpdates: [
+          {
+            time: 1704067200000,
+            hash: '0xstake',
+            delta: {
+              type: 'cStakingTransfer',
+              token: 'UNKNOWN',
+              amount: '1',
+              isDeposit: true,
+            },
+          },
+          {
+            time: 1704067100000,
+            hash: '0xsupply',
+            delta: {
+              type: 'borrowLend',
+              token: 'UNKNOWN',
+              amount: '1',
+              operation: 'supply',
+              interestAmount: '0',
+            },
+          },
+          {
+            time: 1704067000000,
+            hash: '0xaccount-class',
+            delta: { type: 'accountClassTransfer', usdc: '1', toPerp: true },
+          },
+        ],
+        userFillsByTime: [],
+      },
+      [],
+      [],
+      []
+    )
+    const result = await getActivity(
+      { ...ctx, client: createPerpsClient({ retry: false }) },
+      { address: ADDRESS, type }
+    )
+    expect(result.items).toEqual([])
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('keeps identical zero-hash rows distinct across a page boundary', async () => {
+    // Two copies of a recorded completed unstake in one millisecond.
+    const unstake: HlUserNonFundingLedgerUpdates[number] = {
+      time: 1784492879045,
+      hash: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      delta: {
+        type: 'cStakingTransfer',
+        token: 'HYPE',
+        amount: '25.38015398',
+        isDeposit: false,
+      },
+    }
+    installInfoFetchMock(
+      { userNonFundingLedgerUpdates: [unstake, unstake] },
+      [],
+      [],
+      [token]
+    )
+    const params = {
+      address: ADDRESS,
+      limit: 1,
+      type: [ActivityType.INTERNAL_TRANSFER],
+    }
+    const first = await getActivity(ctx, params)
+    const second = await getActivity(ctx, {
+      ...params,
+      cursor: first.pagination.cursor,
+    })
+    const id = 'cStakingTransfer:HYPE:IN:25.38015398:2026-07-19T20:27:59.045Z'
+    expect(first.items.map((item) => item.id)).toEqual([`${id}:1`])
+    expect(first.pagination.hasMore).toBe(true)
+    expect(second.items.map((item) => item.id)).toEqual([id])
+    expect(second.pagination.hasMore).toBe(false)
   })
 
   it('skips a transfer whose asset cannot resolve and returns the other rows', async () => {
@@ -811,6 +935,11 @@ describe('getActivity — transfer registry identity', () => {
             amount: '100.0',
             interestAmount: '0.0',
           },
+        },
+        {
+          time: 4,
+          hash: 'account-class',
+          delta: { type: 'accountClassTransfer', usdc: '1.57', toPerp: false },
         },
         ...HL_USER_NON_FUNDING_LEDGER,
       ],
