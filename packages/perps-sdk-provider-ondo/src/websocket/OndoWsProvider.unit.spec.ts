@@ -3,6 +3,7 @@ import {
   createPerpsClient,
   isDecimalString,
   type StorageAdapter,
+  WS_MARKETS_CONTEXT_INTERVAL_MS,
 } from '@lifi/perps-sdk'
 import {
   OrderStatus,
@@ -697,19 +698,14 @@ describe('OndoWsProvider', () => {
   })
 
   describe('markets context', () => {
-    it('fans marketsContext out to markPricesPerps, fundingRatesPerps and topOfBooksPerps with no market filter', async () => {
+    it('fans marketsContext out to markPricesPerps and fundingRatesPerps with no market filter', async () => {
       const p = makeProvider()
       const send = stubSocket(p)
       await p.subscribe({ channel: 'marketsContext', dex: 'ondo' }, vi.fn())
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({ op: 'subscribe', channel: 'markPricesPerps' })
-      )
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({ op: 'subscribe', channel: 'fundingRatesPerps' })
-      )
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({ op: 'subscribe', channel: 'topOfBooksPerps' })
-      )
+      expect(send.mock.calls).toEqual([
+        [JSON.stringify({ op: 'subscribe', channel: 'markPricesPerps' })],
+        [JSON.stringify({ op: 'subscribe', channel: 'fundingRatesPerps' })],
+      ])
       p.close()
     })
 
@@ -719,164 +715,33 @@ describe('OndoWsProvider', () => {
       data: [{ market, markPrice }],
     })
 
-    const topOfBookFrame = (
-      market: string,
-      bids: [string, string][],
-      asks: [string, string][]
-    ) => ({
-      type: 'update',
-      channel: 'topOfBooksPerps',
-      data: [{ market, time: '2025-03-05T14:30:00Z', bids, asks }],
-    })
-
     const lastContext = (listener: ReturnType<typeof vi.fn>, market: string) =>
       listener.mock.calls.at(-1)?.[0].data[market]
 
-    it('sets midPrice to the exact top-of-book midpoint', () => {
+    it('delivers one marketsContext event per gap and the newest frame when the gap ends', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
 
       feed(p, markFrame('AAPL-USD.P', '227.50'))
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [['227.41', '100.0']],
-          [['227.60', '80.0']]
-        )
-      )
+      expect(listener).toHaveBeenCalledTimes(1)
+      const first = lastContext(listener, 'AAPL-USD.P')
 
-      expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
-        provider: 'ondo',
-        marketId: 'AAPL-USD.P',
-        midPrice: '227.505',
-        markPrice: '227.50',
-      })
+      feed(p, markFrame('AAPL-USD.P', '227.60'))
+      feed(p, markFrame('AAPL-USD.P', '227.70'))
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS - 1)
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(1)
+      expect(listener).toHaveBeenCalledTimes(2)
+      expect(lastContext(listener, 'AAPL-USD.P').markPrice).toBe('227.70')
+      // The delivered snapshot is its own object: later frames do not touch it.
+      expect(first.markPrice).toBe('227.50')
       p.close()
     })
 
-    it('calculates the mid from the best level of each side when a frame carries several', () => {
-      const p = makeProvider()
-      const listener = vi.fn()
-      inject(p, 'marketsContext', listener)
-
-      feed(p, markFrame('AAPL-USD.P', '227.50'))
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [
-            ['227.30', '250.0'],
-            ['227.40', '100.0'],
-          ],
-          [
-            ['227.70', '150.0'],
-            ['227.60', '80.0'],
-          ]
-        )
-      )
-
-      expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.5')
-      p.close()
-    })
-
-    it('keeps the mark price in midPrice before the first top-of-book frame', () => {
-      const p = makeProvider()
-      const listener = vi.fn()
-      inject(p, 'marketsContext', listener)
-
-      feed(p, markFrame('AAPL-USD.P', '227.50'))
-
-      expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.50')
-      p.close()
-    })
-
-    const oneSidedBooks: Array<
-      [string, [string, string][], [string, string][]]
-    > = [
-      ['no asks', [['227.40', '100.0']], []],
-      ['no bids', [], [['227.60', '80.0']]],
-      ['no valid ask', [['227.40', '100.0']], [['not-a-price', '80.0']]],
-    ]
-
-    it.each(
-      oneSidedBooks
-    )('returns midPrice to the mark price for a one-sided book (%s)', (_, bids, asks) => {
-      const p = makeProvider()
-      const listener = vi.fn()
-      inject(p, 'marketsContext', listener)
-
-      feed(p, markFrame('AAPL-USD.P', '227.50'))
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [['227.40', '100.0']],
-          [['227.60', '80.0']]
-        )
-      )
-      expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.5')
-
-      feed(p, topOfBookFrame('AAPL-USD.P', bids, asks))
-      expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('227.50')
-
-      feed(p, markFrame('AAPL-USD.P', '228.00'))
-      expect(lastContext(listener, 'AAPL-USD.P').midPrice).toBe('228.00')
-      p.close()
-    })
-
-    it('holds a top-of-book frame that arrives before the first mark price, emitting no context', () => {
-      const p = makeProvider()
-      const listener = vi.fn()
-      inject(p, 'marketsContext', listener)
-
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [['227.40', '100.0']],
-          [['227.60', '80.0']]
-        )
-      )
-      expect(listener).not.toHaveBeenCalled()
-
-      feed(p, markFrame('AAPL-USD.P', '227.45'))
-      expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
-        provider: 'ondo',
-        marketId: 'AAPL-USD.P',
-        midPrice: '227.5',
-        markPrice: '227.45',
-      })
-      p.close()
-    })
-
-    it('keeps the book mid when a later mark price frame arrives', () => {
-      const p = makeProvider()
-      const listener = vi.fn()
-      inject(p, 'marketsContext', listener)
-
-      feed(p, markFrame('AAPL-USD.P', '227.50'))
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [['227.40', '100.0']],
-          [['227.60', '80.0']]
-        )
-      )
-      feed(p, markFrame('AAPL-USD.P', '228.00'))
-
-      expect(lastContext(listener, 'AAPL-USD.P')).toEqual({
-        provider: 'ondo',
-        marketId: 'AAPL-USD.P',
-        midPrice: '227.5',
-        markPrice: '228.00',
-      })
-      p.close()
-    })
-
-    it('emits the aggregated context record on mark price updates, with markPrice standing in for midPrice', () => {
+    it('emits the aggregated context record on mark price updates, with no midPrice', () => {
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -898,20 +763,18 @@ describe('OndoWsProvider', () => {
         ],
       })
 
-      expect(listener).toHaveBeenCalledWith({
+      expect(listener.mock.calls.at(-1)?.[0]).toStrictEqual({
         channel: 'marketsContext',
         data: {
           'AAPL-USD.P': {
             provider: 'ondo',
             marketId: 'AAPL-USD.P',
-            midPrice: '227.50',
             markPrice: '227.50',
             oraclePrice: '227.47',
           },
           'NVDA-USD.P': {
             provider: 'ondo',
             marketId: 'NVDA-USD.P',
-            midPrice: '900.00',
             markPrice: '900.00',
             oraclePrice: '899.95',
           },
@@ -938,6 +801,7 @@ describe('OndoWsProvider', () => {
     })
 
     it('drops a known oracle price when a later frame omits it', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
@@ -957,6 +821,7 @@ describe('OndoWsProvider', () => {
         channel: 'markPricesPerps',
         data: [{ market: 'AAPL-USD.P', markPrice: '228.00' }],
       })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
 
       const context = listener.mock.calls.at(-1)?.[0].data['AAPL-USD.P']
       expect(context.markPrice).toBe('228.00')
@@ -965,9 +830,15 @@ describe('OndoWsProvider', () => {
     })
 
     it('merges funding rates into the context once the mark price is known', () => {
+      vi.useFakeTimers()
       const p = makeProvider()
       const listener = vi.fn()
       inject(p, 'marketsContext', listener)
+      const lastContext = () => {
+        const event = listener.mock.lastCall?.[0]
+        expect(event).toBeDefined()
+        return event.data['AAPL-USD.P']
+      }
 
       // Funding arriving before any mark price must not fabricate a context
       // entry without prices…
@@ -994,13 +865,13 @@ describe('OndoWsProvider', () => {
         channel: 'markPricesPerps',
         data: [{ market: 'AAPL-USD.P', markPrice: '227.50' }],
       })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
       expect(listener).toHaveBeenLastCalledWith({
         channel: 'marketsContext',
         data: {
           'AAPL-USD.P': {
             provider: 'ondo',
             marketId: 'AAPL-USD.P',
-            midPrice: '227.50',
             markPrice: '227.50',
             funding: {
               rate: '0.0000125',
@@ -1009,6 +880,93 @@ describe('OndoWsProvider', () => {
           },
         },
       })
+      expect('midPrice' in lastContext()).toBe(false)
+
+      // A later funding frame merges into the known context, and a later mark
+      // frame rebuilds it; neither path adds the key.
+      feed(p, {
+        type: 'update',
+        channel: 'fundingRatesPerps',
+        data: [
+          {
+            market: 'AAPL-USD.P',
+            rate: '0.0000150',
+            intervalEnds: '2025-03-05T16:00:00Z',
+            premiums: [],
+          },
+        ],
+      })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+      const merged = lastContext()
+      expect(merged.funding.rate).toBe('0.0000150')
+      expect('midPrice' in merged).toBe(false)
+
+      feed(p, {
+        type: 'update',
+        channel: 'markPricesPerps',
+        data: [{ market: 'AAPL-USD.P', markPrice: '227.60' }],
+      })
+      vi.advanceTimersByTime(WS_MARKETS_CONTEXT_INTERVAL_MS)
+      const remarked = lastContext()
+      expect(remarked.markPrice).toBe('227.60')
+      expect(remarked.funding.rate).toBe('0.0000150')
+      expect('midPrice' in remarked).toBe(false)
+      p.close()
+    })
+
+    it('replays exactly the two marketContext frames on open and unsubscribes both on teardown', async () => {
+      vi.useFakeTimers()
+      const p = makeProvider()
+      const send = stubConnectingSocket(p)
+      // The open replay and the socket status are private; the spec drives both.
+      const internals = p as unknown as {
+        replaySubs: () => Promise<void>
+        rws: { getStatus: () => string }
+      }
+      const unsubscribe = await p.subscribe(
+        { channel: 'marketContext', dex: 'ondo', marketId: 'AAPL-USD.P' },
+        vi.fn()
+      )
+      expect(send).not.toHaveBeenCalled()
+
+      await internals.replaySubs()
+      expect(send.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'markPricesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'fundingRatesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+      ])
+
+      send.mockClear()
+      internals.rws.getStatus = () => 'connected'
+      unsubscribe()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(send.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            op: 'unsubscribe',
+            channel: 'markPricesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+        [
+          JSON.stringify({
+            op: 'unsubscribe',
+            channel: 'fundingRatesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+      ])
       p.close()
     })
 
@@ -1020,62 +978,37 @@ describe('OndoWsProvider', () => {
         { channel: 'marketContext', dex: 'ondo', marketId: 'AAPL-USD.P' },
         listener
       )
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({
-          op: 'subscribe',
-          channel: 'markPricesPerps',
-          markets: ['AAPL-USD.P'],
-        })
-      )
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({
-          op: 'subscribe',
-          channel: 'fundingRatesPerps',
-          markets: ['AAPL-USD.P'],
-        })
-      )
-      expect(send).toHaveBeenCalledWith(
-        JSON.stringify({
-          op: 'subscribe',
-          channel: 'topOfBooksPerps',
-          markets: ['AAPL-USD.P'],
-        })
-      )
+      expect(send.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'markPricesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+        [
+          JSON.stringify({
+            op: 'subscribe',
+            channel: 'fundingRatesPerps',
+            markets: ['AAPL-USD.P'],
+          }),
+        ],
+      ])
 
       feed(p, {
         type: 'update',
         channel: 'markPricesPerps',
-        data: [{ market: 'AAPL-USD.P', markPrice: '227.50' }],
-      })
-      expect(listener).toHaveBeenCalledWith({
-        channel: 'marketContext',
-        data: {
-          provider: 'ondo',
-          marketId: 'AAPL-USD.P',
-          midPrice: '227.50',
-          markPrice: '227.50',
-        },
-      })
-
-      feed(p, {
-        type: 'update',
-        channel: 'topOfBooksPerps',
         data: [
-          {
-            market: 'AAPL-USD.P',
-            time: '2025-03-05T14:30:00Z',
-            asks: [['227.60', '80.0']],
-            bids: [['227.40', '100.0']],
-          },
+          { market: 'AAPL-USD.P', markPrice: '227.50', oraclePrice: '227.47' },
         ],
       })
-      expect(listener).toHaveBeenLastCalledWith({
+      expect(listener.mock.calls.at(-1)?.[0]).toStrictEqual({
         channel: 'marketContext',
         data: {
           provider: 'ondo',
           marketId: 'AAPL-USD.P',
-          midPrice: '227.5',
           markPrice: '227.50',
+          oraclePrice: '227.47',
         },
       })
       p.close()
@@ -1094,15 +1027,6 @@ describe('OndoWsProvider', () => {
       inject(p, 'marketContext:AAPL-USD.P', oneListener)
 
       feed(p, markFrame('AAPL-USD.P', '227.50'))
-      feed(
-        p,
-        topOfBookFrame(
-          'AAPL-USD.P',
-          [['227.40', '100.0']],
-          [['227.60', '80.0']]
-        )
-      )
-
       expect(lastContext(allListener, 'AAPL-USD.P').provider).toBe(
         'ondo-testnet'
       )
@@ -1495,6 +1419,10 @@ describe('OndoWsProvider', () => {
         size: '10',
         entryPrice: '225.00',
         markPrice: '227.50',
+        positionValue: '2275',
+        returnOnEquity: '2.2',
+        effectiveLeverage: '2.02',
+        liquidationDistance: '20.88',
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
       p.close()

@@ -25,6 +25,7 @@ const buildHlFactory = ({
   Object.assign(
     vi.fn<(params: WsProviderFactoryParams) => WsProvider>((_params) => ({
       subscribe: mockSubscribe,
+      subscribeStatus: () => () => {},
       reconnect: mockReconnect,
       subscribeQuote: mockSubscribeQuote,
       close: mockClose,

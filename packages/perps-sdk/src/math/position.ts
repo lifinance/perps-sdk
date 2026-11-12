@@ -24,6 +24,7 @@ import {
 } from '../decimal/arithmetic.js'
 import { DivBig } from '../decimal/big.js'
 import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import { roundDecimalString } from '../decimal/convert.js'
 import {
   bigToDecimalString,
   decimalStringToBig,
@@ -593,4 +594,109 @@ export function isPositionMarginRemovable(position: Position): boolean {
     position.market.positionMarginAdjustment ===
       PositionMarginAdjustment.ADD_AND_REMOVE
   )
+}
+
+const isPositiveDecimalString = (value: unknown): value is string =>
+  isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
+
+/** Complete a position, retaining explicit venue value and ROE.
+ * Calculated ROE uses the entry notional ÷ the current leverage: `|size| × entryPrice ÷ leverage`.
+ * Rebuild leverage and liquidation distance with half-up rounding to two decimals.
+ * Unusable inputs omit calculated fields. Never throws or warns.
+ * @public
+ */
+export function buildPosition(position: Position): Position {
+  const {
+    effectiveLeverage: _effectiveLeverage,
+    liquidationDistance: _liquidationDistance,
+    ...fields
+  } = position
+  const built: Position = fields
+  const {
+    size,
+    entryPrice,
+    leverage,
+    markPrice,
+    liquidationPrice,
+    unrealizedPnl,
+    marginUsed,
+  } = position
+  const hasMarkPrice = isPositiveDecimalString(markPrice)
+  const hasMargin = isPositiveDecimalString(marginUsed)
+  if (
+    built.positionValue === undefined &&
+    hasMarkPrice &&
+    isDecimalString(size)
+  ) {
+    built.positionValue = calculateNotionalValue(size, markPrice)
+  }
+  if (
+    built.returnOnEquity === undefined &&
+    isDecimalString(unrealizedPnl) &&
+    isPositiveDecimalString(size) &&
+    isPositiveDecimalString(entryPrice) &&
+    isPositiveDecimalString(leverage)
+  ) {
+    built.returnOnEquity = calculateInitialMarginRoe(
+      unrealizedPnl,
+      size,
+      entryPrice,
+      leverage
+    )
+  }
+  if (hasMargin && isDecimalString(built.positionValue)) {
+    built.effectiveLeverage = roundDecimalString(
+      calculateEffectiveLeverage({
+        positionValueUsd: built.positionValue,
+        marginUsd: marginUsed,
+      }),
+      2,
+      'round'
+    )
+  }
+  if (hasMarkPrice && isPositiveDecimalString(liquidationPrice)) {
+    built.liquidationDistance = roundDecimalString(
+      calculateLiquidationDistance({
+        liquidationPrice,
+        currentPrice: markPrice,
+      }),
+      2,
+      'round'
+    )
+  }
+  return built
+}
+
+/** Recalculate mark-dependent fields. ROE uses the entry notional ÷ the leverage, and
+ * effective leverage uses the input snapshot's margin.
+ * Invalid marks return the input. Invalid entry prices or sizes retain its PnL.
+ * The input is unchanged, and valid marks return a new position.
+ * @public
+ */
+export function remarkPosition(
+  position: Position,
+  markPrice: string
+): Position {
+  if (!isPositiveDecimalString(markPrice)) {
+    return position
+  }
+  const {
+    positionValue: _positionValue,
+    returnOnEquity: _returnOnEquity,
+    ...fields
+  } = position
+  const { entryPrice, size } = position
+  return buildPosition({
+    ...fields,
+    markPrice,
+    unrealizedPnl:
+      isPositiveDecimalString(entryPrice) && isDecimalString(size)
+        ? estimateUnrealizedPnl({
+            entryPrice,
+            markPrice,
+            size,
+            isLong: position.side === PositionSide.LONG,
+          })
+        : position.unrealizedPnl,
+  })
 }

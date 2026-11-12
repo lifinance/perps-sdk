@@ -123,4 +123,12 @@ export const wsLog = {
       error
     )
   },
+  /**
+   * A provider's `subscribeStatus` threw while a status-only observer attached.
+   * That observer receives no transport status; data subscriptions and sibling
+   * observers continue.
+   */
+  statusObserverFailure(provider: string, error: unknown): void {
+    console.error(`[${provider}:ws] status observer registration failed`, error)
+  },
 } as const

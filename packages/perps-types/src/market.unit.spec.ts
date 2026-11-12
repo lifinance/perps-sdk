@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type { Asset } from './asset.js'
+import type { DecimalString } from './decimal.js'
 import { PositionMarginAdjustment } from './enums.js'
 import {
   type BaseMarket,
@@ -159,6 +160,12 @@ describe('MarketContext', () => {
     expect(ctx.oraclePrice).toBeUndefined()
     expect(ctx.openInterest).toBeUndefined()
     expect(ctx.funding).toBeUndefined()
+  })
+
+  it('types midPrice as an optional decimal string', () => {
+    expectTypeOf<Pick<MarketContext, 'midPrice'>>().toEqualTypeOf<{
+      midPrice?: DecimalString
+    }>()
   })
 })
 
