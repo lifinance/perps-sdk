@@ -1,7 +1,5 @@
 import {
   ACTIVE_ORDER_STATUSES,
-  createWarnOnce,
-  isDecimalString,
   isDecimalStringGreaterThan,
   PerpsError,
   safeDivideDecimalString,
@@ -23,10 +21,7 @@ import {
 } from '@lifi/perps-types'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoOrder, OndoTwapOrder } from '../types/wire.js'
-import { buildFee } from './buildFee.js'
 import { rowTimestampToIsoStringOrWarn } from './venueValues.js'
-
-const warnInvalidPnlOnce = createWarnOnce()
 
 const skipOrder = (
   marketId: string,
@@ -138,8 +133,7 @@ const mapTimeInForce = (tif: string): TimeInForce => {
 /**
  * Map Ondo regular, trigger and TWAP rows to the shared order union. A row with
  * an invalid size or time gives `undefined`. Prices are the raw venue strings;
- * an invalid `filledCost` omits `averagePrice`, and an invalid `realizedPnl`
- * is omitted with one warning.
+ * an invalid `filledCost` omits `averagePrice`.
  */
 export const mapOrder = (
   order: OndoOrder | OndoTwapOrder,
@@ -234,18 +228,6 @@ export const mapOrder = (
       durationSeconds: order.runningTime,
       startedAt: createdAt,
     }
-  }
-  if (isDecimalString(order.realizedPnl)) {
-    base.realizedPnl = order.realizedPnl
-  } else if (order.realizedPnl !== undefined) {
-    warnInvalidPnlOnce(
-      `${ONDO_PROVIDER_KEY}|order.realizedPnl`,
-      `[${ONDO_PROVIDER_KEY}] order \`realizedPnl\` is not a valid decimal, so it is absent: '${String(order.realizedPnl).slice(0, 64)}'`
-    )
-  }
-  const fee = buildFee(order, market.quoteAsset.displaySymbol)
-  if (fee !== undefined) {
-    base.fee = fee
   }
   if (order.clientOrderId !== undefined) {
     base.clientOrderId = order.clientOrderId

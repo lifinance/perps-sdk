@@ -659,8 +659,6 @@ describe('Order read contract', () => {
       | 'remainingSize'
       | 'filledSize'
       | 'averagePrice'
-      | 'realizedPnl'
-      | 'fee'
       | 'reduceOnly'
       | 'parentOrderId'
       | 'explorerLink'
@@ -668,16 +666,9 @@ describe('Order read contract', () => {
       | 'updatedAt'
     >()
   })
-  it('allows complete order outcomes and fee rebates to remain absent', () => {
-    expectTypeOf<OrderBase['realizedPnl']>().toEqualTypeOf<string | undefined>()
-    expectTypeOf<OrderBase['fee']>().toEqualTypeOf<Fee | undefined>()
+  it('allows the fee rebate to remain absent', () => {
     expectTypeOf<Fee['rebate']>().toEqualTypeOf<string | undefined>()
     expectTypeOf<{ amount: string; asset: string }>().toExtend<Fee>()
-    expectTypeOf<RegularOrder['realizedPnl']>().toEqualTypeOf<
-      string | undefined
-    >()
-    expectTypeOf<TriggerOrder['fee']>().toEqualTypeOf<Fee | undefined>()
-    expectTypeOf<TwapOrder['fee']>().toEqualTypeOf<Fee | undefined>()
   })
   it('marks only a regular order as a venue liquidation', () => {
     expectTypeOf<RegularOrder['isLiquidation']>().toEqualTypeOf<

@@ -95,13 +95,6 @@ export interface OrderBase {
   remainingSize: DecimalString
   filledSize: DecimalString
   averagePrice?: DecimalString
-  /**
-   * Venue realized PnL for the filled portion of the order, before fees.
-   * Absent when the provider has no complete value.
-   */
-  realizedPnl?: DecimalString
-  /** Fee for the filled portion, absent when the provider has no complete value. */
-  fee?: Fee
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
   parentOrderId?: string

@@ -1989,7 +1989,6 @@ describe('OndoProvider — getOrder', () => {
       reduceOnly: false,
       status: OrderStatus.PARTIALLY_FILLED,
       averagePrice: '200.5',
-      fee: { amount: '0.4', asset: 'USDC' },
       createdAt: '2026-07-01T12:00:00.000Z',
       updatedAt: '2026-07-01T12:00:00.000Z',
     })
