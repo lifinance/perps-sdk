@@ -2,6 +2,7 @@ import {
   createPerpsClient,
   isDecimalString,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   wsLog,
 } from '@lifi/perps-sdk'
@@ -325,7 +326,7 @@ vi.stubGlobal(
         return Response.json(await accountExistsFetchMock())
       }
       if (body.type === 'activeAssetData') {
-        const result = await activeAssetDataFetchMock(body)
+        const result = await activeAssetDataFetchMock(body, init?.signal)
         return result instanceof Response ? result : Response.json(result)
       }
       if (body.type !== 'userAbstraction') {
@@ -3325,11 +3326,10 @@ describe('HyperliquidWsProvider', () => {
         }
         expect(opening).not.toHaveProperty('returnOnEquity')
         expect(activeAssetDataFetchMock).toHaveBeenCalledOnce()
-        expect(activeAssetDataFetchMock).toHaveBeenCalledWith({
-          type: 'activeAssetData',
-          user,
-          coin: 'BTC',
-        })
+        expect(activeAssetDataFetchMock).toHaveBeenCalledWith(
+          { type: 'activeAssetData', user, coin: 'BTC' },
+          expect.any(AbortSignal)
+        )
       })
 
       it('emits frames in arrival order while a leverage read is pending', async () => {
@@ -3383,6 +3383,73 @@ describe('HyperliquidWsProvider', () => {
         expect(fill).toMatchObject({ closedSize: '0.1', entryPrice: '100000' })
         expect(fill).not.toHaveProperty('returnOnEquity')
         warn.mockRestore()
+      })
+
+      it('emits the closing fill without ROE when the leverage read exceeds the timeout', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        activeAssetDataFetchMock.mockReset().mockImplementation(
+          (_body: unknown, signal: AbortSignal) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason))
+            })
+        )
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+        vi.useFakeTimers()
+        try {
+          getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+          getMockRwsInstance().simulateMessage(fillsFrame([btcFill(2, false)]))
+          await vi.advanceTimersByTimeAsync(WS_FRAME_ENRICHMENT_TIMEOUT_MS - 1)
+          expect(listener).not.toHaveBeenCalled()
+
+          await vi.advanceTimersByTimeAsync(1)
+          expect(listener).toHaveBeenCalledTimes(2)
+        } finally {
+          vi.useRealTimers()
+        }
+        const [closing] = listener.mock.calls[0][0].data
+        expect(closing).toMatchObject({ id: '1', closedSize: '0.1' })
+        expect(closing).not.toHaveProperty('returnOnEquity')
+        expect(listener.mock.calls[1][0].data[0].id).toBe('2')
+        expect(warn).toHaveBeenCalledWith(
+          '[hyperliquid:ws] fill leverage read failed; the frame emits without it',
+          expect.objectContaining({ name: 'TimeoutError' })
+        )
+        warn.mockRestore()
+      })
+
+      it('emits nothing for a frame whose leverage read settles after close', async () => {
+        let release!: () => void
+        const pending = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        activeAssetDataFetchMock
+          .mockReset()
+          .mockImplementation(async (body) => {
+            await pending
+            return leverageData(body)
+          })
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+        await flushMicrotasks()
+        provider.close()
+        release()
+        await vi.waitFor(() =>
+          expect(activeAssetDataFetchMock).toHaveBeenCalledOnce()
+        )
+        await flushMicrotasks()
+
+        expect(listener).not.toHaveBeenCalled()
       })
     })
 

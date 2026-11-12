@@ -13,7 +13,10 @@ import {
   multiplyDecimalString,
   subtractDecimalString,
 } from '../decimal/arithmetic.js'
-import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import {
+  isDecimalStringGreaterThan,
+  isDecimalStringZero,
+} from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 import {
   calculateInitialMarginRoe,
@@ -131,8 +134,9 @@ const FULL_SIZE_CLOSING_CLASSIFICATIONS: ReadonlySet<FillClassification> =
  * reducing or closing fill.
  *
  * @returns `undefined` for a fill that opens, increases or trades spot, for a
- *   flip without `startPosition`, or when `size` is not a positive decimal
- *   string or `startPosition` is not a decimal string. Never throws.
+ *   flip without `startPosition`, when `size` is not a positive decimal
+ *   string, or when `startPosition` is zero or not a decimal string. Never
+ *   throws.
  * @public
  */
 export function calculateFillClosedSize(
@@ -149,7 +153,8 @@ export function calculateFillClosedSize(
   }
   if (
     !CLOSING_CLASSIFICATIONS.has(classification) ||
-    !isDecimalString(startPosition)
+    !isDecimalString(startPosition) ||
+    isDecimalStringZero(startPosition)
   ) {
     return undefined
   }

@@ -268,6 +268,15 @@ describe('calculateFillClosedSize', () => {
       })
     ).toBeUndefined()
   })
+
+  it.each([
+    FillClassification.CLOSED_LONG,
+    FillClassification.REDUCED_SHORT,
+  ])('gives undefined for a %s fill with a zero startPosition', (classification) => {
+    expect(
+      calculateFillClosedSize({ size: '1', startPosition: '0', classification })
+    ).toBeUndefined()
+  })
 })
 
 describe('buildFill', () => {
@@ -370,6 +379,13 @@ describe('buildFill', () => {
       },
       '5'
     )
+    expect(built).not.toHaveProperty('closedSize')
+    expect(built).not.toHaveProperty('entryPrice')
+    expect(built).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('gives none of the fields for a closing classification with a zero startPosition', () => {
+    const built = buildFill(closingFill({ startPosition: '0' }), '5')
     expect(built).not.toHaveProperty('closedSize')
     expect(built).not.toHaveProperty('entryPrice')
     expect(built).not.toHaveProperty('returnOnEquity')

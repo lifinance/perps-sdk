@@ -691,8 +691,9 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
     return this.loginPromise
   }
 
-  private restClient(): OndoApiClient {
+  private restClient(signal?: AbortSignal): OndoApiClient {
     return new OndoApiClient(this.apiUrl, {
+      signal,
       fetchImpl: this.client?.config.fetch,
     })
   }
@@ -1100,17 +1101,23 @@ export class OndoWsProvider extends WsProviderBase<SubState> {
       }
     }
     this.fillChain.push(async () => {
-      const token = isAddress(address, { strict: false })
-        ? await this.tokenStore.get(address)
-        : null
-      const leverages =
-        token === null
-          ? new Map<string, string>()
-          : await fetchFillLeverages(this.restClient(), token.token, mapped)
+      const leverages = isAddress(address, { strict: false })
+        ? await this.readFrameEnrichment('fill leverage', async (signal) => {
+            const token = await this.tokenStore.get(address)
+            return token === null
+              ? undefined
+              : fetchFillLeverages(
+                  this.restClient(signal),
+                  token.token,
+                  mapped,
+                  signal
+                )
+          })
+        : undefined
       this.emit(`fills:${address}`, {
         channel: 'fills',
         data: mapped.map((fill) =>
-          buildFill(fill, leverages.get(fill.market.id))
+          buildFill(fill, leverages?.get(fill.market.id))
         ),
       })
     })

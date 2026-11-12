@@ -15,6 +15,7 @@ import type { ReconnectingWebSocket } from './ReconnectingWebSocket.js'
 import type { SubscriptionListener, WsConnectionStatus } from './types.js'
 import {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './WsProviderBase.js'
@@ -119,6 +120,11 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   /** Test hook into the base's throttled `marketsContext` delivery. */
   pushMarketsContext(snapshot: () => Record<string, MarketContext>) {
     this.emitMarketsContext(snapshot)
+  }
+
+  /** Test hook into the base's protected optional frame read. */
+  enrich<T>(label: string, read: (signal: AbortSignal) => Promise<T>) {
+    return this.readFrameEnrichment(label, read)
   }
 
   /** Test hook into the base's protected idle-channel reclaim. */
@@ -589,6 +595,60 @@ describe('WsProviderBase — emit fan-out', () => {
       expect.any(Error)
     )
     errorLog.mockRestore()
+  })
+})
+
+describe('WsProviderBase — frame enrichment read', () => {
+  it('gives the result of the read and clears its timer', async () => {
+    vi.useFakeTimers()
+    const p = new TestProvider(new MockRws())
+
+    await expect(p.enrich('leverage', async () => 'value')).resolves.toBe(
+      'value'
+    )
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('gives undefined and warns when the read rejects', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = new Error('read failed')
+    const p = new TestProvider(new MockRws())
+
+    await expect(
+      p.enrich('leverage', () => Promise.reject(error))
+    ).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      '[test:ws] leverage read failed; the frame emits without it',
+      error
+    )
+    warn.mockRestore()
+  })
+
+  it('aborts the read signal after the timeout and gives undefined', async () => {
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const p = new TestProvider(new MockRws())
+    let readSignal: AbortSignal | undefined
+    const result = p.enrich(
+      'leverage',
+      (signal) =>
+        new Promise((_resolve, reject) => {
+          readSignal = signal
+          signal.addEventListener('abort', () => reject(signal.reason))
+        })
+    )
+
+    await vi.advanceTimersByTimeAsync(WS_FRAME_ENRICHMENT_TIMEOUT_MS - 1)
+    expect(readSignal?.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+
+    await expect(result).resolves.toBeUndefined()
+    expect(readSignal?.reason).toMatchObject({ name: 'TimeoutError' })
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      '[test:ws] leverage read failed; the frame emits without it',
+      readSignal?.reason
+    )
+    warn.mockRestore()
   })
 })
 

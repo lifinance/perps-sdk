@@ -489,7 +489,10 @@ position, on the `getFills` read and on the `fills` stream:
 
 A fill that opens or increases a position has none of the three fields. A
 field is absent when one of its inputs is absent or is not usable. A failed
-leverage read keeps the fills and leaves only `returnOnEquity` absent.
+leverage read keeps the fills and leaves only `returnOnEquity` absent. On the
+`fills` stream, a frame waits for its leverage read for a maximum of
+`WS_FRAME_ENRICHMENT_TIMEOUT_MS` (5 seconds). After that time, the frame emits
+without `returnOnEquity`, and the frames keep their arrival order.
 Lighter takes `realizedPnl` from `ask_account_pnl` or `bid_account_pnl` of
 the viewer's side when the trade row has it. Otherwise, the SDK calculates it.
 

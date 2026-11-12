@@ -35,6 +35,14 @@ export const WS_CHANNEL_TEARDOWN_LINGER_MS = 250
  */
 export const WS_MARKETS_CONTEXT_INTERVAL_MS = 1_000
 
+/**
+ * Most time that a stream frame waits for an optional REST read before it
+ * emits without the result of that read.
+ *
+ * @public
+ */
+export const WS_FRAME_ENRICHMENT_TIMEOUT_MS = 5_000
+
 interface ChannelEntry {
   /**
    * Per-listener ref count — a `Map`, not a `Set`, because the same listener
@@ -282,6 +290,35 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     clearTimeout(entry.throttle)
     entry.throttle = undefined
     entry.pendingSnapshot = undefined
+  }
+
+  /**
+   * Run an optional REST read that adds data to a frame. The `signal` aborts
+   * after {@link WS_FRAME_ENRICHMENT_TIMEOUT_MS}, and `read` must stop on it.
+   * A rejection or a timeout logs a warning and gives `undefined`, so a slow
+   * or failed read never drops or holds the frame.
+   */
+  protected async readFrameEnrichment<T>(
+    label: string,
+    read: (signal: AbortSignal) => Promise<T>
+  ): Promise<T | undefined> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      controller.abort(
+        new DOMException(
+          `timed out after ${WS_FRAME_ENRICHMENT_TIMEOUT_MS} ms`,
+          'TimeoutError'
+        )
+      )
+    }, WS_FRAME_ENRICHMENT_TIMEOUT_MS)
+    try {
+      return await read(controller.signal)
+    } catch (error) {
+      wsLog.enrichmentFailure(this.providerKey, label, error)
+      return undefined
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   /**

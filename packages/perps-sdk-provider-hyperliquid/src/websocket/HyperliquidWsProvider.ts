@@ -1316,16 +1316,19 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     this.fillChain.push(async () => {
       const leverages =
         client === undefined || !isAddress(user, { strict: false })
-          ? new Map<string, DecimalString>()
-          : await fetchFillLeverages(
-              { client, apiUrl: this.orderApiUrl },
-              user,
-              items
+          ? undefined
+          : await this.readFrameEnrichment('fill leverage', (signal) =>
+              fetchFillLeverages(
+                { client, apiUrl: this.orderApiUrl },
+                user,
+                items,
+                { signal }
+              )
             )
       this.emit(`fills:${user.toLowerCase()}`, {
         channel: 'fills',
         data: items.map((fill) =>
-          buildFill(fill, leverages.get(fill.market.id))
+          buildFill(fill, leverages?.get(fill.market.id))
         ),
       })
     })
