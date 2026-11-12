@@ -30,6 +30,7 @@ import {
   revertedFailedErrorText,
   unconfirmedIndeterminateErrorText,
 } from '../copy.js'
+import { isLtGroupedOrderStep } from '../types/action.js'
 import type { ApiParams, LighterApiClient } from '../utils/apiClient.js'
 import { fetchAppliedReferralCode } from '../utils/appliedReferralCode.js'
 import { lighterErrorCodeFromBody } from '../utils/lighterErrorCode.js'
@@ -252,7 +253,7 @@ async function signStandardWasmAction(
     apiKeyIndex: apiKey.apiKeyIndex,
     accountIndex: apiKey.accountIndex,
   })
-  const clientOrderIndex = clientOrderIndexOf(step.wasmSignParams)
+  const clientOrderIndex = clientOrderIndexOf(step)
   return {
     action: step.action,
     wasmSignParams: step.wasmSignParams,
@@ -265,12 +266,20 @@ async function signStandardWasmAction(
  * Project the signed order's `client_order_index` so the caller can resolve it
  * through `getOrder` before the venue assigns an `order_index`. Only the
  * order-placing actions carry one, and the value is read back off the params
- * that were signed rather than generated a second time.
+ * that were signed rather than generated a second time. A grouped step
+ * projects the parent order, the first of its `orders`.
  */
-function clientOrderIndexOf(
-  wasmSignParams: Record<string, unknown>
-): string | undefined {
-  const value = wasmSignParams.client_order_index
+function clientOrderIndexOf(step: WasmBlobActionStep): string | undefined {
+  const { orders } = step.wasmSignParams
+  const order: unknown =
+    isLtGroupedOrderStep(step.action, step.wasmSignParams) &&
+    Array.isArray(orders)
+      ? orders[0]
+      : step.wasmSignParams
+  const value =
+    typeof order === 'object' && order !== null && 'client_order_index' in order
+      ? order.client_order_index
+      : undefined
   return typeof value === 'number' && Number.isInteger(value)
     ? String(value)
     : undefined

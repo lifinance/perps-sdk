@@ -1,11 +1,16 @@
-import { ActionType } from '@lifi/perps-types'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import {
+  isLtGroupedOrderStep,
+  LT_GROUPING_TYPE_OCO,
+  LT_GROUPING_TYPE_OTO,
+  LT_GROUPING_TYPE_OTOCO,
   LT_TX_TYPE_APPROVE_INTEGRATOR,
   LT_TX_TYPE_BY_ACTION,
   LT_TX_TYPE_CANCEL_ALL_ORDERS,
   LT_TX_TYPE_CANCEL_ORDER,
   LT_TX_TYPE_CHANGE_PUB_KEY,
+  LT_TX_TYPE_CREATE_GROUPED_ORDERS,
   LT_TX_TYPE_CREATE_ORDER,
   LT_TX_TYPE_MODIFY_ORDER,
   LT_TX_TYPE_TRANSFER,
@@ -14,6 +19,7 @@ import {
   LT_TX_TYPE_UPDATE_LEVERAGE,
   LT_TX_TYPE_UPDATE_MARGIN,
   LT_TX_TYPE_WITHDRAW,
+  resolveLtTxType,
 } from '../index.js'
 
 // `TxTypeL2*` values copied from lighter-go `types/txtypes/constants.go`.
@@ -80,5 +86,50 @@ describe('Lighter tx types', () => {
 
   it('freezes the action map', () => {
     expect(Object.isFrozen(LT_TX_TYPE_BY_ACTION)).toBe(true)
+  })
+
+  it('exports the grouped-orders tx type and grouping types with their lighter-go values', () => {
+    expect(LT_TX_TYPE_CREATE_GROUPED_ORDERS).toBe(28)
+    expect(LT_GROUPING_TYPE_OTO).toBe(1)
+    expect(LT_GROUPING_TYPE_OCO).toBe(2)
+    expect(LT_GROUPING_TYPE_OTOCO).toBe(3)
+  })
+})
+
+describe('resolveLtTxType', () => {
+  const GROUPED = { grouping_type: LT_GROUPING_TYPE_OTO, orders: [], nonce: 1 }
+
+  it('gives TxTypeL2CreateGroupedOrders for a PLACE_ORDER step with a grouping type', () => {
+    expect(isLtGroupedOrderStep(ActionType.PLACE_ORDER, GROUPED)).toBe(true)
+    expect(resolveLtTxType(ActionType.PLACE_ORDER, GROUPED)).toBe(
+      LT_TX_TYPE_CREATE_GROUPED_ORDERS
+    )
+  })
+
+  it('gives TxTypeL2CreateOrder for a PLACE_ORDER step without a grouping type', () => {
+    const single = { market_index: 0, client_order_index: 1, nonce: 1 }
+    expect(isLtGroupedOrderStep(ActionType.PLACE_ORDER, single)).toBe(false)
+    expect(resolveLtTxType(ActionType.PLACE_ORDER, single)).toBe(
+      LT_TX_TYPE_CREATE_ORDER
+    )
+  })
+
+  it.each(
+    Object.entries(LT_TX_TYPE_BY_ACTION).filter(
+      ([action]) => action !== ActionType.PLACE_ORDER
+    )
+  )('keeps the LT_TX_TYPE_BY_ACTION tx type of %s, grouped or not', (action, txType) => {
+    expect(isLtGroupedOrderStep(action as ActionType, GROUPED)).toBe(false)
+    expect(resolveLtTxType(action as ActionType, GROUPED)).toBe(txType)
+    expect(resolveLtTxType(action as ActionType, { nonce: 1 })).toBe(txType)
+  })
+
+  it('throws a ValidationError for an action without a Lighter tx type', () => {
+    expect(() => resolveLtTxType(ActionType.APPROVE_BUILDER_FEE, {})).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: expect.stringContaining('does not support action'),
+      })
+    )
   })
 })

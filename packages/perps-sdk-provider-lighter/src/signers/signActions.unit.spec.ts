@@ -286,6 +286,33 @@ describe('lighterSignActions', () => {
       expect(result[3]).not.toHaveProperty('clientOrderIndex')
     })
 
+    it('projects the parent client_order_index of a grouped step onto the step', async () => {
+      const { deps } = makeDeps()
+      await deps.keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const step: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: {
+          grouping_type: 1,
+          orders: [
+            { market_index: 0, client_order_index: 7 },
+            { market_index: 0, client_order_index: 8 },
+          ],
+          nonce: 1,
+        },
+      }
+      const result = (
+        await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).signed as WasmBlobSignedActionStep[]
+
+      expect(result[0].clientOrderIndex).toBe('7')
+    })
+
     it('throws when no Lighter API key is registered for the address', async () => {
       const { deps } = makeDeps()
       const step: WasmBlobActionStep = {

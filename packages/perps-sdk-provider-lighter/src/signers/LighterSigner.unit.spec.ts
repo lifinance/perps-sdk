@@ -5,7 +5,14 @@ import {
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
 } from '../constants.js'
-import { LT_ASSET_ID_USDC, LT_TX_TYPE_BY_ACTION } from '../types/action.js'
+import {
+  LT_ASSET_ID_USDC,
+  LT_GROUPING_TYPE_OTO,
+  LT_GROUPING_TYPE_OTOCO,
+  LT_TX_TYPE_BY_ACTION,
+  LT_TX_TYPE_CREATE_GROUPED_ORDERS,
+  LT_TX_TYPE_CREATE_ORDER,
+} from '../types/action.js'
 import {
   createSignerSeed,
   LighterSigner,
@@ -1461,5 +1468,274 @@ describe('LighterSigner — per-instance collateral asset', () => {
       transfer: LT_ASSET_ID_USDC,
       sendAsset: LT_ASSET_ID_USDC,
     })
+  })
+})
+
+describe('LighterSigner — grouped orders', () => {
+  const PARENT = {
+    market_index: 0,
+    client_order_index: 11,
+    base_amount: '1000',
+    price: '500000000',
+    is_ask: 0,
+    order_type: 0,
+    time_in_force: 1,
+    reduce_only: false,
+    trigger_price: '0',
+    order_expiry: -1,
+  }
+  const STOP_LOSS_CHILD = {
+    market_index: 0,
+    client_order_index: 12,
+    base_amount: '0',
+    price: '480000000',
+    is_ask: 1,
+    order_type: 2,
+    time_in_force: 0,
+    reduce_only: true,
+    trigger_price: '490000000',
+    order_expiry: -1,
+  }
+  const TAKE_PROFIT_CHILD = {
+    ...STOP_LOSS_CHILD,
+    client_order_index: 13,
+    price: '530000000',
+    order_type: 4,
+    trigger_price: '520000000',
+  }
+  const INTEGRATOR = {
+    integrator_account_index: 7,
+    integrator_taker_fee: 100,
+    integrator_maker_fee: 50,
+  }
+  /** The ten values `SignCreateGroupedOrders` reads for one order. */
+  const wasmOrderArgs = (order: typeof PARENT) => [
+    order.market_index,
+    order.client_order_index,
+    order.base_amount,
+    order.price,
+    order.is_ask,
+    order.order_type,
+    order.time_in_force,
+    order.reduce_only ? 1 : 0,
+    order.trigger_price,
+    order.order_expiry,
+  ]
+
+  let signer: LighterSigner
+  let context: LighterSignerContext
+
+  beforeAll(async () => {
+    signer = new LighterSigner({
+      signerChainId: LIGHTER_MAINNET_DEPLOYMENT.signerChainId,
+      collateralAssetIndex: LIGHTER_MAINNET_DEPLOYMENT.collateral.assetIndex,
+    })
+    const slot = { accountIndex: 47, apiKeyIndex: 2 }
+    context = {
+      ...slot,
+      apiKeyPrivateKey: (await signer.createApiKey(slot, 0, false)).privateKey,
+    }
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const spies = async () => {
+    const wasm = await loadLighterWasm()
+    return {
+      grouped: vi.spyOn(wasm, '_signCreateGroupedOrders'),
+      single: vi.spyOn(wasm, '_signCreateOrder'),
+    }
+  }
+
+  it('signs an OTO PLACE_ORDER step with _signCreateGroupedOrders, parent first', async () => {
+    const { grouped, single } = await spies()
+    const signed = await signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, STOP_LOSS_CHILD],
+        nonce: 21,
+        ...INTEGRATOR,
+      },
+      context
+    )
+
+    expect(grouped.mock.calls).toEqual([
+      [
+        47,
+        LT_GROUPING_TYPE_OTO,
+        2,
+        ...wasmOrderArgs(PARENT),
+        ...wasmOrderArgs(STOP_LOSS_CHILD),
+        21,
+        7,
+        100,
+        50,
+      ],
+    ])
+    expect(single).not.toHaveBeenCalled()
+    expect(signed.txType).toBe(LT_TX_TYPE_CREATE_GROUPED_ORDERS)
+    expect(signed.txHash).toMatch(/^[0-9a-f]+$/)
+    expect(JSON.parse(signed.txInfo)).toMatchObject({
+      AccountIndex: 47,
+      ApiKeyIndex: 2,
+      Nonce: 21,
+      GroupingType: LT_GROUPING_TYPE_OTO,
+      Orders: [
+        { ClientOrderIndex: 11, BaseAmount: 1000, IsAsk: 0, Type: 0 },
+        {
+          ClientOrderIndex: 12,
+          BaseAmount: 0,
+          IsAsk: 1,
+          Type: 2,
+          ReduceOnly: 1,
+          TriggerPrice: 490000000,
+        },
+      ],
+      // Go `map[uint8]int`: 1 = integrator account index, 2 = taker, 3 = maker.
+      L2TxAttributes: { '1': 7, '2': 100, '3': 50 },
+    })
+  })
+
+  it('signs an OTOCO PLACE_ORDER step with the parent and both children in the given sequence', async () => {
+    const { grouped } = await spies()
+    const signed = await signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        grouping_type: LT_GROUPING_TYPE_OTOCO,
+        orders: [PARENT, TAKE_PROFIT_CHILD, STOP_LOSS_CHILD],
+        nonce: 22,
+      },
+      context
+    )
+
+    expect(grouped.mock.calls).toEqual([
+      [
+        47,
+        LT_GROUPING_TYPE_OTOCO,
+        3,
+        ...wasmOrderArgs(PARENT),
+        ...wasmOrderArgs(TAKE_PROFIT_CHILD),
+        ...wasmOrderArgs(STOP_LOSS_CHILD),
+        22,
+        0,
+        0,
+        0,
+      ],
+    ])
+    expect(signed.txType).toBe(LT_TX_TYPE_CREATE_GROUPED_ORDERS)
+    const parsed = JSON.parse(signed.txInfo)
+    expect(parsed.GroupingType).toBe(LT_GROUPING_TYPE_OTOCO)
+    expect(
+      parsed.Orders.map(
+        (order: { ClientOrderIndex: number }) => order.ClientOrderIndex
+      )
+    ).toEqual([11, 13, 12])
+    expect(parsed.L2TxAttributes).toBeNull()
+  })
+
+  it('signs a PLACE_ORDER step without a grouping type with _signCreateOrder, as before', async () => {
+    const { grouped, single } = await spies()
+    const signed = await signer.sign(
+      ActionType.PLACE_ORDER,
+      { ...PARENT, nonce: 23, ...INTEGRATOR },
+      context
+    )
+
+    expect(single.mock.calls).toEqual([
+      [47, ...wasmOrderArgs(PARENT), 23, 7, 100, 50],
+    ])
+    expect(grouped).not.toHaveBeenCalled()
+    expect(signed.txType).toBe(LT_TX_TYPE_CREATE_ORDER)
+  })
+
+  it.each([
+    ['no orders list', { grouping_type: LT_GROUPING_TYPE_OTO, nonce: 1 }],
+    [
+      'an orders value that is not a list',
+      { grouping_type: LT_GROUPING_TYPE_OTO, orders: PARENT, nonce: 1 },
+    ],
+    [
+      'an order that is not an object',
+      { grouping_type: LT_GROUPING_TYPE_OTO, orders: [PARENT, 12], nonce: 1 },
+    ],
+    [
+      'a child without a price',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, { ...STOP_LOSS_CHILD, price: undefined }],
+        nonce: 1,
+      },
+    ],
+    [
+      'a child with a decimal base amount',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, { ...STOP_LOSS_CHILD, base_amount: '0.5' }],
+        nonce: 1,
+      },
+    ],
+    [
+      'a grouping type that is not a number',
+      { grouping_type: 'oto', orders: [PARENT, STOP_LOSS_CHILD], nonce: 1 },
+    ],
+    [
+      'no nonce',
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [PARENT, STOP_LOSS_CHILD],
+      },
+    ],
+  ])('rejects a grouped step with %s before the WASM call', async (_, params) => {
+    const { grouped } = await spies()
+    const failure = signer.sign(ActionType.PLACE_ORDER, params, context)
+    await expect(failure).rejects.toBeInstanceOf(PerpsError)
+    await expect(failure).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+    })
+    expect(grouped).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed grouped step with the error class of a malformed single order', async () => {
+    const single = signer.sign(
+      ActionType.PLACE_ORDER,
+      { ...PARENT, price: undefined, nonce: 1 },
+      context
+    )
+    const grouped = signer.sign(
+      ActionType.PLACE_ORDER,
+      {
+        grouping_type: LT_GROUPING_TYPE_OTO,
+        orders: [{ ...PARENT, price: undefined }, STOP_LOSS_CHILD],
+        nonce: 1,
+      },
+      context
+    )
+    await expect(single).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+      message: expect.stringContaining("field 'price'"),
+    })
+    await expect(grouped).rejects.toMatchObject({
+      code: PerpsErrorCode.ValidationError,
+      message: expect.stringContaining("field 'price'"),
+    })
+  })
+
+  it('keeps a grouped step on the other order actions out of the grouped path', async () => {
+    const { grouped } = await spies()
+    await expect(
+      signer.sign(
+        ActionType.PLACE_TRIGGER_ORDER,
+        {
+          grouping_type: LT_GROUPING_TYPE_OTO,
+          orders: [PARENT, STOP_LOSS_CHILD],
+          nonce: 1,
+        },
+        context
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(grouped).not.toHaveBeenCalled()
   })
 })
