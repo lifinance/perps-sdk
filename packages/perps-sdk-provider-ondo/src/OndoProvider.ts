@@ -306,7 +306,7 @@ export const ondoProvider = (
       return await fn(token)
     } catch (err) {
       if (err instanceof OndoSessionExpiredError) {
-        await tokenStore.remove(address)
+        await tokenStore.remove(address, token.token)
         return fallback.rejected(err)
       }
       throw err

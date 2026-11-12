@@ -3415,6 +3415,63 @@ describe('LighterProvider — authed read body-error handling (getOrders)', () =
     expect(orders.orders).toEqual([])
   })
 
+  it('replaces a rejected read token on the next resolve and retains the trading key', async () => {
+    const storage = createMemoryStorage()
+    const key = apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS)
+    await storage.set(key, JSON.stringify(STORED_API_KEY))
+    let created = 0
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/tokens/create')) {
+        created += 1
+        return respond(
+          readOnlyTokenResponse(created === 1 ? 'ro-old' : 'ro-new')
+        )
+      }
+      return undefined
+    })
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+    expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-old')
+    provider.rejectAuthToken?.(ADDRESS, 'ro-old')
+    expect(created).toBe(1)
+    expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-new')
+    provider.rejectAuthToken?.(ADDRESS, 'ro-old')
+    expect(await provider.resolveAuthToken(ADDRESS)).toBe('ro-new')
+    expect(created).toBe(2)
+    expect(await storage.get(key)).toBe(JSON.stringify(STORED_API_KEY))
+  })
+
+  it.each([
+    false,
+    true,
+  ])('does not reuse a rejected standard token (replacement rejected: %s)', async (replacementRejected) => {
+    const storage = createMemoryStorage()
+    await storage.set(
+      apiKeyStorageKey(LIGHTER_PROVIDER_KEY, ADDRESS),
+      JSON.stringify(STORED_API_KEY)
+    )
+    overrideFetch((url) =>
+      url.includes('/api/v1/tokens/create')
+        ? respond({ code: 20013, message: 'invalid auth' }, 400)
+        : undefined
+    )
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const provider = lighterProvider({ storage })
+    provider.bind(STUB_CLIENT)
+    const rejected = await provider.resolveAuthToken(ADDRESS)
+    expect(rejected).toBe('std-1')
+    provider.rejectAuthToken?.(ADDRESS, 'std-1')
+    if (replacementRejected) {
+      provider.rejectAuthToken?.(ADDRESS, 'std-2')
+      await expect(provider.resolveAuthToken(ADDRESS)).rejects.toMatchObject({
+        code: PerpsErrorCode.Unauthorized,
+      })
+    } else {
+      expect(await provider.resolveAuthToken(ADDRESS)).toBe('std-2')
+    }
+    warning.mockRestore()
+  })
+
   it('throws Unauthorized without a retry when the venue rejects an SDK-owned token that is not revoked', async () => {
     const storage = createMemoryStorage()
     await storage.set(

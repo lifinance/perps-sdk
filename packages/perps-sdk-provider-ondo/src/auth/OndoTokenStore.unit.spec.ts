@@ -112,4 +112,13 @@ describe('OndoTokenStore', () => {
 
     await expect(store.get(ADDRESS)).resolves.toBeNull()
   })
+
+  it('removes only the session that matches the rejected token', async () => {
+    const store = new OndoTokenStore(createMemoryStorage(), PRODUCTION_URL)
+    await store.set(ADDRESS, tokenFixture({ token: 'new-session' }))
+    await store.remove(ADDRESS, 'old-session')
+    expect((await store.get(ADDRESS))?.token).toBe('new-session')
+    await store.remove(ADDRESS, 'new-session')
+    expect(await store.get(ADDRESS)).toBeNull()
+  })
 })

@@ -725,6 +725,25 @@ describe('HyperliquidWsProvider', () => {
       expect(typeof unsub).toBe('function')
     })
 
+    it('forwards a channel failure to the fourth subscription callback', async () => {
+      const provider = createProvider()
+      const onError = vi.fn()
+      await provider.subscribe(
+        { channel: 'marketsContext', dex: 'hyperliquid' },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const error = new Error('subscription failed')
+      Reflect.get(provider, 'rejectChannel').call(
+        provider,
+        'marketsContext',
+        error
+      )
+      expect(onError).toHaveBeenCalledExactlyOnceWith(error)
+      provider.close()
+    })
+
     it('unsubscribes all marketsContext wire feeds when the listener unsubscribes', async () => {
       vi.useFakeTimers()
       try {
