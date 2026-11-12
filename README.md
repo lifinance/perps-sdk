@@ -57,7 +57,7 @@ Hyperliquid classifies raw deltas, not display activity types:
 | `vaultWithdraw` | The user receives `netWithdrawnUsd`. The vault releases `requestedUsd`. A vault-to-itself movement contributes zero. |
 | `cStakingTransfer` | Staking sits outside spot-and-perps balances. Combined history counts the spot leg for USDC. Perps-only history counts zero. |
 | `borrowLend` | Lending sits outside spot-and-perps balances. Combined history counts the USDC spot principal and excludes recorded interest. Perps-only history counts zero. |
-| Funding, liquidation, rewards, vault leader commissions, deployment gas, spot genesis | Income or expenses, not capital transfers. |
+| Funding, liquidation, rewards, vault leader commissions, deployment gas, gossip priority gas, account activation gas, spot genesis | Income or expenses, not capital transfers. |
 
 USDC amounts use venue USD units. Transfers of other tokens require the recorded `usdcValue`.
 The SDK never uses current token prices for historical movements.

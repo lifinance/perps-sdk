@@ -25,6 +25,8 @@ const NON_CAPITAL_DELTAS: Readonly<Record<string, true>> = {
   rewardsClaim: true,
   vaultLeaderCommission: true,
   deployGasAuction: true,
+  gossipPriorityGasAuction: true,
+  accountActivationGas: true,
   spotGenesis: true,
 }
 
