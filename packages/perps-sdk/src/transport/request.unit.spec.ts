@@ -257,6 +257,87 @@ describe('request — error rehydration', () => {
     ).rejects.toBe(abortError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  const abortReasons = [
+    ['an Error', () => new Error('user cancelled')],
+    [
+      'a TimeoutError',
+      () => new DOMException('signal timed out', 'TimeoutError'),
+    ],
+  ] as const
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason before the fetch', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    controller.abort(reason)
+    const fetchImpl = vi.fn<typeof fetch>()
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(
+      request(config, url, { retry: false }, { signal: controller.signal })
+    ).rejects.toBe(reason)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason during the fetch, also under an active retry policy', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(reason)
+      throw reason
+    })
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(
+      request(
+        config,
+        url,
+        { retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 } },
+        { signal: controller.signal }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects with the native reason of AbortSignal.timeout()', async () => {
+    const signal = AbortSignal.timeout(1)
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(init.signal?.reason)
+          )
+        })
+    )
+    const config = { ...client.config, fetch: fetchImpl }
+
+    const error = await request(config, url, { retry: false }, { signal })
+      .then(() => undefined)
+      .catch((e: unknown) => e)
+
+    expect(error).toBe(signal.reason)
+    expect(error).toMatchObject({ name: 'TimeoutError' })
+  })
+
+  it('wraps a network failure as a ServerError when the signal aborts afterwards', async () => {
+    const controller = new AbortController()
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(new Error('user cancelled'))
+      throw new TypeError('Failed to fetch')
+    })
+    const config = { ...client.config, fetch: fetchImpl }
+
+    await expect(
+      request(config, url, { retry: false }, { signal: controller.signal })
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ServerError,
+      message: 'Failed to fetch',
+    })
+  })
 })
 
 describe('request — header handling', () => {

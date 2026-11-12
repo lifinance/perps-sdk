@@ -7,7 +7,7 @@ import {
   type MockInstance,
   vi,
 } from 'vitest'
-import { fetchWithRetry } from './fetchWithRetry.js'
+import { fetchWithRetry, isAbortRejection } from './fetchWithRetry.js'
 import { LIFI_RETRY_DEFAULTS, type ResolvedRetryPolicy } from './retryPolicy.js'
 
 const okResponse = () => new Response('ok', { status: 200 })
@@ -42,6 +42,42 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
+})
+
+describe('isAbortRejection', () => {
+  it('returns true for a native AbortError without a signal', () => {
+    expect(
+      isAbortRejection(new DOMException('Aborted', 'AbortError'), undefined)
+    ).toBe(true)
+  })
+
+  it('returns true for the reason of an aborted signal', () => {
+    const controller = new AbortController()
+    const reason = new Error('user cancelled')
+    controller.abort(reason)
+
+    expect(isAbortRejection(reason, controller.signal)).toBe(true)
+  })
+
+  it('returns false for a different error while the signal is aborted', () => {
+    const controller = new AbortController()
+    controller.abort(new Error('user cancelled'))
+
+    expect(
+      isAbortRejection(new TypeError('Failed to fetch'), controller.signal)
+    ).toBe(false)
+  })
+
+  it('returns false for an error while the signal is not aborted', () => {
+    const controller = new AbortController()
+
+    expect(
+      isAbortRejection(
+        new DOMException('signal timed out', 'TimeoutError'),
+        controller.signal
+      )
+    ).toBe(false)
+  })
 })
 
 describe('fetchWithRetry — abort handling', () => {
@@ -100,6 +136,51 @@ describe('fetchWithRetry — abort handling', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(scheduledDelays()).toEqual([])
+  })
+
+  it.each([
+    ['an Error', new Error('user cancelled')],
+    ['a TimeoutError', new DOMException('signal timed out', 'TimeoutError')],
+  ])('rethrows a mid-flight abort with %s reason without calling shouldRetry or sleeping', async (_name, reason) => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn(async () => {
+      controller.abort(reason)
+      throw reason
+    })
+
+    await expect(
+      fetchWithRetry('https://x', undefined, {
+        policy: policy({ maxAttempts: 3, baseDelayMs: 500, shouldRetry }),
+        fetchImpl,
+        signal: controller.signal,
+      })
+    ).rejects.toBe(reason)
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).not.toHaveBeenCalled()
+    expect(scheduledDelays()).toEqual([])
+  })
+
+  it('treats a network failure as a failure while the signal holds a different abort reason', async () => {
+    const controller = new AbortController()
+    const networkError = new TypeError('Failed to fetch')
+    const shouldRetry = vi.fn(() => false)
+    const fetchImpl = vi.fn(async () => {
+      controller.abort(new Error('user cancelled'))
+      throw networkError
+    })
+
+    await expect(
+      fetchWithRetry('https://x', undefined, {
+        policy: policy({ maxAttempts: 3, baseDelayMs: 0, shouldRetry }),
+        fetchImpl,
+        signal: controller.signal,
+      })
+    ).rejects.toBe(networkError)
+
+    expect(shouldRetry).toHaveBeenCalledOnce()
   })
 
   it('rethrows a fetch abort even without a signal (name-based classification)', async () => {

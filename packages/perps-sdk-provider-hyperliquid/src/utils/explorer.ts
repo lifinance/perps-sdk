@@ -119,8 +119,8 @@ export const withExplorerLinks = async (
   try {
     txs = await fetchUserTransactions(address, options)
   } catch (error) {
-    // `hlPostJson` wraps a signal timeout as a `ServerError`, so the signal,
-    // not the error type, tells a caller cancellation from an explorer failure.
+    // A cancel arrives as the abort reason, not a `PerpsError`. An explorer
+    // failure while the signal is aborted also rejects: the caller cancelled.
     if (!(error instanceof PerpsError) || options.signal?.aborted) {
       throw error
     }
