@@ -2075,11 +2075,13 @@ describe('OndoProvider — getPortfolioHistory', () => {
       timestamp: Date.parse('2025-03-04T00:00:00Z'),
       accountValue: '4800.00',
       pnl: '180.00',
+      netTransfers: '0',
     },
     {
       timestamp: Date.parse('2025-03-05T00:00:00Z'),
       accountValue: '4950.00',
       pnl: '232.00',
+      netTransfers: '0',
     },
   ]
 

@@ -25,6 +25,50 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 | [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo provider plugin |
 | [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
+## Portfolio transfer history
+
+`getPortfolioHistory()` returns optional `PortfolioHistoryPoint.netTransfers` values.
+Each value is cumulative net capital in USD, relative to the first returned sample.
+Positive values mean inflow. Reliable coverage starts at `'0'`.
+An absent value means unavailable, not zero. Other history fields keep their existing meaning.
+
+- Lighter subtracts the first retained cumulative flow from each snapshot.
+  Flow includes perps and spot inflow minus their outflow.
+  The existing invalid-snapshot policy still applies.
+- Ondo subtracts the first retained deposits-minus-withdrawals total.
+  Invalid transfer totals omit only `netTransfers`.
+  An invalid first baseline makes all transfer values unavailable.
+- Hyperliquid reads raw ledger rows for the complete sample interval.
+  Activity and portfolio reads share one raw ledger read and the existing capped-window paginator.
+  Movements after the first sample and through each sample timestamp count once.
+  Per-dex collateral accounts use the perps-only window.
+  Unified and portfolio-margin accounts use the combined spot-and-perps window.
+
+Hyperliquid classifies raw deltas, not display activity types:
+
+| Delta | Capital treatment |
+| --- | --- |
+| `deposit`, `withdraw` | USDC enters or leaves the account. Separate fees do not add another movement. |
+| `accountClassTransfer` | Spot-to-perps inflow or perps-to-spot outflow for perps-only history. Zero for combined history. |
+| `internalTransfer`, `subAccountTransfer` | Count distinct addresses relative to the queried account. Same-address transfers remain inside the balances. |
+| `send` | Compare sender, recipient, `sourceDex`, and `destinationDex` against the selected balances. |
+| `spotTransfer` | Count distinct addresses for combined history only. |
+| `vaultCreate`, `vaultDeposit` | Capital leaves the account for the separate vault address. A vault-side deposit lacks the depositor and has unavailable coverage. |
+| `vaultWithdraw` | The user receives `netWithdrawnUsd`. The vault releases `requestedUsd`. A vault-to-itself movement contributes zero. |
+| `cStakingTransfer` | Staking sits outside spot-and-perps balances. Combined history counts the spot leg for USDC. Perps-only history counts zero. |
+| `borrowLend` | Lending sits outside spot-and-perps balances. Combined history counts the USDC spot principal and excludes recorded interest. Perps-only history counts zero. |
+| Funding, liquidation, rewards, vault leader commissions, deployment gas, spot genesis | Income or expenses, not capital transfers. |
+
+USDC amounts use venue USD units. Transfers of other tokens require the recorded `usdcValue`.
+The SDK never uses current token prices for historical movements.
+Staking and lending rows carry no `usdcValue`, so a non-USDC staking or lending movement makes coverage unavailable in combined history.
+Unknown deltas, ambiguous scope, and missing or invalid valuation make that sample and all later cumulative values unavailable.
+The SDK keeps account values and PnL. Ledger errors and cancellation still reject the read.
+The paginator rejects a saturated single timestamp instead of returning partial coverage.
+
+The field describes net movement between samples, not individual transactions.
+Opposite movements can cancel between two samples.
+
 ## Development
 
 pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnpm `11` (pinned via `packageManager`). CI reads the Node version from `.nvmrc`. From the repository root:
