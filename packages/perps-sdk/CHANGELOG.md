@@ -1,5 +1,16 @@
 # @lifi/perps-sdk
 
+## 34.0.0
+
+### Major Changes
+
+- [#734](https://github.com/lifinance/perps-sdk/pull/734) [`44ec4bc`](https://github.com/lifinance/perps-sdk/commit/44ec4bc7846dccda7e21997cd602a40122c4ed1d) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `MarketFundingAverages.rate` is a `Partial<Record<FundingWindow, DecimalString>>`. A window with no settled rate has no key, and the rate is not `null` or zero. A measured zero rate stays a decimal string, for example `'0'`. Code that reads a window rate must handle `undefined`. `getFundingAverages` returns the backend rates and the absent windows unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`44ec4bc`](https://github.com/lifinance/perps-sdk/commit/44ec4bc7846dccda7e21997cd602a40122c4ed1d)]:
+  - @lifi/perps-types@30.0.0
+
 ## 33.2.0
 
 ### Minor Changes
