@@ -41,6 +41,7 @@ const PROVIDER_METADATA: Provider = {
   setup: [],
   actions: [],
   supportedIntervals: [],
+  fundingHistoryRanges: [],
   categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
 }
 
