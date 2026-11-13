@@ -64,13 +64,13 @@ const leverageFromTradeImf = (imf: number | undefined): string | undefined =>
   imf === undefined ? undefined : leverageFromScaledImf(imf)
 
 /**
- * Realized PnL on a position-reducing fill, derived from the pre-trade entry
+ * Realized PnL on a position-reducing fill, from the pre-trade entry
  * basis. Returns `undefined` for opens/increases (nothing closes) or when the
  * entry-quote snapshot is absent or an input is malformed, and `null` when the
  * closed portion realizes exactly zero — mirroring the Hyperliquid mapper's
  * `null`-for-zero convention.
  */
-const deriveRealizedPnl = (
+const calculateFillRealizedPnl = (
   startPosition: string,
   entryQuoteBefore: string | undefined,
   fillSize: string,
@@ -197,7 +197,7 @@ export const mapFill = (
         ? undefined
         : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
     leverage: leverageFromTradeImf(imfBefore),
-    realizedPnl: deriveRealizedPnl(
+    realizedPnl: calculateFillRealizedPnl(
       startPosition,
       entryQuoteBefore,
       size,
