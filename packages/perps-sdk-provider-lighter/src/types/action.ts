@@ -1,15 +1,17 @@
-import { ActionType } from '@lifi/perps-types'
+import { PerpsError } from '@lifi/perps-sdk'
+import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 
 // Shapes of `wasmSignParams` per action. The backend populates these and the
 // SDK passes them to the WASM signer alongside SDK-managed fields (nonce,
 // account_index, api_key_index).
 
 /**
- * Backend-provided params for SignCreateOrder.
+ * The order fields SignCreateOrder reads, and the ten values
+ * SignCreateGroupedOrders reads for each order of a group.
  *
  * @public
  */
-export type LtCreateOrderWasmParams = {
+export type LtCreateOrderWasmParamsBase = {
   market_index: number
   client_order_index: number
   base_amount: number
@@ -20,6 +22,31 @@ export type LtCreateOrderWasmParams = {
   reduce_only: boolean
   trigger_price: number
   order_expiry: number
+}
+
+/**
+ * Backend-provided params for SignCreateOrder.
+ *
+ * @public
+ */
+export type LtCreateOrderWasmParams = LtCreateOrderWasmParamsBase & {
+  integrator_account_index: number
+  integrator_taker_fee: number
+  integrator_maker_fee: number
+}
+
+/**
+ * Backend-provided params for SignCreateGroupedOrders: a `PLACE_ORDER` step
+ * that the signer emits as one `TxTypeL2CreateGroupedOrders` tx. `orders`
+ * lists the parent first. A child carries `base_amount` 0 and takes the
+ * filled size of the parent once the parent fills.
+ *
+ * @public
+ */
+export type LtCreateGroupedOrdersWasmParams = {
+  /** {@link LT_GROUPING_TYPE_OTO}, {@link LT_GROUPING_TYPE_OCO}, or {@link LT_GROUPING_TYPE_OTOCO}. */
+  grouping_type: number
+  orders: LtCreateOrderWasmParamsBase[]
   integrator_account_index: number
   integrator_taker_fee: number
   integrator_maker_fee: number
@@ -277,6 +304,11 @@ export const LT_TX_TYPE_WITHDRAW = 13
  */
 export const LT_TX_TYPE_CREATE_ORDER = 14
 /**
+ * Lighter tx type `TxTypeL2CreateGroupedOrders`.
+ * @public
+ */
+export const LT_TX_TYPE_CREATE_GROUPED_ORDERS = 28
+/**
  * Lighter tx type `TxTypeL2CancelOrder`.
  * @public
  */
@@ -343,3 +375,57 @@ export const LT_TX_TYPE_BY_ACTION: Readonly<
   [ActionType.APPROVE_INTEGRATOR]: LT_TX_TYPE_APPROVE_INTEGRATOR,
   [ActionType.REVOKE_INTEGRATOR]: LT_TX_TYPE_APPROVE_INTEGRATOR,
 })
+
+/**
+ * Lighter grouping type `GroupingType_OneTriggersTheOther`: a parent and one
+ * child that the parent fill activates.
+ * @public
+ */
+export const LT_GROUPING_TYPE_OTO = 1
+/**
+ * Lighter grouping type `GroupingType_OneCancelsTheOther`: two orders, and the
+ * first execution cancels the other.
+ * @public
+ */
+export const LT_GROUPING_TYPE_OCO = 2
+/**
+ * Lighter grouping type `GroupingType_OneTriggersAOneCancelsTheOther`: a
+ * parent and an OCO pair that the parent fill activates.
+ * @public
+ */
+export const LT_GROUPING_TYPE_OTOCO = 3
+
+/**
+ * Whether a step is a grouped order: a `PLACE_ORDER` step whose
+ * `wasmSignParams` carry a `grouping_type`.
+ * @public
+ */
+export const isLtGroupedOrderStep = (
+  action: ActionType,
+  wasmSignParams: Record<string, unknown>
+): boolean =>
+  action === ActionType.PLACE_ORDER &&
+  wasmSignParams.grouping_type !== undefined
+
+/**
+ * Lighter tx type of the signed tx for one step: `TxTypeL2CreateGroupedOrders`
+ * for a grouped order step, otherwise the {@link LT_TX_TYPE_BY_ACTION} entry.
+ * Throws a `ValidationError` for an action without a Lighter signing path.
+ * @public
+ */
+export const resolveLtTxType = (
+  action: ActionType,
+  wasmSignParams: Record<string, unknown>
+): number => {
+  if (isLtGroupedOrderStep(action, wasmSignParams)) {
+    return LT_TX_TYPE_CREATE_GROUPED_ORDERS
+  }
+  const txType = LT_TX_TYPE_BY_ACTION[action]
+  if (txType === undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Lighter WASM signer does not support action: ${action}`
+    )
+  }
+  return txType
+}
