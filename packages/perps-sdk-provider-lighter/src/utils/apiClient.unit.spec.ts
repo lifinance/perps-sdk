@@ -466,6 +466,122 @@ describe('LighterApiClient.postForm (auth channel)', () => {
   })
 })
 
+describe('LighterApiClient body read', () => {
+  const failingBodyFetch =
+    (status: number, reason: unknown): typeof fetch =>
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(reason)
+          },
+        }),
+        { status, headers: { 'content-type': 'application/json' } }
+      )
+
+  // Aborts the caller signal when the client starts to read the body, as a
+  // native `fetch` errors the body stream with `signal.reason` on an abort.
+  const abortedBodyClient = (
+    abortReason?: unknown
+  ): { client: LighterApiClient; signal: AbortSignal } => {
+    const abort = new AbortController()
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            abort.abort(abortReason)
+            controller.error(abort.signal.reason)
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    return {
+      client: new LighterApiClient(BASE_URL, {
+        fetchImpl,
+        policy: TEST_POLICY,
+        signal: abort.signal,
+      }),
+      signal: abort.signal,
+    }
+  }
+
+  const reads: [string, (client: LighterApiClient) => Promise<unknown>][] = [
+    ['get', (client) => client.get('/api/v1/account')],
+    [
+      'getAuthed',
+      (client) => client.getAuthed('/api/v1/accountActiveOrders', 'tok-abc'),
+    ],
+    ['getWithStatus', (client) => client.getWithStatus('/api/v1/account')],
+    [
+      'postForm',
+      (client) =>
+        client.postForm('/api/v1/changeAccountTier', 'tok-abc', {
+          account_index: 42,
+        }),
+    ],
+  ]
+
+  it.each(
+    reads
+  )('%s rejects with the read error of a 2xx body stream', async (_, read) => {
+    const reason = new TypeError('terminated')
+    await expect(read(clientWith(failingBodyFetch(200, reason)))).rejects.toBe(
+      reason
+    )
+  })
+
+  it.each(
+    reads
+  )('%s rejects with the read error of a non-2xx body stream', async (_, read) => {
+    const reason = new TypeError('terminated')
+    await expect(read(clientWith(failingBodyFetch(502, reason)))).rejects.toBe(
+      reason
+    )
+  })
+
+  it.each(
+    reads
+  )('%s rejects with the default AbortError of an abort during the body read', async (_, read) => {
+    const { client, signal } = abortedBodyClient()
+    const error = await read(client).catch((e: unknown) => e)
+    expect(error).toBe(signal.reason)
+    expect(error).toMatchObject({ name: 'AbortError' })
+  })
+
+  it.each(
+    reads
+  )('%s rejects with a custom abort reason of an abort during the body read', async (_, read) => {
+    const reason = new Error('user left the page')
+    const { client } = abortedBodyClient(reason)
+    await expect(read(client)).rejects.toBe(reason)
+  })
+
+  it('getWithStatus gives undefined data for a complete non-JSON body', async () => {
+    const client = clientWith(nonJsonFetch(200, 'ok'))
+    await expect(client.getWithStatus('/api/v1/account')).resolves.toEqual({
+      status: 200,
+      data: undefined,
+    })
+  })
+
+  it('getWithStatus gives undefined data for an empty body', async () => {
+    const client = clientWith(nonJsonFetch(404, ''))
+    await expect(client.getWithStatus('/api/v1/account')).resolves.toEqual({
+      status: 404,
+      data: undefined,
+    })
+  })
+
+  it('postForm gives undefined data for a complete non-JSON body', async () => {
+    const client = clientWith(nonJsonFetch(502, 'bad gateway'))
+    await expect(
+      client.postForm('/api/v1/changeAccountTier', 'tok-abc', {
+        account_index: 42,
+      })
+    ).resolves.toEqual({ status: 502, data: undefined })
+  })
+})
+
 describe('LighterApiClient abort reason', () => {
   const abortReasons = [
     ['an Error', () => new Error('user cancelled')],
