@@ -7,6 +7,7 @@ import type {
   PerpsSigner,
   SigningMethod,
 } from './enums.js'
+import type { FundingHistoryRange } from './funding.js'
 import type { OhlcvInterval } from './market.js'
 
 /** A fixed option value presented for a provider action parameter. @public */
@@ -228,6 +229,8 @@ export interface Provider {
    * providers that expose no candle data.
    */
   supportedIntervals: OhlcvInterval[]
+  /** Funding history ranges that the backend serves for this provider. Empty when it serves none. */
+  fundingHistoryRanges: FundingHistoryRange[]
 }
 
 /** Response containing provider descriptors available to the client. @public */
