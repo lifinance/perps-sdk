@@ -111,6 +111,31 @@ successful observation of the source, not the last poll attempt.
 The SDK returns the notices as the backend serves them. It does not filter
 them by visibility, scope, or acknowledgement. The caller does that work.
 
+## Funding averages and history
+
+`getFundingAverages(client, { provider, marketIds? })` returns the settled
+funding averages of each market for the windows `8h`, `24h`, `3d`, and `7d`.
+`getFundingHistory(client, { provider, marketId, range })` returns the
+settled funding history of one market, oldest point first. Pick `range` from
+`Provider.fundingHistoryRanges`.
+
+- Each rate is a signed fraction for one hour, the unit of
+  `MarketContext.funding.rate`. A positive rate means that the long pays.
+- An average does not include the open hour. The live rate of the open hour
+  stays in `MarketContext.funding`.
+- `coveredFrom` is the first settled funding. A window that starts before it
+  covers only the time from `coveredFrom`.
+- The backend returns no point for a bucket with no settled rate, so the
+  history can have gaps.
+
+The backend calculates all values. The SDK returns them unchanged and keeps
+no cache. The HTTP cache follows the backend `Cache-Control` header.
+
+`annualizeFundingRate(rate, ratePeriodSeconds)` gives the simple APR of a
+rate as a signed fraction: `rate × (365 × 24 × 60 × 60 ÷ ratePeriodSeconds)`.
+It does not compound. Use `Provider.funding.ratePeriodSeconds` for the live
+rate and for the settled rates, because they have the same unit.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
@@ -467,6 +492,39 @@ import { remarkPosition } from '@lifi/perps-sdk'
 const livePosition = remarkPosition(position, liveMarkPrice)
 ```
 
+### Closing fill values
+
+Each provider sets three calculated fields on a `Fill` that reduces a
+position, on the `getFills` read and on the `fills` stream:
+
+- `closedSize`: the part of the fill that reduced the position, in base-asset
+  units. With `startPosition`, it is the smaller of `|startPosition|` and
+  `size`. Without `startPosition` (Ondo), it is `size` for a close, and absent
+  for a flip.
+- `entryPrice`: the average entry price of the position before the fill.
+  Lighter sends the entry basis (`*_entry_quote_before` ÷
+  `|*_position_size_before|`). Hyperliquid and Ondo calculate it from
+  `realizedPnl`, `closedSize` and `price`.
+- `returnOnEquity`: a percent (`'10'` is 10%):
+  `realizedPnl ÷ (closedSize × entryPrice ÷ leverage) × 100`. It uses
+  `realizedPnl` as the venue sends it, and does not deduct fees. Lighter uses
+  `Fill.leverage`, the leverage at the fill. Hyperliquid and Ondo send no fill
+  leverage, so the provider reads the current leverage setting of each market
+  of a closing fill one time for each read or stream frame.
+
+A fill that opens or increases a position has none of the three fields. A
+field is absent when one of its inputs is absent or is not usable. A failed
+leverage read keeps the fills and leaves only `returnOnEquity` absent. On the
+`fills` stream, a frame waits for its leverage read for a maximum of
+`WS_FRAME_ENRICHMENT_TIMEOUT_MS` (5 seconds). After that time, the frame emits
+without `returnOnEquity`, and the frames keep their arrival order.
+Lighter takes `realizedPnl` from `ask_account_pnl` or `bid_account_pnl` of
+the viewer's side when the trade row has it. Otherwise, the SDK calculates it.
+
+`buildFill(fill, leverage)` calculates the three fields, and
+`calculateFillClosedSize(fill)` gives `closedSize` alone. All three providers
+use them.
+
 ## Numbers
 
 ### Decimal strings
@@ -509,7 +567,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
 | Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
-| Formulas   | every `calculate*`, `estimate*`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`                                  |
+| Formulas   | every `calculate*`, `estimate*`, `annualizeFundingRate`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`         |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |
 
 `format*` is display only. It formats with `big.js`, shows a string that does
@@ -548,6 +606,7 @@ One verb names one kind of transformation.
 | `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
 | `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
 | `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `remarkPosition`                         |
+| `annualize<X>`              | rate for one period → simple rate for one year     | throws; `safe` form               | `annualizeFundingRate`                                     |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every

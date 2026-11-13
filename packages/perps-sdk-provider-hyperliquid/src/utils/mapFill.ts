@@ -1,4 +1,5 @@
 import {
+  buildFill,
   classifyFillFromPosition,
   ExplorerChainId,
   explorerTxUrl,
@@ -52,6 +53,8 @@ const mapFillLiquidation = (
 
 /** Maps a fill using the market category; the order type stays absent.
  * Invalid times return `undefined`. The venue does not report the order type.
+ * A closing fill gets `closedSize` and `entryPrice`, but no `returnOnEquity`:
+ * the fill carries no leverage.
  * @param address - Fill owner; only the liquidated account carries `liquidation`.
  * @public
  */
@@ -74,39 +77,42 @@ export const mapFill = (
   const side = fill.side === 'B' ? OrderSide.BUY : OrderSide.SELL
   const liquidation = mapFillLiquidation(fill, address)
 
-  return {
-    ...(isSpotCategory(market.categoryId)
-      ? { realizedPnl: fill.closedPnl }
-      : { realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl }),
-    id: String(fill.tid),
-    orderId: String(fill.oid),
-    clientOrderId: fill.cloid,
-    market,
-    side,
-    size,
-    price: fill.px,
-    liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
-    filledSize: size,
-    fee: {
-      amount: fill.fee,
-      asset: feeAsset,
+  return buildFill(
+    {
+      ...(isSpotCategory(market.categoryId)
+        ? { realizedPnl: fill.closedPnl }
+        : { realizedPnl: fill.closedPnl === '0' ? null : fill.closedPnl }),
+      id: String(fill.tid),
+      orderId: String(fill.oid),
+      clientOrderId: fill.cloid,
+      market,
+      side,
+      size,
+      price: fill.px,
+      liquidity: fill.crossed ? LiquidityRole.TAKER : LiquidityRole.MAKER,
+      filledSize: size,
+      fee: {
+        amount: fill.fee,
+        asset: feeAsset,
+      },
+      builderFee:
+        fill.builderFee === undefined
+          ? undefined
+          : { amount: fill.builderFee, asset: feeAsset },
+      startPosition: fill.startPosition,
+      // A TWAP slice fill carries the zero hash: no venue transaction to link.
+      explorerLink: explorerTxUrl(
+        ExplorerChainId.HYPERLIQUID,
+        fill.hash === zeroHash ? undefined : fill.hash
+      ),
+      classification: isSpotCategory(market.categoryId)
+        ? side === OrderSide.BUY
+          ? FillClassification.SPOT_BUY
+          : FillClassification.SPOT_SELL
+        : classifyFillFromPosition(fill.startPosition, side, size),
+      createdAt,
+      ...(liquidation === undefined ? {} : { liquidation }),
     },
-    builderFee:
-      fill.builderFee === undefined
-        ? undefined
-        : { amount: fill.builderFee, asset: feeAsset },
-    startPosition: fill.startPosition,
-    // A TWAP slice fill carries the zero hash: no venue transaction to link.
-    explorerLink: explorerTxUrl(
-      ExplorerChainId.HYPERLIQUID,
-      fill.hash === zeroHash ? undefined : fill.hash
-    ),
-    classification: isSpotCategory(market.categoryId)
-      ? side === OrderSide.BUY
-        ? FillClassification.SPOT_BUY
-        : FillClassification.SPOT_SELL
-      : classifyFillFromPosition(fill.startPosition, side, size),
-    createdAt,
-    ...(liquidation === undefined ? {} : { liquidation }),
-  }
+    undefined
+  )
 }

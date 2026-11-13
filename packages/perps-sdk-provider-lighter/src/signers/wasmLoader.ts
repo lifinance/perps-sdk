@@ -129,6 +129,17 @@ export interface LighterWasmExports {
     integratorTakerFee: number,
     integratorMakerFee: number
   ) => LighterWasmPending<LighterWasmTx>
+  /**
+   * `orderValues` holds the ten `_signCreateOrder` values from `marketIndex`
+   * through `orderExpiry` for each of `orderCount` orders, parent first, then
+   * the nonce and the three integrator values.
+   */
+  _signCreateGroupedOrders: (
+    accountIndex: number,
+    groupingType: number,
+    orderCount: number,
+    ...orderValues: (number | string)[]
+  ) => LighterWasmPending<LighterWasmTx>
   _signCancelOrder: (
     accountIndex: number,
     marketIndex: number,
@@ -258,6 +269,7 @@ const WASM_FUNCTION_NAMES = [
   '_signApproveIntegrator',
   '_signUpdateAccountConfig',
   '_signUpdateAccountAssetConfig',
+  '_signCreateGroupedOrders',
 ] as const satisfies readonly (keyof LighterWasmExports)[]
 
 /**

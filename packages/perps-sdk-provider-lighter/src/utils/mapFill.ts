@@ -1,12 +1,13 @@
 import {
   absDecimalString,
+  buildFill,
+  calculateFillClosedSize,
   calculateRealizedPnl,
   classifyFillFromPosition,
   divideDecimalString,
   ExplorerChainId,
   explorerTxUrl,
   isDecimalString,
-  isDecimalStringGreaterThan,
   isDecimalStringZero,
   safeAddDecimalString,
   safeDivideDecimalString,
@@ -64,50 +65,54 @@ const leverageFromTradeImf = (imf: number | undefined): string | undefined =>
   imf === undefined ? undefined : leverageFromScaledImf(imf)
 
 /**
- * Realized PnL on a position-reducing fill, derived from the pre-trade entry
- * basis. Returns `undefined` for opens/increases (nothing closes) or when the
- * entry-quote snapshot is absent or an input is malformed, and `null` when the
- * closed portion realizes exactly zero — mirroring the Hyperliquid mapper's
+ * Average entry price of the position before the trade:
+ * `|entryQuoteBefore| ÷ |startPosition|`. Returns `undefined` when the row
+ * omits the entry-quote snapshot, the position was flat, or an input is
+ * malformed.
+ */
+const entryPriceBefore = (
+  startPosition: string,
+  entryQuoteBefore: string | undefined
+): string | undefined => {
+  if (
+    !isDecimalString(startPosition) ||
+    !isDecimalString(entryQuoteBefore) ||
+    isDecimalStringZero(startPosition)
+  ) {
+    return undefined
+  }
+  return divideDecimalString(
+    absDecimalString(entryQuoteBefore),
+    absDecimalString(startPosition)
+  )
+}
+
+/**
+ * Realized PnL on the closed part of a fill, derived from the pre-trade entry
+ * price. Returns `undefined` for opens/increases (nothing closes) or when the
+ * entry price or the fill price is unusable, and `null` when the closed
+ * portion realizes exactly zero — mirroring the Hyperliquid mapper's
  * `null`-for-zero convention.
  */
-const deriveRealizedPnl = (
-  startPosition: string,
-  entryQuoteBefore: string | undefined,
-  fillSize: string,
+const calculateFillRealizedPnl = (
+  closedSize: string | undefined,
+  entryPrice: string | undefined,
   fillPrice: string,
   isBuyer: boolean
 ): string | null | undefined => {
   if (
-    entryQuoteBefore === undefined ||
-    ![startPosition, entryQuoteBefore, fillSize, fillPrice].every(
-      isDecimalString
-    )
+    closedSize === undefined ||
+    entryPrice === undefined ||
+    !isDecimalString(fillPrice)
   ) {
     return undefined
   }
-  if (isDecimalStringZero(startPosition)) {
-    return undefined
-  }
-  const isLong = isDecimalStringGreaterThan(startPosition, '0')
-  const reducing = isLong ? !isBuyer : isBuyer
-  if (!reducing) {
-    return undefined
-  }
-
-  const absStart = absDecimalString(startPosition)
-  // A fill larger than the open size flips the position; only the portion that
-  // unwinds the existing position realizes PnL.
-  const closedSize = isDecimalStringGreaterThan(fillSize, absStart)
-    ? absStart
-    : fillSize
   const pnl = calculateRealizedPnl({
-    entryPrice: divideDecimalString(
-      absDecimalString(entryQuoteBefore),
-      absStart
-    ),
+    entryPrice,
     closePrice: fillPrice,
     closeSize: closedSize,
-    isLong,
+    // A buy closes a short and a sell closes a long.
+    isLong: !isBuyer,
   })
   return isDecimalStringZero(pnl) ? null : pnl
 }
@@ -182,38 +187,49 @@ export const mapFill = (
       ? undefined
       : tickToFeeAmount(trade.usd_amount, feeTick, integratorFeeTick)
   const liquidation = mapFillLiquidation(trade.type, isMaker)
+  const side = isBuyer ? OrderSide.BUY : OrderSide.SELL
+  const classification = classifyFillFromPosition(startPosition, side, size)
+  const entryPrice = entryPriceBefore(startPosition, entryQuoteBefore)
+  const venuePnl = isBuyer ? trade.bid_account_pnl : trade.ask_account_pnl
+  // The venue figure wins and keeps the mapper's `null`-for-zero convention.
+  const realizedPnl =
+    venuePnl === undefined
+      ? calculateFillRealizedPnl(
+          calculateFillClosedSize({ size, startPosition, classification }),
+          entryPrice,
+          price,
+          isBuyer
+        )
+      : isDecimalString(venuePnl) && isDecimalStringZero(venuePnl)
+        ? null
+        : venuePnl
+  const leverage = leverageFromTradeImf(imfBefore)
 
-  return {
-    id: trade.trade_id_str,
-    orderId: isBuyer ? trade.bid_id_str : trade.ask_id_str,
-    market,
-    side: isBuyer ? OrderSide.BUY : OrderSide.SELL,
-    size,
-    price,
-    liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
-    // Lighter charges the fill fee in the market's quote asset.
-    fee:
-      feeAmount === undefined
-        ? undefined
-        : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
-    leverage: leverageFromTradeImf(imfBefore),
-    realizedPnl: deriveRealizedPnl(
-      startPosition,
-      entryQuoteBefore,
+  return buildFill(
+    {
+      id: trade.trade_id_str,
+      orderId: isBuyer ? trade.bid_id_str : trade.ask_id_str,
+      market,
+      side,
       size,
       price,
-      isBuyer
-    ),
-    startPosition,
-    classification: classifyFillFromPosition(
+      liquidity: isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
+      // Lighter charges the fill fee in the market's quote asset.
+      fee:
+        feeAmount === undefined
+          ? undefined
+          : { amount: feeAmount, asset: market.quoteAsset.displaySymbol },
+      leverage,
+      realizedPnl,
       startPosition,
-      isBuyer ? OrderSide.BUY : OrderSide.SELL,
-      size
-    ),
-    createdAt,
-    explorerLink: isPlaceholderTxHash(trade.tx_hash)
-      ? undefined
-      : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
-    ...(liquidation === undefined ? {} : { liquidation }),
-  }
+      entryPrice,
+      classification,
+      createdAt,
+      explorerLink: isPlaceholderTxHash(trade.tx_hash)
+        ? undefined
+        : explorerTxUrl(ExplorerChainId.LIGHTER, trade.tx_hash),
+      ...(liquidation === undefined ? {} : { liquidation }),
+    },
+    leverage
+  )
 }

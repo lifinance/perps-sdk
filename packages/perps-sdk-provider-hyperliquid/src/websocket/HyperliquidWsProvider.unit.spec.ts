@@ -2,6 +2,7 @@ import {
   createPerpsClient,
   isDecimalString,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   wsLog,
 } from '@lifi/perps-sdk'
@@ -258,6 +259,7 @@ const assetsFetchMock = vi.fn()
 // here. Unset/cleared resolves `null` (= never set = standard mode).
 const abstractionFetchMock = vi.fn()
 const orderStatusFetchMock = vi.fn()
+const activeAssetDataFetchMock = vi.fn()
 const spotStateFetchMock = vi.fn()
 const accountExistsFetchMock = vi.fn(async () => ({
   userExists: true,
@@ -322,6 +324,10 @@ vi.stubGlobal(
       }
       if (body.type === 'preTransferCheck') {
         return Response.json(await accountExistsFetchMock())
+      }
+      if (body.type === 'activeAssetData') {
+        const result = await activeAssetDataFetchMock(body, init?.signal)
+        return result instanceof Response ? result : Response.json(result)
       }
       if (body.type !== 'userAbstraction') {
         throw new Error(`Unexpected info request: ${body.type}`)
@@ -3254,7 +3260,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('fills')
       expect(event.data).toHaveLength(1)
@@ -3265,6 +3271,185 @@ describe('HyperliquidWsProvider', () => {
         price: '94000',
         size: '0.1',
         fee: { amount: '4.70', asset: 'USDC' },
+      })
+    })
+
+    describe('return on equity of a live closing fill', () => {
+      const user = '0x1234567890123456789012345678901234567890'
+      const btcFill = (tid: number, closing: boolean) => ({
+        tid,
+        coin: 'BTC',
+        side: closing ? 'A' : 'B',
+        px: '101000',
+        sz: '0.1',
+        dir: closing ? 'Close Long' : 'Open Long',
+        fee: '4.70',
+        closedPnl: closing ? '100' : '0',
+        time: 1704067200000,
+        startPosition: closing ? '0.2' : '0.0',
+      })
+      const fillsFrame = (fills: unknown[]) =>
+        JSON.stringify({
+          channel: 'userFills',
+          data: { isSnapshot: false, user, fills },
+        })
+      const leverageData = (body: { user: string; coin: string }) => ({
+        user: body.user,
+        coin: body.coin,
+        leverage: { type: 'cross', value: 20 },
+        maxTradeSzs: ['1.5', '1.5'],
+        availableToTrade: ['15000.0', '15000.0'],
+        markPx: '101000.0',
+      })
+
+      it('reads the current leverage once for the market of the closing fills', async () => {
+        activeAssetDataFetchMock.mockReset().mockImplementation(leverageData)
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(
+          fillsFrame([btcFill(1, true), btcFill(2, true), btcFill(3, false)])
+        )
+
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+        const [first, second, opening] = listener.mock.calls[0][0].data
+        for (const fill of [first, second]) {
+          expect(fill).toMatchObject({
+            closedSize: '0.1',
+            entryPrice: '100000',
+            returnOnEquity: '20',
+          })
+        }
+        expect(opening).not.toHaveProperty('returnOnEquity')
+        expect(activeAssetDataFetchMock).toHaveBeenCalledOnce()
+        expect(activeAssetDataFetchMock).toHaveBeenCalledWith(
+          { type: 'activeAssetData', user, coin: 'BTC' },
+          expect.any(AbortSignal)
+        )
+      })
+
+      it('emits frames in arrival order while a leverage read is pending', async () => {
+        let release!: () => void
+        const pending = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        activeAssetDataFetchMock
+          .mockReset()
+          .mockImplementation(async (body) => {
+            await pending
+            return leverageData(body)
+          })
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+        getMockRwsInstance().simulateMessage(fillsFrame([btcFill(2, false)]))
+        await flushMicrotasks()
+        expect(listener).not.toHaveBeenCalled()
+
+        release()
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
+        expect(listener.mock.calls.map(([event]) => event.data[0].id)).toEqual([
+          '1',
+          '2',
+        ])
+        expect(listener.mock.calls[0][0].data[0].returnOnEquity).toBe('20')
+      })
+
+      it('emits the closing fill without ROE when the leverage read fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        activeAssetDataFetchMock
+          .mockReset()
+          .mockResolvedValue(new Response('{}', { status: 500 }))
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+        const [fill] = listener.mock.calls[0][0].data
+        expect(fill).toMatchObject({ closedSize: '0.1', entryPrice: '100000' })
+        expect(fill).not.toHaveProperty('returnOnEquity')
+        warn.mockRestore()
+      })
+
+      it('emits the closing fill without ROE when the leverage read exceeds the timeout', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        activeAssetDataFetchMock.mockReset().mockImplementation(
+          (_body: unknown, signal: AbortSignal) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason))
+            })
+        )
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+        vi.useFakeTimers()
+        try {
+          getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+          getMockRwsInstance().simulateMessage(fillsFrame([btcFill(2, false)]))
+          await vi.advanceTimersByTimeAsync(WS_FRAME_ENRICHMENT_TIMEOUT_MS - 1)
+          expect(listener).not.toHaveBeenCalled()
+
+          await vi.advanceTimersByTimeAsync(1)
+          expect(listener).toHaveBeenCalledTimes(2)
+        } finally {
+          vi.useRealTimers()
+        }
+        const [closing] = listener.mock.calls[0][0].data
+        expect(closing).toMatchObject({ id: '1', closedSize: '0.1' })
+        expect(closing).not.toHaveProperty('returnOnEquity')
+        expect(listener.mock.calls[1][0].data[0].id).toBe('2')
+        expect(warn).toHaveBeenCalledWith(
+          '[hyperliquid:ws] fill leverage read failed; the frame emits without it',
+          expect.objectContaining({ name: 'TimeoutError' })
+        )
+        warn.mockRestore()
+      })
+
+      it('emits nothing for a frame whose leverage read settles after close', async () => {
+        let release!: () => void
+        const pending = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        activeAssetDataFetchMock
+          .mockReset()
+          .mockImplementation(async (body) => {
+            await pending
+            return leverageData(body)
+          })
+        const provider = createEnrichingProvider()
+        const listener = vi.fn()
+        await provider.subscribe(
+          { channel: 'fills', dex: 'hyperliquid', address: user },
+          listener
+        )
+
+        getMockRwsInstance().simulateMessage(fillsFrame([btcFill(1, true)]))
+        await flushMicrotasks()
+        provider.close()
+        release()
+        await vi.waitFor(() =>
+          expect(activeAssetDataFetchMock).toHaveBeenCalledOnce()
+        )
+        await flushMicrotasks()
+
+        expect(listener).not.toHaveBeenCalled()
       })
     })
 
@@ -3304,6 +3489,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const [own, counterparty] = listener.mock.calls[0][0].data
       expect(own.liquidation).toEqual({
         method: LiquidationMethod.MARKET,
@@ -3345,7 +3531,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       expect(listener.mock.calls[0][0]).toMatchObject({
         channel: 'fills',
         data: [],
@@ -3362,7 +3548,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledTimes(2)
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
       const live = listener.mock.calls[1][0]
       expect(live.data).toHaveLength(1)
       expect(live.data[0]).toMatchObject({ id: '999', price: '94000' })
@@ -3407,7 +3593,7 @@ describe('HyperliquidWsProvider', () => {
       await flushMicrotasks()
       getMockRwsInstance().simulateMessage(snapshotFrame)
 
-      expect(listener).toHaveBeenCalledTimes(2)
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
       for (const call of listener.mock.calls) {
         expect(call[0].data).toHaveLength(0)
       }
@@ -3432,7 +3618,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('fills')
       expect(event.data).toHaveLength(1)
@@ -3472,7 +3658,7 @@ describe('HyperliquidWsProvider', () => {
       await flushMicrotasks()
       getMockRwsInstance().simulateMessage(snapshotFrame)
 
-      expect(listener).toHaveBeenCalledTimes(2)
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
       for (const call of listener.mock.calls) {
         expect(call[0]).toMatchObject({ channel: 'fills', data: [] })
       }
@@ -3493,7 +3679,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledTimes(3)
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(3))
       expect(
         listener.mock.calls[2][0].data.map((fill: Fill) => fill.id)
       ).toEqual(['999'])
@@ -3553,7 +3739,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('fills')
       expect(event.data[0]).toMatchObject({ id: '555', market: { id: 'BTC' } })
@@ -3603,7 +3789,7 @@ describe('HyperliquidWsProvider', () => {
         JSON.stringify({ channel: 'orderUpdates', data: [] })
       )
 
-      expect(fillsListener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(fillsListener).toHaveBeenCalledOnce())
       expect(positionsListener).toHaveBeenCalledOnce()
       expect(spotListener).toHaveBeenCalledOnce()
       await vi.waitFor(() => expect(ordersListener).toHaveBeenCalledOnce())
@@ -4077,7 +4263,9 @@ describe('HyperliquidWsProvider', () => {
       )
 
       expect(warnSpy).toHaveBeenCalledOnce()
-      expect(listener).toHaveBeenCalledWith({ channel: 'fills', data: [] })
+      await vi.waitFor(() =>
+        expect(listener).toHaveBeenCalledWith({ channel: 'fills', data: [] })
+      )
       warnSpy.mockRestore()
     })
 
@@ -4368,7 +4556,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.data).toHaveLength(1)
       expect(event.data[0]).toMatchObject({ id: '2', market: { id: 'BTC' } })
@@ -4718,7 +4906,7 @@ describe('HyperliquidWsProvider', () => {
         })
       )
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.data).toHaveLength(1)
       expect(event.data[0]).toMatchObject({ id: '2', market: { id: 'BTC' } })

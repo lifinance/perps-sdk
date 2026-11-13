@@ -110,6 +110,16 @@ export const wsLog = {
     console.warn(`[${provider}:ws] market registry refresh failed`, error)
   },
   /**
+   * An optional REST read for a frame rejected or timed out. The frame emits
+   * without the data of that read, so logged at `warn`.
+   */
+  enrichmentFailure(provider: string, read: string, error: unknown): void {
+    console.warn(
+      `[${provider}:ws] ${read} read failed; the frame emits without it`,
+      error
+    )
+  },
+  /**
    * A consumer listener callback threw during fan-out. Logged and skipped so
    * one bad listener cannot starve sibling listeners or break socket flow.
    */

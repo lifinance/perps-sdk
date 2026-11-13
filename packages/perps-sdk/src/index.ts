@@ -79,10 +79,16 @@ export {
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
 export {
+  buildFill,
   calculateAverageFillPrice,
+  calculateFillClosedSize,
   classifyFillFromPosition,
   FillClassification,
 } from './math/fills.js'
+export {
+  annualizeFundingRate,
+  safeAnnualizeFundingRate,
+} from './math/funding.js'
 export type { ExpectedPnl } from './math/order.js'
 export {
   buildQuote,
@@ -174,6 +180,10 @@ export type { GetAssetsParams } from './services/getAssets.js'
 export { getAssets } from './services/getAssets.js'
 export type { GetFillsParams } from './services/getFills.js'
 export { getFills } from './services/getFills.js'
+export type { GetFundingAveragesParams } from './services/getFundingAverages.js'
+export { getFundingAverages } from './services/getFundingAverages.js'
+export type { GetFundingHistoryParams } from './services/getFundingHistory.js'
+export { getFundingHistory } from './services/getFundingHistory.js'
 export type { GetGasRecommendationParams } from './services/getGasRecommendation.js'
 export {
   getGasRecommendation,
@@ -218,7 +228,11 @@ export { createMemoryStorage } from './storage/storage.js'
 export type { StorageAdapter } from './storage/types.js'
 export { errorCodeFromStatus } from './transport/errorCodeFromStatus.js'
 export type { FetchWithRetryOptions } from './transport/fetchWithRetry.js'
-export { fetchWithRetry, isAbortError } from './transport/fetchWithRetry.js'
+export {
+  fetchWithRetry,
+  isAbortError,
+  isAbortRejection,
+} from './transport/fetchWithRetry.js'
 export type {
   ProviderRetryConfig,
   ResolvedRetryPolicy,
@@ -373,6 +387,7 @@ export type {
 } from './websocket/types.js'
 export {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './websocket/WsProviderBase.js'

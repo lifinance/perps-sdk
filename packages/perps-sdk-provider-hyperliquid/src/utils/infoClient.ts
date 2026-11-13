@@ -1,7 +1,7 @@
 import {
   errorCodeFromStatus,
   fetchWithRetry,
-  isAbortError,
+  isAbortRejection,
   PerpsError,
   type PerpsSDKClient,
   type ResolvedRetryPolicy,
@@ -143,7 +143,10 @@ export async function hlPostJson<T>(
 
     return (await response.json()) as T
   } catch (error) {
-    if (error instanceof PerpsError || isAbortError(error)) {
+    if (
+      error instanceof PerpsError ||
+      isAbortRejection(error, options?.signal)
+    ) {
       throw error
     }
     const err = new PerpsError(

@@ -1018,6 +1018,195 @@ describe('mapFill (Lighter)', () => {
     })
   })
 
+  describe('venue realized PnL', () => {
+    // The viewer sells as the taker out of a long 1 @ 40000 at 50000.
+    const closingAsk = {
+      ask_account_id: ACCOUNT_INDEX,
+      bid_account_id: 0,
+      is_maker_ask: false,
+      size: '1',
+      price: '50000',
+      taker_position_size_before: '1',
+      taker_entry_quote_before: '40000',
+    } satisfies Partial<LtTrade>
+
+    it('uses ask_account_pnl for the ask side instead of the derived PnL', () => {
+      const fill = mapValidFill(
+        baseTrade({ ...closingAsk, ask_account_pnl: '9990.5' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.realizedPnl).toBe('9990.5')
+    })
+
+    it('uses bid_account_pnl for the bid side', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          price: '40000',
+          taker_position_size_before: '-1',
+          taker_entry_quote_before: '50000',
+          bid_account_pnl: '9990.5',
+          ask_account_pnl: '-1',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.realizedPnl).toBe('9990.5')
+    })
+
+    it('derives the PnL when the row carries only the other side', () => {
+      const fill = mapValidFill(
+        baseTrade({ ...closingAsk, bid_account_pnl: '123' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.realizedPnl).toBe('10000')
+    })
+
+    it('maps a zero venue PnL to null', () => {
+      const fill = mapValidFill(
+        baseTrade({ ...closingAsk, ask_account_pnl: '0.000000' }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill.realizedPnl).toBeNull()
+    })
+  })
+
+  describe('closed size, entry price and return on equity', () => {
+    it('calculates the fields of a full close of a long at the fill leverage', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+          taker_initial_margin_fraction_before: 500,
+          ask_account_pnl: '9990',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).toMatchObject({
+        leverage: '20',
+        realizedPnl: '9990',
+        closedSize: '1',
+        entryPrice: '40000',
+        returnOnEquity: '499.5',
+      })
+    })
+
+    it('calculates the fields of a partial close of a short', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          size: '1',
+          price: '40000',
+          taker_position_size_before: '-2',
+          taker_entry_quote_before: '-100000',
+          taker_initial_margin_fraction_before: 1000,
+          bid_account_pnl: '10000',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).toMatchObject({
+        closedSize: '1',
+        entryPrice: '50000',
+        returnOnEquity: '200',
+      })
+    })
+
+    it('uses only the closed part of a flip', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '2',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+          taker_initial_margin_fraction_before: 500,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).toMatchObject({
+        realizedPnl: '10000',
+        closedSize: '1',
+        entryPrice: '40000',
+        returnOnEquity: '500',
+      })
+    })
+
+    it('calculates the entry price from the venue PnL when the row has no entry quote', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_initial_margin_fraction_before: 500,
+          ask_account_pnl: '10000',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).toMatchObject({
+        entryPrice: '40000',
+        returnOnEquity: '500',
+      })
+    })
+
+    it('gives no ROE when the row has no initial margin fraction', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          ask_account_id: ACCOUNT_INDEX,
+          bid_account_id: 0,
+          is_maker_ask: false,
+          size: '1',
+          price: '50000',
+          taker_position_size_before: '1',
+          taker_entry_quote_before: '40000',
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).toMatchObject({ closedSize: '1', entryPrice: '40000' })
+      expect(fill).not.toHaveProperty('returnOnEquity')
+    })
+
+    it('gives none of the fields for an opening fill', () => {
+      const fill = mapValidFill(
+        baseTrade({
+          bid_account_id: ACCOUNT_INDEX,
+          ask_account_id: 0,
+          is_maker_ask: true,
+          taker_position_size_before: '0',
+          taker_entry_quote_before: '0',
+          taker_initial_margin_fraction_before: 500,
+        }),
+        ACCOUNT_INDEX,
+        MARKET
+      )
+      expect(fill).not.toHaveProperty('closedSize')
+      expect(fill).not.toHaveProperty('entryPrice')
+      expect(fill).not.toHaveProperty('returnOnEquity')
+    })
+  })
+
   // Lighter marks both `*_position_size_before` keys `omitempty` on the Trade
   // object, so the counterparty that was flat before the trade drops its key.
   // The base fixture puts the viewer on the maker side; `is_maker_ask` flips it.

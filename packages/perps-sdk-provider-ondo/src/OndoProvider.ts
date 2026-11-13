@@ -1,6 +1,7 @@
 import {
   ACTIVE_ORDER_STATUSES,
   type ActionSignerContribution,
+  buildFill,
   calculateTransferable,
   createWarnOnce,
   type DepositFlow,
@@ -130,6 +131,7 @@ import {
   type OndoPage,
   OndoSessionExpiredError,
 } from './utils/apiClient.js'
+import { fetchFillLeverages } from './utils/fillLeverages.js'
 import {
   listOndoDepositAddress,
   mapDepositActivity,
@@ -965,11 +967,20 @@ export const ondoProvider = (
             marketRegistry().sync(),
           ])
 
-          const items = page.result.flatMap((fill): Fill[] => {
+          const mapped = page.result.flatMap((fill): Fill[] => {
             const market = marketDisplay(fill.market)
-            const mapped = market && mapFill(fill, market)
-            return mapped ? [mapped] : []
+            const mappedFill = market && mapFill(fill, market)
+            return mappedFill ? [mappedFill] : []
           })
+          const leverages = await fetchFillLeverages(
+            client,
+            token.token,
+            mapped,
+            opts?.signal
+          )
+          const items = mapped.map((fill) =>
+            buildFill(fill, leverages.get(fill.market.id))
+          )
 
           const nextCursor = page.pageInfo?.nextCursor
           return {

@@ -4,7 +4,7 @@ import { PerpsError } from '../errors/PerpsError.js'
 import type { PerpsBaseConfig, SDKRequestOptions } from '../types/config.js'
 import { version } from '../version.js'
 import { errorCodeFromStatus } from './errorCodeFromStatus.js'
-import { fetchWithRetry, isAbortError } from './fetchWithRetry.js'
+import { fetchWithRetry, isAbortRejection } from './fetchWithRetry.js'
 import {
   LIFI_REQUEST_KEY,
   LIFI_RETRY_DEFAULTS,
@@ -86,13 +86,14 @@ export async function request<T>(
     finalOptions = await config.requestInterceptor(url, finalOptions)
   }
 
+  const signal = sdkOptions?.signal ?? finalOptions.signal ?? undefined
   let response: Response
   try {
     const requestStartedAt = onResponse ? Date.now() : 0
     response = await fetchWithRetry(url, finalOptions, {
       policy,
       fetchImpl: config.fetch,
-      signal: sdkOptions?.signal ?? finalOptions.signal ?? undefined,
+      signal,
     })
     const responseReceivedAt = onResponse ? Date.now() : 0
 
@@ -106,7 +107,7 @@ export async function request<T>(
       throw error
     }
 
-    if (isAbortError(error)) {
+    if (isAbortRejection(error, signal)) {
       throw error
     }
 

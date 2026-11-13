@@ -4,6 +4,7 @@ import {
   isDecimalString,
   type StorageAdapter,
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
 } from '@lifi/perps-sdk'
 import {
@@ -1767,7 +1768,7 @@ describe('OndoWsProvider', () => {
       )
       feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
 
-      expect(listener).toHaveBeenCalledOnce()
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
       const event = listener.mock.calls[0][0]
       expect(event.channel).toBe('fills')
       expect(event.data).toHaveLength(1)
@@ -1781,6 +1782,190 @@ describe('OndoWsProvider', () => {
       })
       expect(event.data[0].market.id).toBe('AAPL-USD.P')
       p.close()
+    })
+
+    it('gives a live closing fill the ROE at the current leverage of its market', async () => {
+      const leverageUrls: string[] = []
+      vi.stubGlobal(
+        'fetch',
+        async (input: RequestInfo | URL): Promise<Response> => {
+          const url = input.toString()
+          if (url.includes('/markets')) {
+            return Response.json({ markets: ONDO_MARKETS })
+          }
+          if (url.includes('/v1/perps/leverage')) {
+            leverageUrls.push(url)
+            return Response.json({
+              success: true,
+              result: [{ market: 'AAPL-USD.P', leverage: '9' }],
+            })
+          }
+          throw new Error(`Unexpected fetch: ${url}`)
+        }
+      )
+      const p = makeProvider()
+      stubSocket(p)
+      const listener = vi.fn()
+
+      await p.subscribe(
+        { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+        listener
+      )
+      feed(p, {
+        type: 'update',
+        channel: 'fillsPerps',
+        data: [
+          {
+            ...RAW_FILL,
+            id: 'fill-2',
+            side: 'sell',
+            direction: 'closeLong',
+            pnl: '12.5',
+          },
+          RAW_FILL,
+        ],
+      })
+
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      const [closing, opening] = listener.mock.calls[0][0].data
+      expect(closing).toMatchObject({
+        id: 'fill-2',
+        closedSize: '5.00',
+        entryPrice: '225',
+        returnOnEquity: '10',
+      })
+      expect(opening).not.toHaveProperty('returnOnEquity')
+      expect(leverageUrls).toEqual([
+        'https://api.ondoperps.xyz/v1/perps/leverage',
+      ])
+      p.close()
+    })
+
+    describe('fills frame with a leverage read', () => {
+      const CLOSING_FILL = {
+        ...RAW_FILL,
+        id: 'fill-2',
+        side: 'sell',
+        direction: 'closeLong',
+        pnl: '12.5',
+      }
+      const stubLeverageFetch = (
+        leverage: (init: RequestInit | undefined) => Promise<Response>
+      ) =>
+        vi.stubGlobal(
+          'fetch',
+          async (
+            input: RequestInfo | URL,
+            init?: RequestInit
+          ): Promise<Response> => {
+            const url = input.toString()
+            if (url.includes('/markets')) {
+              return Response.json({ markets: ONDO_MARKETS })
+            }
+            if (url.includes('/v1/perps/leverage')) {
+              return leverage(init)
+            }
+            throw new Error(`Unexpected fetch: ${url}`)
+          }
+        )
+      const leverageResponse = () =>
+        Response.json({
+          success: true,
+          result: [{ market: 'AAPL-USD.P', leverage: '9' }],
+        })
+
+      it('emits frames in arrival order while a leverage read is pending', async () => {
+        let release!: () => void
+        const pending = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        stubLeverageFetch(async () => {
+          await pending
+          return leverageResponse()
+        })
+        const p = makeProvider()
+        stubSocket(p)
+        const listener = vi.fn()
+        await p.subscribe(
+          { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+          listener
+        )
+
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [CLOSING_FILL] })
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        expect(listener).not.toHaveBeenCalled()
+
+        release()
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(2))
+        expect(listener.mock.calls.map(([event]) => event.data[0].id)).toEqual([
+          'fill-2',
+          'fill-1',
+        ])
+        expect(listener.mock.calls[0][0].data[0].returnOnEquity).toBe('10')
+        p.close()
+      })
+
+      it('emits the closing fill without ROE when the session read fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const storageError = new Error('storage unavailable')
+        stubLeverageFetch(async () => leverageResponse())
+        const storage = seededStorage()
+        const p = makeProvider(storage)
+        stubSocket(p)
+        const listener = vi.fn()
+        await p.subscribe(
+          { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+          listener
+        )
+        vi.spyOn(storage, 'get').mockRejectedValue(storageError)
+
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [CLOSING_FILL] })
+
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+        const [closing] = listener.mock.calls[0][0].data
+        expect(closing).toMatchObject({ id: 'fill-2', entryPrice: '225' })
+        expect(closing).not.toHaveProperty('returnOnEquity')
+        expect(warn).toHaveBeenCalledWith(
+          '[ondo:ws] fill leverage read failed; the frame emits without it',
+          storageError
+        )
+        p.close()
+      })
+
+      it('emits the closing fill without ROE when the leverage read exceeds the timeout', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        stubLeverageFetch(
+          (init) =>
+            new Promise<Response>((_resolve, reject) => {
+              const signal = init?.signal
+              signal?.addEventListener('abort', () => reject(signal.reason))
+            })
+        )
+        const p = makeProvider()
+        stubSocket(p)
+        const listener = vi.fn()
+        await p.subscribe(
+          { channel: 'fills', dex: 'ondo', address: TEST_ADDR },
+          listener
+        )
+        vi.useFakeTimers()
+
+        feed(p, { type: 'update', channel: 'fillsPerps', data: [CLOSING_FILL] })
+        await vi.advanceTimersByTimeAsync(WS_FRAME_ENRICHMENT_TIMEOUT_MS - 1)
+        expect(listener).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(1)
+
+        expect(listener).toHaveBeenCalledOnce()
+        const [closing] = listener.mock.calls[0][0].data
+        expect(closing).toMatchObject({ id: 'fill-2', closedSize: '5.00' })
+        expect(closing).not.toHaveProperty('returnOnEquity')
+        expect(warn).toHaveBeenCalledWith(
+          '[ondo:ws] fill leverage read failed; the frame emits without it',
+          expect.objectContaining({ name: 'TimeoutError' })
+        )
+        p.close()
+      })
     })
 
     it('emits positionsPerps updates as a full open-position snapshot, dropping neutral rows', async () => {
@@ -2227,10 +2412,12 @@ describe('OndoWsProvider', () => {
         )
         await rejected
         feed(p, { type: 'update', channel: 'fillsPerps', data: [RAW_FILL] })
-        expect(fills).toHaveBeenCalledWith({
-          channel: 'fills',
-          data: [expect.objectContaining({ id: 'fill-1', size: '5.00' })],
-        })
+        await vi.waitFor(() =>
+          expect(fills).toHaveBeenCalledWith({
+            channel: 'fills',
+            data: [expect.objectContaining({ id: 'fill-1', size: '5.00' })],
+          })
+        )
         releaseFills()
         await p.subscribe(
           { channel: 'positions', dex: 'ondo', address: OTHER_ADDR },

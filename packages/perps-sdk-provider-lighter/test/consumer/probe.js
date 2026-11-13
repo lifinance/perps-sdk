@@ -21,6 +21,7 @@ export const SIGNER_FUNCTIONS = [
   '_signApproveIntegrator',
   '_signUpdateAccountConfig',
   '_signUpdateAccountAssetConfig',
+  '_signCreateGroupedOrders',
 ]
 
 const SEED = `0x${'11'.repeat(32)}`

@@ -79,6 +79,7 @@ pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnp
 | `pnpm build` | Build every package (CJS + ESM + types) |
 | `pnpm test` | Run all package tests (vitest) |
 | `pnpm test:unit` | Unit tests only (`*.unit.spec.ts`) |
+| `pnpm test:changed` | Unit tests that import a file changed since `origin/main` |
 | `pnpm test:cov` | Tests with coverage |
 | `pnpm check` | Biome lint/format check |
 | `pnpm check:write` | Biome auto-fix |
@@ -101,7 +102,7 @@ Husky runs three hooks after `pnpm install`:
 | --- | --- |
 | `pre-commit` | [`scripts/check-no-local-links.sh`](./scripts/check-no-local-links.sh), then `pnpm pre-commit` (`check`, `check:types`, `check:types:spec`, `check:circular-deps`, `knip:check`) |
 | `commit-msg` | `commitlint` with the Conventional Commits config |
-| `pre-push` | `test:unit` in each package, one package at a time |
+| `pre-push` | `pnpm test:changed`: `test:changed` in each package, one package at a time |
 
 CI ([`.github/workflows/checks.yaml`](./.github/workflows/checks.yaml)) runs `check`, `build`, `check:types`, `check:types:spec`, `check:circular-deps`, `knip:check`, and the full `test` script of each package.
 

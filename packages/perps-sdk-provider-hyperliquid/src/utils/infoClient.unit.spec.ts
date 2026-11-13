@@ -2,7 +2,7 @@ import { DISABLED_RETRY } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
-import { infoRequest } from './infoClient.js'
+import { HYPERLIQUID_RETRY_DEFAULTS, infoRequest } from './infoClient.js'
 
 describe('infoRequest', () => {
   afterEach(() => {
@@ -162,6 +162,101 @@ describe('infoRequest', () => {
         { policy: DISABLED_RETRY }
       )
     ).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  const abortReasons = [
+    ['an Error', () => new Error('user cancelled')],
+    [
+      'a TimeoutError',
+      () => new DOMException('signal timed out', 'TimeoutError'),
+    ],
+  ] as const
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason before the fetch', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    controller.abort(reason)
+    const fetchImpl = vi.fn<typeof fetch>()
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { signal: controller.signal, fetchImpl }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason during the fetch, without a retry', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(reason)
+      throw reason
+    })
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { signal: controller.signal, fetchImpl }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(
+    abortReasons
+  )('rejects with %s abort reason during a retry backoff', async (_name, createReason) => {
+    const reason = createReason()
+    const controller = new AbortController()
+    const shouldRetry = vi.fn(() => true)
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      setTimeout(() => controller.abort(reason), 0)
+      return new Response(null, {
+        status: 503,
+        headers: { 'Retry-After': '10' },
+      })
+    })
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        {
+          signal: controller.signal,
+          policy: { ...HYPERLIQUID_RETRY_DEFAULTS, shouldRetry },
+          fetchImpl,
+        }
+      )
+    ).rejects.toBe(reason)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(shouldRetry).toHaveBeenCalledOnce()
+  })
+
+  it('wraps a network failure as a ServerError when the signal aborts afterwards', async () => {
+    const controller = new AbortController()
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      controller.abort(new Error('user cancelled'))
+      throw new TypeError('Failed to fetch')
+    })
+
+    await expect(
+      infoRequest(
+        DEFAULT_HYPERLIQUID_API_URL,
+        { type: 'allMids' },
+        { signal: controller.signal, policy: DISABLED_RETRY, fetchImpl }
+      )
+    ).rejects.toMatchObject({
+      code: PerpsErrorCode.ServerError,
+      tool: 'hyperliquid',
+      message: 'Failed to fetch',
+    })
   })
 
   it('forwards an AbortSignal to fetch', async () => {

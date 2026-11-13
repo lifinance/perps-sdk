@@ -12,6 +12,7 @@ import type { ActionParamsMap } from './action.js'
 import type { Asset } from './asset.js'
 import { DECIMAL_PATTERN } from './decimal.js'
 import { ActionRelay, ActionType, PerpsSigner, SigningMethod } from './enums.js'
+import type { FundingHistoryRange } from './funding.js'
 import type { ProviderFunding as ExportedProviderFunding } from './index.js'
 import type { MarketContext, OhlcvInterval } from './market.js'
 import type { ProviderId } from './primitives.js'
@@ -166,6 +167,7 @@ const hyperliquidProvider: Provider = {
   chainId: 1337,
   minOrderValueUsd: '10',
   supportedIntervals: ['1m', '5m', '15m', '1h', '4h', '1d'],
+  fundingHistoryRanges: ['7d', '30d', '90d'],
 }
 
 // Provider exercising the Lighter mapping: one approval gate, one choice.
@@ -197,6 +199,7 @@ const lighterProvider: Provider = {
   depositFeeUsd: '0',
   withdrawalFeeUsd: '1',
   supportedIntervals: ['1m', '5m', '15m', '1h', '1d'],
+  fundingHistoryRanges: ['7d', '30d'],
 }
 
 const lighterRobinhoodProvider: Provider = {
@@ -249,6 +252,7 @@ const providerWithNoDescriptors: Provider = {
   actions: [],
   categories: [],
   supportedIntervals: [],
+  fundingHistoryRanges: [],
 }
 
 // Announced-but-not-launched provider — `active: false` greys it out, and an
@@ -263,6 +267,7 @@ const announcedProvider: Provider = {
   actions: [],
   categories: [],
   supportedIntervals: [],
+  fundingHistoryRanges: [],
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +499,15 @@ type _SupportedIntervalsIsRequired = Expect<
   Equals<
     Extract<RequiredKeys<Provider>, 'supportedIntervals'>,
     'supportedIntervals'
+  >
+>
+type _FundingHistoryRangesShape = Expect<
+  Equals<Provider['fundingHistoryRanges'], FundingHistoryRange[]>
+>
+type _FundingHistoryRangesIsRequired = Expect<
+  Equals<
+    Extract<RequiredKeys<Provider>, 'fundingHistoryRanges'>,
+    'fundingHistoryRanges'
   >
 >
 
@@ -833,6 +847,22 @@ describe('Provider.supportedIntervals', () => {
   it('declares an empty set for inactive / no-candle providers', () => {
     expect(announcedProvider.supportedIntervals).toEqual([])
     expect(providerWithNoDescriptors.supportedIntervals).toEqual([])
+  })
+})
+
+describe('Provider.fundingHistoryRanges', () => {
+  it('carries the funding history ranges of each provider', () => {
+    expect(hyperliquidProvider.fundingHistoryRanges).toEqual([
+      '7d',
+      '30d',
+      '90d',
+    ])
+    expect(lighterProvider.fundingHistoryRanges).toEqual(['7d', '30d'])
+  })
+
+  it('declares an empty set for a provider without funding history', () => {
+    expect(announcedProvider.fundingHistoryRanges).toEqual([])
+    expect(providerWithNoDescriptors.fundingHistoryRanges).toEqual([])
   })
 })
 

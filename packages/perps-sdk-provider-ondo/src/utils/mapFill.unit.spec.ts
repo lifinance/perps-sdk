@@ -181,6 +181,59 @@ describe('mapFill', () => {
   })
 })
 
+describe('mapFill closed part', () => {
+  it('gives the full size and the entry price of a full close of a long without startPosition', () => {
+    const fill = mapValidFill(
+      fillFixture({
+        side: 'sell',
+        size: '4',
+        price: '205',
+        direction: 'closeLong',
+        pnl: '20',
+      }),
+      MARKET
+    )
+    expect(fill).not.toHaveProperty('startPosition')
+    expect(fill).toMatchObject({ closedSize: '4', entryPrice: '200' })
+    expect(fill).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('gives the full size and the entry price of a close of a short', () => {
+    expect(
+      mapValidFill(
+        fillFixture({
+          side: 'buy',
+          size: '2',
+          price: '195',
+          direction: 'closeShort',
+          pnl: '10',
+        }),
+        MARKET
+      )
+    ).toMatchObject({ closedSize: '2', entryPrice: '200' })
+  })
+
+  it('gives only the closed size when the close carries no pnl', () => {
+    const fill = mapValidFill(
+      fillFixture({ side: 'sell', direction: 'closeLong' }),
+      MARKET
+    )
+    expect(fill.closedSize).toBe('4')
+    expect(fill).not.toHaveProperty('entryPrice')
+  })
+
+  it.each([
+    'flipLongToShort',
+    'flipShortToLong',
+    'openLong',
+    'openShort',
+  ] as const)('gives no closed part for a %s fill', (direction) => {
+    const fill = mapValidFill(fillFixture({ direction, pnl: '5' }), MARKET)
+    expect(fill).not.toHaveProperty('closedSize')
+    expect(fill).not.toHaveProperty('entryPrice')
+  })
+})
+
 describe('mapFill invalid rows', () => {
   it.each([
     ['size', '4 units'],
