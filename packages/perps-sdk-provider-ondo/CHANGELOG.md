@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 37.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`44ec4bc`](https://github.com/lifinance/perps-sdk/commit/44ec4bc7846dccda7e21997cd602a40122c4ed1d)]:
+  - @lifi/perps-types@30.0.0
+  - @lifi/perps-sdk@34.0.0
+
 ## 36.2.0
 
 ### Minor Changes
