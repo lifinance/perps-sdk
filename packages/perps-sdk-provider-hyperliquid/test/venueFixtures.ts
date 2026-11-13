@@ -97,7 +97,7 @@ export interface RecordedSnapshot {
 // ---------------------------------------------------------------------------
 // Unified-account snapshot. Address `0x235987B53ED16a5F331c3648F78cBc148A877D27`,
 // recorded 2026-09-22T12:45:37Z over 5.3 s. Copied verbatim from the recorded
-// `/info` payload in ORD-1767.
+// `/info` payload.
 // ---------------------------------------------------------------------------
 
 export const UNIFIED_SNAPSHOT: RecordedSnapshot = {
