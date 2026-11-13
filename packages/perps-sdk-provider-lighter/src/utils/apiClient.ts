@@ -24,6 +24,16 @@ export type ApiParams = Record<string, string | number | boolean>
 export const lighterBodyExcerpt = (data: unknown): string =>
   data === undefined ? 'non-JSON body' : JSON.stringify(data).slice(0, 200)
 
+// The caller reads the body with `response.text()` first, so a failed read
+// (an abort or a reset stream) rejects instead of reading as a non-JSON body.
+const parseJsonBody = (text: string): unknown => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Lighter signals errors on two channels: a non-2xx HTTP status, or an HTTP 200
  * carrying an error `code` in the JSON body. Returns the body error `code` when
@@ -299,7 +309,7 @@ export class LighterApiClient {
       }
     )
     this.assertNotRateLimited(response)
-    const data = (await response.json().catch(() => undefined)) as T | undefined
+    const data = parseJsonBody(await response.text()) as T | undefined
     return { status: response.status, data }
   }
 
@@ -329,7 +339,7 @@ export class LighterApiClient {
       signal: this.signal,
     })
     this.assertNotRateLimited(response)
-    const data = (await response.json().catch(() => undefined)) as T | undefined
+    const data = parseJsonBody(await response.text()) as T | undefined
     return { status: response.status, data }
   }
 
