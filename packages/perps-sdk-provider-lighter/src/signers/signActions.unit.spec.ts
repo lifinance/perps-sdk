@@ -286,6 +286,69 @@ describe('lighterSignActions', () => {
       expect(result[3]).not.toHaveProperty('clientOrderIndex')
     })
 
+    it.each([
+      [
+        'the parent of an OTO group',
+        {
+          grouping_type: 1,
+          orders: [
+            { market_index: 0, client_order_index: 7 },
+            { market_index: 0, client_order_index: 8 },
+          ],
+        },
+        '7',
+      ],
+      [
+        'the first leg of an OCO pair',
+        {
+          grouping_type: 2,
+          orders: [
+            { market_index: 0, client_order_index: 21 },
+            { market_index: 0, client_order_index: 22 },
+          ],
+        },
+        '21',
+      ],
+      [
+        'nothing for an empty orders list',
+        { grouping_type: 1, orders: [] },
+        undefined,
+      ],
+      [
+        'nothing for a parent without a client_order_index',
+        {
+          grouping_type: 1,
+          orders: [
+            { market_index: 0 },
+            { market_index: 0, client_order_index: 8 },
+          ],
+        },
+        undefined,
+      ],
+    ])('projects %s of a grouped step onto the step', async (_, wasmSignParams, expected) => {
+      const { deps } = makeDeps()
+      await deps.keyStore.set(ADDRESS, {
+        accountIndex: 99,
+        apiKeyIndex: 42,
+        apiKeyPrivateKey: '0xabc',
+        apiKeyPublicKey: '0xdef',
+      })
+
+      const step: WasmBlobActionStep = {
+        action: ActionType.PLACE_ORDER,
+        wasmSignParams: { ...wasmSignParams, nonce: 1 },
+      }
+      const result = (
+        await lighterSignActions(deps, SigningMethod.WASM_BLOB, [step], ADDRESS)
+      ).signed as WasmBlobSignedActionStep[]
+
+      if (expected === undefined) {
+        expect(result[0]).not.toHaveProperty('clientOrderIndex')
+      } else {
+        expect(result[0].clientOrderIndex).toBe(expected)
+      }
+    })
+
     it('throws when no Lighter API key is registered for the address', async () => {
       const { deps } = makeDeps()
       const step: WasmBlobActionStep = {

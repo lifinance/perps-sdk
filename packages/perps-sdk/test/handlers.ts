@@ -4,6 +4,8 @@ import type {
   CreateActionResponse,
   ExecuteActionResponse,
   FillsResponse,
+  FundingAveragesResponse,
+  FundingHistoryResponse,
   Market,
   MarketDisplay,
   MarketsResponse,
@@ -182,6 +184,7 @@ export const mockProviders: ProvidersResponse = {
       ],
       categories: [],
       supportedIntervals: [],
+      fundingHistoryRanges: ['7d', '30d', '90d'],
     },
     {
       key: 'lighter',
@@ -276,6 +279,7 @@ export const mockProviders: ProvidersResponse = {
       ],
       categories: [],
       supportedIntervals: [],
+      fundingHistoryRanges: ['7d', '30d', '90d'],
     },
   ],
 }
@@ -428,6 +432,44 @@ export const mockOhlcv: OhlcvResponse = {
       c: '95000',
       v: '120',
     },
+  ],
+}
+
+export const mockFundingAverages: FundingAveragesResponse = {
+  averages: [
+    {
+      provider: 'hyperliquid',
+      marketId: 'BTC',
+      rate: {
+        '8h': '0.0000125',
+        '24h': '0.0000110',
+        '3d': '0.0000095',
+        '7d': '0.0000100',
+      },
+      coveredFrom: 1_700_000_000_000,
+    },
+    {
+      provider: 'hyperliquid',
+      marketId: 'ETH',
+      rate: {
+        '8h': '-0.0000040',
+        '24h': '0.0000020',
+        '3d': '0.0000050',
+        '7d': '0.0000075',
+      },
+      coveredFrom: 1_700_000_000_000,
+    },
+  ],
+}
+
+export const mockFundingHistory: FundingHistoryResponse = {
+  provider: 'hyperliquid',
+  marketId: 'BTC',
+  range: '7d',
+  points: [
+    { timestamp: 1704067200000, rate: '0.0000125' },
+    { timestamp: 1704153600000, rate: '-0.0000031' },
+    { timestamp: 1704326400000, rate: '0.0000090' },
   ],
 }
 
@@ -735,6 +777,14 @@ export const handlers = [
   http.get(`${BASE_URL}/marketsContext`, () => HttpResponse.json(mockPrices)),
 
   http.get(`${BASE_URL}/ohlcv`, () => HttpResponse.json(mockOhlcv)),
+
+  http.get(`${BASE_URL}/fundingAverages`, () =>
+    HttpResponse.json(mockFundingAverages)
+  ),
+
+  http.get(`${BASE_URL}/fundingHistory`, () =>
+    HttpResponse.json(mockFundingHistory)
+  ),
 
   http.get(`${BASE_URL}/orderbook`, () => HttpResponse.json(mockOrderbook)),
 

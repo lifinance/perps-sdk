@@ -219,6 +219,39 @@ Send the result as the `limitPrice` of a `MARKET` trigger leg.
 
 A Lighter modify cannot change the order type, so `triggerOrders.modifyCanChangeType` is `false`.
 
+## Grouped orders
+
+A TP/SL that the user attaches to a new entry order goes to Lighter as one grouped transaction.
+The backend builds it as a `PLACE_ORDER` step with `SigningMethod.WASM_BLOB`. No new `ActionType` exists for it.
+The signer tells a grouped step from a single order by the `grouping_type` field of `wasmSignParams`.
+`isLtGroupedOrderStep(action, wasmSignParams)` gives that test.
+
+The `wasmSignParams` of a grouped step hold the `LtCreateGroupedOrdersWasmParams` fields and the `nonce` of the transaction.
+The type omits `nonce`, as `LtCreateOrderWasmParams` does. The backend sends it with every WASM step, and the signer reads it from `wasmSignParams`.
+
+| Field | Value |
+| --- | --- |
+| `grouping_type` | `LT_GROUPING_TYPE_OTO` (`1`), `LT_GROUPING_TYPE_OCO` (`2`), or `LT_GROUPING_TYPE_OTOCO` (`3`) |
+| `orders` | The orders of the group, parent first. Each order has the `LtCreateOrderWasmParamsBase` fields of a single order. |
+| `integrator_account_index`, `integrator_taker_fee`, `integrator_maker_fee` | The integrator fields of the whole transaction, as on a single order |
+| `nonce` | The nonce of the whole transaction. The backend sends it on every WASM step. |
+
+An OTO group holds the parent and one child. An OTOCO group holds the parent, then a take-profit child and a stop-loss child.
+A child has `base_amount` `0`, the opposite `is_ask` of the parent, and `reduce_only` `true`. It takes the filled size of the parent.
+The signer passes the orders to `_signCreateGroupedOrders` in the given sequence.
+The bundled WASM signer owns the group rules (`ValidateOTO`, `ValidateOCO`, `ValidateOTOCO` in `lighter-go`), as it owns the field rules of a single order.
+It rejects an unknown `grouping_type`, an empty `orders` list, or an order count that does not match the grouping type with `SignatureInvalid` before it signs.
+A missing or malformed order field fails with `ValidationError` before the WASM call, as on a single order.
+A `grouping_type` of `null` fails the same way.
+
+The signed transaction of a grouped step has the transaction type `LT_TX_TYPE_CREATE_GROUPED_ORDERS` (`28`).
+A `PLACE_ORDER` step without `grouping_type` keeps the transaction type `LT_TX_TYPE_CREATE_ORDER` (`14`).
+`resolveLtTxType(action, wasmSignParams)` gives the transaction type of a step. `LT_TX_TYPE_BY_ACTION` gives the transaction type of an action that is not grouped.
+
+Lighter reports a child of a grouped order as its own order row with `parent_order_id`.
+While the parent rests, the child has `trigger_status` `parent-order` and an `initial_base_amount` of `0`.
+`getOrders` and the WebSocket `orders` channel map such a row to a `TriggerOrder` with `parentOrderId` and the status `PENDING`.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API

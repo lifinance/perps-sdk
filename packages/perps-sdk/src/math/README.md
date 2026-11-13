@@ -18,3 +18,4 @@ Some helpers read SDK structures instead:
 - `calculateAverageFillPrice(fills)` takes `Fill`s and gives the size-weighted average price, or `undefined` when the summed size is not above zero. It skips a fill whose `size` or `price` does not match the decimal pattern and never throws.
 - `classifyFillFromPosition` takes decimal strings and gives a `FillClassification`. It gives `BUY` or `SELL` on a malformed decimal string and never throws.
 - `calculateSlippagePrice(price, slippagePercent, isBuy)` is order-entry code. It does not round. Snap the result to the market tick before it goes to a venue.
+- `annualizeFundingRate(rate, ratePeriodSeconds)` takes the rate period as a `number` of seconds, from `Provider.funding.ratePeriodSeconds`. It gives the simple APR as a decimal fraction and keeps the sign. It does not compound. It throws when `ratePeriodSeconds` is not a finite number above zero.
