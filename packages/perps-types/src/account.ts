@@ -369,6 +369,29 @@ export interface Fill {
   leverage?: DecimalString
   realizedPnl?: DecimalString | null
   startPosition?: DecimalString
+  /**
+   * Part of `size` that reduced the position held before the fill, in
+   * base-asset units. Absent on a fill that opens or increases a position,
+   * and on a flip that carries no `startPosition`.
+   */
+  closedSize?: DecimalString
+  /**
+   * Average entry price of the position before the fill, in quote-asset units.
+   * Present only with `closedSize`. Lighter sends the entry basis. Without
+   * one, as on Hyperliquid and Ondo, the SDK calculates it from `realizedPnl`,
+   * `closedSize` and `price`. Absent when no source is usable.
+   */
+  entryPrice?: DecimalString
+  /**
+   * Return on equity of the closed part as a percent (`'10'` is 10%):
+   * `realizedPnl ÷ (closedSize × entryPrice ÷ leverage) × 100`, with
+   * `realizedPnl` as the venue sends it, fees not deducted. A `null`
+   * `realizedPnl` counts as zero. The leverage is `Fill.leverage` on Lighter,
+   * and the current leverage setting of the market on Hyperliquid and Ondo.
+   * Absent without `entryPrice`, or when `realizedPnl` or the leverage is not
+   * usable.
+   */
+  returnOnEquity?: DecimalString
   classification: FillClassification
   createdAt: string
   /** Fully-resolved block-explorer URL for the settling on-chain tx. Absent when

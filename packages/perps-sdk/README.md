@@ -492,6 +492,39 @@ import { remarkPosition } from '@lifi/perps-sdk'
 const livePosition = remarkPosition(position, liveMarkPrice)
 ```
 
+### Closing fill values
+
+Each provider sets three calculated fields on a `Fill` that reduces a
+position, on the `getFills` read and on the `fills` stream:
+
+- `closedSize`: the part of the fill that reduced the position, in base-asset
+  units. With `startPosition`, it is the smaller of `|startPosition|` and
+  `size`. Without `startPosition` (Ondo), it is `size` for a close, and absent
+  for a flip.
+- `entryPrice`: the average entry price of the position before the fill.
+  Lighter sends the entry basis (`*_entry_quote_before` ÷
+  `|*_position_size_before|`). Hyperliquid and Ondo calculate it from
+  `realizedPnl`, `closedSize` and `price`.
+- `returnOnEquity`: a percent (`'10'` is 10%):
+  `realizedPnl ÷ (closedSize × entryPrice ÷ leverage) × 100`. It uses
+  `realizedPnl` as the venue sends it, and does not deduct fees. Lighter uses
+  `Fill.leverage`, the leverage at the fill. Hyperliquid and Ondo send no fill
+  leverage, so the provider reads the current leverage setting of each market
+  of a closing fill one time for each read or stream frame.
+
+A fill that opens or increases a position has none of the three fields. A
+field is absent when one of its inputs is absent or is not usable. A failed
+leverage read keeps the fills and leaves only `returnOnEquity` absent. On the
+`fills` stream, a frame waits for its leverage read for a maximum of
+`WS_FRAME_ENRICHMENT_TIMEOUT_MS` (5 seconds). After that time, the frame emits
+without `returnOnEquity`, and the frames keep their arrival order.
+Lighter takes `realizedPnl` from `ask_account_pnl` or `bid_account_pnl` of
+the viewer's side when the trade row has it. Otherwise, the SDK calculates it.
+
+`buildFill(fill, leverage)` calculates the three fields, and
+`calculateFillClosedSize(fill)` gives `closedSize` alone. All three providers
+use them.
+
 ## Numbers
 
 ### Decimal strings

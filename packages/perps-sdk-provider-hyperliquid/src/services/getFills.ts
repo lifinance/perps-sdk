@@ -1,4 +1,8 @@
-import { getMarketRegistry, type SDKRequestOptions } from '@lifi/perps-sdk'
+import {
+  buildFill,
+  getMarketRegistry,
+  type SDKRequestOptions,
+} from '@lifi/perps-sdk'
 import type { Fill, FillsResponse } from '@lifi/perps-types'
 import type { Address } from 'viem'
 import { FILL_ROWS_CAP, PROVIDER_KEY } from '../constants.js'
@@ -6,6 +10,7 @@ import type { HyperliquidContext } from '../context.js'
 import type { HlTwapSliceFill, HlUserFills } from '../types/index.js'
 import { assetIsOutcome, mapFill } from '../utils/index.js'
 import { hlInfoOptions, infoRequest } from '../utils/infoClient.js'
+import { fetchFillLeverages } from './fillLeverages.js'
 import { requireAccountExists } from './getAccountExists.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
 
@@ -28,13 +33,15 @@ export interface GetFillsParams {
 
 /**
  * Fetch retained regular and TWAP slice fills newest-first, using opaque
- * cursors across inclusive time ranges.
+ * cursors across inclusive time ranges. The ROE of a closing fill uses the
+ * current leverage setting of its market.
  */
 export const getFills = async (
-  { client, apiUrl }: HyperliquidContext,
+  context: HyperliquidContext,
   params: GetFillsParams,
   options?: SDKRequestOptions
 ): Promise<FillsResponse> => {
+  const { client, apiUrl } = context
   const limit = getHistoryLimit(params.limit)
   const infoOpts = hlInfoOptions(client, options)
   await requireAccountExists(apiUrl, params.address, infoOpts)
@@ -90,5 +97,17 @@ export const getFills = async (
     }),
     options?.signal
   )
-  return { provider: PROVIDER_KEY, ...page }
+  const leverages = await fetchFillLeverages(
+    context,
+    params.address,
+    page.items,
+    options
+  )
+  return {
+    provider: PROVIDER_KEY,
+    ...page,
+    items: page.items.map((fill) =>
+      buildFill(fill, leverages.get(fill.market.id))
+    ),
+  }
 }

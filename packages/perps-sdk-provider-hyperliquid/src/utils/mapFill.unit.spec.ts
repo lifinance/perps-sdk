@@ -615,3 +615,56 @@ describe('mapFill (Hyperliquid) invalid rows', () => {
     warn.mockRestore()
   })
 })
+
+describe('mapFill (Hyperliquid) closed part', () => {
+  it.each([
+    [
+      'a full close of a long',
+      { startPosition: '2', side: 'A', sz: '2', px: '1100', closedPnl: '200' },
+      '2',
+    ],
+    [
+      'a partial close of a short',
+      { startPosition: '-3', side: 'B', sz: '1', px: '900', closedPnl: '100' },
+      '1',
+    ],
+    [
+      'a flip from long to short',
+      { startPosition: '1', side: 'A', sz: '3', px: '1050', closedPnl: '50' },
+      '1',
+    ],
+    [
+      'a loss on a full close of a short',
+      { startPosition: '-1', side: 'B', sz: '1', px: '1020', closedPnl: '-20' },
+      '1',
+    ],
+  ])('gives the closed size and the entry price of %s', (_case, row, closedSize) => {
+    const fill = map(baseFill(row))
+    expect(fill).toMatchObject({ closedSize, entryPrice: '1000' })
+    expect(fill).not.toHaveProperty('returnOnEquity')
+  })
+
+  it('gives the fill price as the entry price for a zero closedPnl', () => {
+    expect(
+      map(baseFill({ startPosition: '1', side: 'A', sz: '1', closedPnl: '0' }))
+    ).toMatchObject({ realizedPnl: null, closedSize: '1', entryPrice: '1000' })
+  })
+
+  it.each([
+    ['an opening fill', { startPosition: '0', side: 'B' }],
+    ['an increase of a long', { startPosition: '1', side: 'B' }],
+  ])('gives no closed part for %s', (_case, row) => {
+    const fill = map(baseFill(row))
+    expect(fill).not.toHaveProperty('closedSize')
+    expect(fill).not.toHaveProperty('entryPrice')
+  })
+
+  it('gives no closed part for a spot sell', () => {
+    const fill = mapValidFill(
+      baseFill({ coin: '@1', startPosition: '5', side: 'A', closedPnl: '3' }),
+      spotMarket('@1')
+    )
+    expect(fill).not.toHaveProperty('closedSize')
+    expect(fill).not.toHaveProperty('entryPrice')
+  })
+})
