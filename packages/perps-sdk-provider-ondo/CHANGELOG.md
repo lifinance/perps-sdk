@@ -1,5 +1,18 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 36.2.0
+
+### Minor Changes
+
+- [#725](https://github.com/lifinance/perps-sdk/pull/725) [`d02fc2b`](https://github.com/lifinance/perps-sdk/commit/d02fc2b4a8df2fbdf5f430dec3b6e34fdb3dfcc7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Fill` has three optional fields for a closing fill: `closedSize`, `entryPrice` and `returnOnEquity`. Each provider sets them on `getFills` and on the `fills` stream. Lighter takes `realizedPnl` from the venue `ask_account_pnl` or `bid_account_pnl` when the trade row has it. On the `fills` stream, a frame waits for a maximum of `WS_FRAME_ENRICHMENT_TIMEOUT_MS` for its leverage read, and then emits without `returnOnEquity`. `@lifi/perps-sdk` exports `buildFill`, `calculateFillClosedSize` and `WS_FRAME_ENRICHMENT_TIMEOUT_MS`.
+
+### Patch Changes
+
+- [#722](https://github.com/lifinance/perps-sdk/pull/722) [`52d27cc`](https://github.com/lifinance/perps-sdk/commit/52d27cc08474627bbb7d2b92cf277efed7a6e685) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Report a reconnect replay send that throws `SetupRequired` or `Unauthorized` through the subscription `onError` callback, remove that wire from replay, and keep other accounts and public channels active. `WsProviderBase` exposes the protected `resolveChannelKeys` hook, which the Lighter and Ondo providers override. The Ondo provider cycles the connection on the last private release only when it sent a login on that connection.
+
+- Updated dependencies [[`d02fc2b`](https://github.com/lifinance/perps-sdk/commit/d02fc2b4a8df2fbdf5f430dec3b6e34fdb3dfcc7), [`91fb97a`](https://github.com/lifinance/perps-sdk/commit/91fb97a30fddccb609385dd03ac42b55c4ee8f69)]:
+  - @lifi/perps-types@29.1.0
+
 ## 36.1.0
 
 ### Minor Changes

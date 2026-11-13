@@ -1,5 +1,13 @@
 # @lifi/perps-types
 
+## 29.1.0
+
+### Minor Changes
+
+- [#725](https://github.com/lifinance/perps-sdk/pull/725) [`d02fc2b`](https://github.com/lifinance/perps-sdk/commit/d02fc2b4a8df2fbdf5f430dec3b6e34fdb3dfcc7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `Fill` has three optional fields for a closing fill: `closedSize`, `entryPrice` and `returnOnEquity`. Each provider sets them on `getFills` and on the `fills` stream. Lighter takes `realizedPnl` from the venue `ask_account_pnl` or `bid_account_pnl` when the trade row has it. On the `fills` stream, a frame waits for a maximum of `WS_FRAME_ENRICHMENT_TIMEOUT_MS` for its leverage read, and then emits without `returnOnEquity`. `@lifi/perps-sdk` exports `buildFill`, `calculateFillClosedSize` and `WS_FRAME_ENRICHMENT_TIMEOUT_MS`.
+
+- [#729](https://github.com/lifinance/perps-sdk/pull/729) [`91fb97a`](https://github.com/lifinance/perps-sdk/commit/91fb97a30fddccb609385dd03ac42b55c4ee8f69) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the funding types, the required `Provider.fundingHistoryRanges` field, the `getFundingAverages` and `getFundingHistory` reads of the settled funding rates, and the `annualizeFundingRate` utility.
+
 ## 29.0.0
 
 ### Major Changes
