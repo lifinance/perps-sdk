@@ -61,6 +61,11 @@ export type LtTrade = {
   // older trade rows that predate the field.
   taker_initial_margin_fraction_before?: number
   maker_initial_margin_fraction_before?: number
+  // Realized PnL of the queried account on its side of the trade, as a
+  // decimal string: the bid side reduces a short, the ask side a long.
+  // Optional: absent on rows that carry no realized PnL for that side.
+  bid_account_pnl?: string
+  ask_account_pnl?: string
   /** Version of the resting ask order the trade matched against. */
   ask_order_version?: number
   /** Version of the resting bid order the trade matched against. */

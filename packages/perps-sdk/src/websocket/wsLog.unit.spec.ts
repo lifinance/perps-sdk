@@ -57,6 +57,20 @@ describe('wsLog', () => {
     })
   })
 
+  describe('enrichmentFailure', () => {
+    it('warns with the provider key, the read and the error', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const err = new Error('timed out')
+
+      wsLog.enrichmentFailure('ondo', 'fill leverage', err)
+
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        '[ondo:ws] fill leverage read failed; the frame emits without it',
+        err
+      )
+    })
+  })
+
   describe('marketRefreshFailure', () => {
     it('warns with the provider key and the error', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

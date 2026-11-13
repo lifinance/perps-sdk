@@ -1,3 +1,4 @@
+import { buildFill } from '@lifi/perps-sdk'
 import type { Fill, MarketDisplay } from '@lifi/perps-types'
 import { FillClassification, LiquidityRole, OrderSide } from '@lifi/perps-types'
 import type { OndoFill, OndoFillDirection } from '../types/wire.js'
@@ -18,7 +19,8 @@ const DIRECTION_CLASSIFICATIONS: Record<OndoFillDirection, FillClassification> =
  * Map a raw Ondo fill to the generic {@link Fill}. The fee is netted against
  * Ondo's `feeRebate`; when the wire `direction` is absent the classification
  * is the bare fill side. Size and price are the raw venue strings. A fill
- * with an invalid time gives `undefined`.
+ * with an invalid time gives `undefined`. A closing fill gets `closedSize`
+ * and `entryPrice`, but no `returnOnEquity`: the fill carries no leverage.
  *
  * @param market - Backend-resolved market identity for `fill.market`.
  * @public
@@ -36,24 +38,27 @@ export const mapFill = (
   if (createdAt === undefined) {
     return undefined
   }
-  return {
-    id: fill.id,
-    orderId: fill.orderId,
-    clientOrderId: fill.clientOrderId,
-    market,
-    side: fill.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-    size: fill.size,
-    price: fill.price,
-    liquidity: fill.isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
-    // Ondo charges the fill fee in the market's quote asset.
-    fee: buildFee(fill, market.quoteAsset.displaySymbol),
-    realizedPnl: fill.pnl,
-    classification:
-      fill.direction !== undefined
-        ? DIRECTION_CLASSIFICATIONS[fill.direction]
-        : fill.side === 'buy'
-          ? FillClassification.BUY
-          : FillClassification.SELL,
-    createdAt,
-  }
+  return buildFill(
+    {
+      id: fill.id,
+      orderId: fill.orderId,
+      clientOrderId: fill.clientOrderId,
+      market,
+      side: fill.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+      size: fill.size,
+      price: fill.price,
+      liquidity: fill.isMaker ? LiquidityRole.MAKER : LiquidityRole.TAKER,
+      // Ondo charges the fill fee in the market's quote asset.
+      fee: buildFee(fill, market.quoteAsset.displaySymbol),
+      realizedPnl: fill.pnl,
+      classification:
+        fill.direction !== undefined
+          ? DIRECTION_CLASSIFICATIONS[fill.direction]
+          : fill.side === 'buy'
+            ? FillClassification.BUY
+            : FillClassification.SELL,
+      createdAt,
+    },
+    undefined
+  )
 }

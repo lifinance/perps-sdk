@@ -79,7 +79,9 @@ export {
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
 export {
+  buildFill,
   calculateAverageFillPrice,
+  calculateFillClosedSize,
   classifyFillFromPosition,
   FillClassification,
 } from './math/fills.js'
@@ -385,6 +387,7 @@ export type {
 } from './websocket/types.js'
 export {
   WS_CHANNEL_TEARDOWN_LINGER_MS,
+  WS_FRAME_ENRICHMENT_TIMEOUT_MS,
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './websocket/WsProviderBase.js'

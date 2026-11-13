@@ -414,6 +414,8 @@ let balanceResult: OndoBalanceSummary
 let maxOrderSizeResponse: { body: unknown; status: number }
 /** `GET /v1/perps/leverage` response body and HTTP status. */
 let leverageResponse: { body: unknown; status: number }
+/** `GET /v1/perps/fills` result rows. */
+let fillsResult: OndoFill[]
 /** `GET /v1/perps/mark_prices` response body and HTTP status. */
 let markPricesResponse: { body: unknown; status: number }
 /** `GET /status` answer: `serverTime` is the client clock moved by `offsetMs`. */
@@ -472,6 +474,7 @@ beforeEach(() => {
   balanceResult = BALANCE_RESULT
   maxOrderSizeResponse = { body: envelope(MAX_ORDER_SIZES_RESULT), status: 200 }
   leverageResponse = { body: envelope(LEVERAGE_RESULT), status: 200 }
+  fillsResult = [FILL_RESULT]
   markPricesResponse = { body: envelope(MARK_PRICES_RESULT), status: 200 }
   statusAnswer = { offsetMs: 0, status: 200 }
   fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -530,7 +533,7 @@ beforeEach(() => {
     if (u.includes('/v1/perps/fills')) {
       return respond({
         success: true,
-        result: [FILL_RESULT],
+        result: fillsResult,
         pageInfo: { nextCursor: 'fills-cur-2' },
       })
     }
@@ -2067,6 +2070,51 @@ describe('OndoProvider — getFills', () => {
       hasMore: true,
       cursor: 'fills-cur-2',
     })
+    expect(recorded.some((r) => r.url.includes('/v1/perps/leverage'))).toBe(
+      false
+    )
+  })
+
+  const CLOSE_LONG_FILL: OndoFill = {
+    ...FILL_RESULT,
+    side: 'sell',
+    price: '205',
+    direction: 'closeLong',
+    pnl: '20',
+  }
+
+  it('gives a closing fill the ROE at the current leverage of its market', async () => {
+    fillsResult = [CLOSE_LONG_FILL, FILL_RESULT]
+    const { provider } = await loggedInProvider()
+    const fills = await provider.getFills({ address: ADDRESS, limit: 20 })
+
+    expect(fills.items[0]).toMatchObject({
+      closedSize: '4',
+      entryPrice: '200',
+      returnOnEquity: '12.5',
+    })
+    expect(fills.items[0]).not.toHaveProperty('leverage')
+    expect(fills.items[1]).not.toHaveProperty('returnOnEquity')
+    const leverageReads = recorded.filter((r) =>
+      r.url.includes('/v1/perps/leverage')
+    )
+    expect(leverageReads).toHaveLength(1)
+    expect(leverageReads[0].url).not.toContain('market=')
+  })
+
+  it('keeps a closing fill without ROE when the leverage read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    fillsResult = [CLOSE_LONG_FILL]
+    leverageResponse = {
+      body: { success: false, error: 'bad request', error_code: 'unknown' },
+      status: 400,
+    }
+    const { provider } = await loggedInProvider()
+    const fills = await provider.getFills({ address: ADDRESS, limit: 20 })
+
+    expect(fills.items[0]).toMatchObject({ closedSize: '4', entryPrice: '200' })
+    expect(fills.items[0]).not.toHaveProperty('returnOnEquity')
+    warn.mockRestore()
   })
 })
 
