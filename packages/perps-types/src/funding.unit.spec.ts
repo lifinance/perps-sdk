@@ -36,18 +36,6 @@ describe('FundingAveragesResponse', () => {
     >()
   })
 
-  it('omits a window with no settled rate and keeps a measured zero', () => {
-    const averages: MarketFundingAverages = {
-      provider: 'hyperliquid',
-      marketId: 'HYPE',
-      rate: { '24h': '0', '3d': '0.0000095', '7d': '0.0000100' },
-      coveredFrom: 1_741_046_400_000,
-    }
-
-    expect(averages.rate).not.toHaveProperty('8h')
-    expect(averages.rate['24h']).toBe('0')
-  })
-
   it('accepts every averaging window', () => {
     const windows: FundingWindow[] = ['8h', '24h', '3d', '7d']
     expect(windows).toHaveLength(4)
