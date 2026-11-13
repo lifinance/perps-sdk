@@ -5,9 +5,13 @@ import {
 } from '@lifi/perps-sdk'
 import { ActionType, PerpsErrorCode } from '@lifi/perps-types'
 import {
+  isLtGroupedOrderStep,
   LT_ROUTE_PERP,
   LT_ROUTE_SPOT,
-  LT_TX_TYPE_BY_ACTION,
+  LT_TX_TYPE_APPROVE_INTEGRATOR,
+  LT_TX_TYPE_CHANGE_PUB_KEY,
+  LT_TX_TYPE_TRANSFER,
+  resolveLtTxType,
 } from '../types/action.js'
 import { assetMarginModeInt } from '../utils/assetCollateral.js'
 import {
@@ -214,6 +218,7 @@ export class LighterSigner {
   ): Promise<LighterSignedBlob> {
     return this.signWith(
       ActionType.REGISTER_API_KEY,
+      LT_TX_TYPE_CHANGE_PUB_KEY,
       context,
       skipNonce,
       (wasm) =>
@@ -279,25 +284,35 @@ export class LighterSigner {
     const nonce = numberField(p, 'nonce')
     if (action === ActionType.TRANSFER) {
       const args = this.transferArgs(p)
-      return this.signWith(action, context, false, (wasm) =>
-        wasm._signTransfer(
+      return this.signWith(
+        action,
+        LT_TX_TYPE_TRANSFER,
+        context,
+        false,
+        (wasm) =>
+          wasm._signTransfer(
+            context.accountIndex,
+            l1Signature,
+            nonce,
+            context.apiKeyIndex,
+            ...args
+          )
+      )
+    }
+    const args = approveIntegratorArgs(p)
+    return this.signWith(
+      action,
+      LT_TX_TYPE_APPROVE_INTEGRATOR,
+      context,
+      false,
+      (wasm) =>
+        wasm._signApproveIntegrator(
           context.accountIndex,
           l1Signature,
           nonce,
           context.apiKeyIndex,
           ...args
         )
-      )
-    }
-    const args = approveIntegratorArgs(p)
-    return this.signWith(action, context, false, (wasm) =>
-      wasm._signApproveIntegrator(
-        context.accountIndex,
-        l1Signature,
-        nonce,
-        context.apiKeyIndex,
-        ...args
-      )
     )
   }
 
@@ -325,6 +340,7 @@ export class LighterSigner {
     }
     return this.signWith(
       action,
+      resolveLtTxType(action, wasmSignParams),
       context,
       false,
       this.dispatch(action, wasmSignParams, context)
@@ -368,17 +384,11 @@ export class LighterSigner {
 
   private async signWith(
     action: ActionType,
+    txType: number,
     context: LighterSignerContext,
     skipNonce: boolean,
     call: LighterWasmCall<LighterWasmTx>
   ): Promise<LighterSignedBlob> {
-    const txType = LT_TX_TYPE_BY_ACTION[action]
-    if (txType === undefined) {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
-        `Lighter WASM signer does not support action: ${action}`
-      )
-    }
     const wasm = await this.ensureLoaded()
     return this.exclusive(wasm, async () => {
       await this.ensureClient(wasm, context, skipNonce)
@@ -442,34 +452,25 @@ export class LighterSigner {
       case ActionType.PLACE_ORDER:
       case ActionType.PLACE_TRIGGER_ORDER:
       case ActionType.PLACE_TWAP_ORDER: {
+        if (isLtGroupedOrderStep(action, p)) {
+          const orders = orderListField(p, 'orders')
+          const args: Parameters<
+            LighterWasmExports['_signCreateGroupedOrders']
+          > = [
+            ctx.accountIndex,
+            numberField(p, 'grouping_type'),
+            orders.length,
+            ...orders.flatMap(createOrderArgs),
+            nonce,
+            ...integratorArgs(p),
+          ]
+          return (wasm) => wasm._signCreateGroupedOrders(...args)
+        }
         const args: Parameters<LighterWasmExports['_signCreateOrder']> = [
           ctx.accountIndex,
-          numberField(p, 'market_index'),
-          numberField(p, 'client_order_index'),
-          int64StringField(p, 'base_amount'),
-          int64StringField(p, 'price'),
-          numberField(p, 'is_ask'),
-          numberField(p, 'order_type'),
-          numberField(p, 'time_in_force'),
-          numberField(p, 'reduce_only'),
-          int64StringField(p, 'trigger_price'),
-          numberField(p, 'order_expiry'),
+          ...createOrderArgs(p),
           nonce,
-          optionalNumberField(
-            p,
-            'integrator_account_index',
-            NIL_INTEGRATOR_INDEX
-          ),
-          optionalNumberField(
-            p,
-            'integrator_taker_fee',
-            NIL_INTEGRATOR_TAKER_FEE
-          ),
-          optionalNumberField(
-            p,
-            'integrator_maker_fee',
-            NIL_INTEGRATOR_MAKER_FEE
-          ),
+          ...integratorArgs(p),
         ]
         return (wasm) => wasm._signCreateOrder(...args)
       }
@@ -647,6 +648,63 @@ function approveIntegratorArgs(
     numberField(p, 'max_spot_maker_fee'),
     numberField(p, 'approval_expiry'),
   ]
+}
+
+/** The ten values `_signCreateOrder` and `_signCreateGroupedOrders` read for one order. */
+type CreateOrderArgs = [
+  marketIndex: number,
+  clientOrderIndex: number,
+  baseAmount: string,
+  price: string,
+  isAsk: number,
+  orderType: number,
+  timeInForce: number,
+  reduceOnly: number,
+  triggerPrice: string,
+  orderExpiry: number,
+]
+
+function createOrderArgs(p: Record<string, unknown>): CreateOrderArgs {
+  return [
+    numberField(p, 'market_index'),
+    numberField(p, 'client_order_index'),
+    int64StringField(p, 'base_amount'),
+    int64StringField(p, 'price'),
+    numberField(p, 'is_ask'),
+    numberField(p, 'order_type'),
+    numberField(p, 'time_in_force'),
+    numberField(p, 'reduce_only'),
+    int64StringField(p, 'trigger_price'),
+    numberField(p, 'order_expiry'),
+  ]
+}
+
+function integratorArgs(p: Record<string, unknown>): [number, number, number] {
+  return [
+    optionalNumberField(p, 'integrator_account_index', NIL_INTEGRATOR_INDEX),
+    optionalNumberField(p, 'integrator_taker_fee', NIL_INTEGRATOR_TAKER_FEE),
+    optionalNumberField(p, 'integrator_maker_fee', NIL_INTEGRATOR_MAKER_FEE),
+  ]
+}
+
+function orderListField(
+  p: Record<string, unknown>,
+  key: string
+): Record<string, unknown>[] {
+  const v = p[key]
+  if (
+    Array.isArray(v) &&
+    v.every(
+      (order): order is Record<string, unknown> =>
+        typeof order === 'object' && order !== null
+    )
+  ) {
+    return v
+  }
+  throw new PerpsError(
+    PerpsErrorCode.ValidationError,
+    `Lighter sign params field '${key}' is not a list of order objects`
+  )
 }
 
 function numberField(p: Record<string, unknown>, key: string): number {

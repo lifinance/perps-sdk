@@ -4,13 +4,18 @@ import {
   FillClassification,
   OrderSide,
 } from '@lifi/perps-types'
-import Big from 'big.js'
 import {
+  addDecimalString,
   addDecimalStrings,
   divideDecimalString,
   multiplyDecimalString,
+  subtractDecimalString,
 } from '../decimal/arithmetic.js'
-import { isDecimalStringGreaterThan } from '../decimal/compare.js'
+import {
+  compareDecimalStrings,
+  isDecimalStringGreaterThan,
+  isDecimalStringZero,
+} from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 
 /**
@@ -41,36 +46,37 @@ export function classifyFillFromPosition(
       ? FillClassification.BUY
       : FillClassification.SELL
   }
-  const start = new Big(startPosition)
-  const size = new Big(sz)
-  const end = side === OrderSide.BUY ? start.plus(size) : start.minus(size)
+  const end =
+    side === OrderSide.BUY
+      ? addDecimalString(startPosition, sz)
+      : subtractDecimalString(startPosition, sz)
 
-  if (start.eq(0)) {
-    return end.gt(0)
+  if (isDecimalStringZero(startPosition)) {
+    return isDecimalStringGreaterThan(end, '0')
       ? FillClassification.OPENED_LONG
       : FillClassification.OPENED_SHORT
   }
 
-  if (start.gt(0)) {
-    if (end.eq(0)) {
+  if (isDecimalStringGreaterThan(startPosition, '0')) {
+    if (isDecimalStringZero(end)) {
       return FillClassification.CLOSED_LONG
     }
-    if (end.lt(0)) {
+    if (compareDecimalStrings(end, '0') < 0) {
       return FillClassification.SWITCHED_SHORT
     }
-    if (end.gt(start)) {
+    if (isDecimalStringGreaterThan(end, startPosition)) {
       return FillClassification.INCREASED_LONG
     }
     return FillClassification.REDUCED_LONG
   }
 
-  if (end.eq(0)) {
+  if (isDecimalStringZero(end)) {
     return FillClassification.CLOSED_SHORT
   }
-  if (end.gt(0)) {
+  if (isDecimalStringGreaterThan(end, '0')) {
     return FillClassification.SWITCHED_LONG
   }
-  if (end.lt(start)) {
+  if (compareDecimalStrings(end, startPosition) < 0) {
     return FillClassification.INCREASED_SHORT
   }
   return FillClassification.REDUCED_SHORT

@@ -24,6 +24,7 @@ const WASM_FUNCTION_NAMES = [
   '_signApproveIntegrator',
   '_signUpdateAccountConfig',
   '_signUpdateAccountAssetConfig',
+  '_signCreateGroupedOrders',
 ] as const
 
 const packageRoot = join(import.meta.dirname, '..', '..')
