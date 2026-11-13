@@ -5,7 +5,11 @@ import {
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
 } from '../constants.js'
-import { LT_ASSET_ID_USDC, LT_TX_TYPE_BY_ACTION } from '../types/action.js'
+import {
+  LT_ASSET_ID_USDC,
+  LT_TX_TYPE_BY_ACTION,
+  type LtCreateOrderWasmParams,
+} from '../types/action.js'
 import {
   createSignerSeed,
   LighterSigner,
@@ -166,21 +170,24 @@ describe('LighterSigner', () => {
     expect(signed.txInfo).toContain('"Index":1152921504606846975,')
   })
 
+  const PLACE_ORDER_DECIMAL_STRING_PARAMS: LtCreateOrderWasmParams = {
+    market_index: 0,
+    client_order_index: 1,
+    base_amount: '1000',
+    price: '10000',
+    is_ask: 0,
+    order_type: 0,
+    time_in_force: 1,
+    reduce_only: false,
+    trigger_price: '0',
+    order_expiry: -1,
+    integrator_account_index: 0,
+    integrator_taker_fee: 0,
+    integrator_maker_fee: 0,
+  }
+
   it.each([
-    [
-      ActionType.PLACE_ORDER,
-      {
-        client_order_index: 1,
-        base_amount: '1000',
-        price: '10000',
-        is_ask: 0,
-        order_type: 0,
-        time_in_force: 1,
-        reduce_only: false,
-        trigger_price: '0',
-        order_expiry: -1,
-      },
-    ],
+    [ActionType.PLACE_ORDER, PLACE_ORDER_DECIMAL_STRING_PARAMS],
     [ActionType.CANCEL_ORDER, { order_index: '1152921504606846975' }],
     [
       ActionType.MODIFY_ORDER,

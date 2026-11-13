@@ -12,13 +12,16 @@ import { ActionType } from '@lifi/perps-types'
 export type LtCreateOrderWasmParams = {
   market_index: number
   client_order_index: number
-  base_amount: number
-  price: number
+  /** An int64 decimal string, or a number while it is a safe integer. */
+  base_amount: string | number
+  /** An int64 decimal string, or a number while it is a safe integer. */
+  price: string | number
   is_ask: number
   order_type: number
   time_in_force: number
   reduce_only: boolean
-  trigger_price: number
+  /** An int64 decimal string, or a number while it is a safe integer. */
+  trigger_price: string | number
   order_expiry: number
   integrator_account_index: number
   integrator_taker_fee: number
