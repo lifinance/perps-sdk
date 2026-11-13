@@ -28,6 +28,23 @@ export function isAbortError(error: unknown): boolean {
 }
 
 /**
+ * True when `error` is a caller cancellation of a request that `signal`
+ * controls: an {@link isAbortError} rejection, or the abort reason of `signal`,
+ * such as a custom `Error` or the `TimeoutError` of `AbortSignal.timeout()`.
+ * A different rejection stays a failure, also when `signal` aborts later.
+ *
+ * @public
+ */
+export function isAbortRejection(
+  error: unknown,
+  signal: AbortSignal | undefined
+): boolean {
+  return (
+    isAbortError(error) || (signal?.aborted === true && error === signal.reason)
+  )
+}
+
+/**
  * Wrap `fetch` with policy-driven retry. Honors `Retry-After` (when present
  * and `respectRetryAfter` is true), otherwise falls back to exponential
  * backoff with full jitter, capped by `maxDelayMs`. Network errors (thrown
@@ -57,7 +74,7 @@ export async function fetchWithRetry(
     try {
       response = await fetchImpl(input, mergedInit)
     } catch (error) {
-      if (isAbortError(error)) {
+      if (isAbortRejection(error, signal)) {
         throw error
       }
       networkError = error
