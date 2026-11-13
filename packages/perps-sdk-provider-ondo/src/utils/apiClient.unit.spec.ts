@@ -606,4 +606,60 @@ describe('OndoApiClient', () => {
     ).rejects.toBeInstanceOf(OndoApiError)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
+
+  describe('an abort reason', () => {
+    const abortReasons = [
+      ['an Error', () => new Error('user cancelled')],
+      [
+        'a TimeoutError',
+        () => new DOMException('signal timed out', 'TimeoutError'),
+      ],
+    ] as const
+
+    const calls: [string, (client: OndoApiClient) => Promise<unknown>][] = [
+      ['get', (client) => client.get('/v1/perps/positions')],
+      ['post', (client) => client.post('/v1/perps/orders', {})],
+    ]
+
+    const cases = calls.flatMap(([method, call]) =>
+      abortReasons.map(
+        ([reasonName, createReason]) =>
+          [method, reasonName, call, createReason] as const
+      )
+    )
+
+    it.each(
+      cases
+    )('%s rejects with %s abort reason before the fetch', async (_method, _reasonName, call, createReason) => {
+      const reason = createReason()
+      const controller = new AbortController()
+      controller.abort(reason)
+      const fetchImpl = vi.fn<typeof fetch>()
+      const client = new OndoApiClient(BASE_URL, {
+        fetchImpl,
+        signal: controller.signal,
+      })
+
+      await expect(call(client)).rejects.toBe(reason)
+      expect(fetchImpl).not.toHaveBeenCalled()
+    })
+
+    it.each(
+      cases
+    )('%s rejects with %s abort reason during the fetch', async (_method, _reasonName, call, createReason) => {
+      const reason = createReason()
+      const controller = new AbortController()
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        controller.abort(reason)
+        throw reason
+      })
+      const client = new OndoApiClient(BASE_URL, {
+        fetchImpl,
+        signal: controller.signal,
+      })
+
+      await expect(call(client)).rejects.toBe(reason)
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
+  })
 })

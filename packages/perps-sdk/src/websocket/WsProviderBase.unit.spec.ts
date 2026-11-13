@@ -1,12 +1,14 @@
-import type {
-  MarketContext,
-  MarketsContextEvent,
-  MarketsContextSubscription,
-  Subscription,
-  SubscriptionEvent,
-  TradesSubscription,
+import {
+  type MarketContext,
+  type MarketsContextEvent,
+  type MarketsContextSubscription,
+  PerpsErrorCode,
+  type Subscription,
+  type SubscriptionEvent,
+  type TradesSubscription,
 } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PerpsError } from '../errors/PerpsError.js'
 import type {
   ProviderGetQuoteParams,
   QuoteListener,
@@ -1111,5 +1113,295 @@ describe('WsProviderBase — resubscribe replay races a concurrent subscribe', (
     const ids = idsSent(p)
     expect(ids).toContain('a')
     expect(ids).not.toContain('b')
+  })
+})
+
+describe('WsProviderBase — replay credential failure', () => {
+  const TRADES = {
+    channel: 'trades',
+    dex: 'test',
+    marketId: 'BTC',
+  } satisfies TradesSubscription
+
+  /** Register one wire per channel key, with a teardown that unregisters it. */
+  const openPerChannel = (p: TestProvider, teardown = vi.fn()) => {
+    p.openImpl = async (sub) => {
+      await p.register(sub.channel, { id: sub.channel })
+      return () => {
+        p.unregister(sub.channel)
+        teardown(sub.channel)
+      }
+    }
+    return teardown
+  }
+
+  /** Make every replay send of `id` throw `error`. */
+  const failSendOf = (p: TestProvider, id: string, error: unknown) => {
+    p.sendSubscribeSpy.mockImplementation(async (state: { id: string }) => {
+      if (state.id === id) {
+        throw error
+      }
+    })
+  }
+
+  const reopen = async (rws: MockRws) => {
+    rws.simulateStatus('reconnecting')
+    rws.simulateOpen()
+    await flushAsync()
+  }
+
+  it.each([
+    PerpsErrorCode.SetupRequired,
+    PerpsErrorCode.Unauthorized,
+  ])('delivers a replay failure with code %s to the error listener, drops the wire, and keeps the sibling', async (code) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    const teardown = openPerChannel(p)
+    const data = vi.fn()
+    const onError = vi.fn()
+    const publicError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, onError)
+    await p.subscribe(TRADES, vi.fn(), undefined, publicError)
+    const error = new PerpsError(code, 'credential missing')
+    error.tool = 'test'
+    failSendOf(p, 'marketsContext', error)
+    p.sendSubscribeSpy.mockClear()
+
+    await reopen(rws)
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith(error)
+    expect(publicError).not.toHaveBeenCalled()
+    expect(teardown).toHaveBeenCalledExactlyOnceWith('marketsContext')
+    expect(p.sendSubscribeSpy).toHaveBeenCalledWith({ id: 'trades' })
+    expect(log).not.toHaveBeenCalled()
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(data).not.toHaveBeenCalled()
+
+    p.sendSubscribeSpy.mockClear()
+    await reopen(rws)
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(2)
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalledWith({
+      id: 'marketsContext',
+    })
+    expect(onError).toHaveBeenCalledTimes(1)
+    log.mockRestore()
+  })
+
+  it.each([
+    new Error('socket closed'),
+    new PerpsError(PerpsErrorCode.ThirdPartyError, 'venue busy'),
+  ])('logs a transient replay failure %o, keeps the wire registered, and sends no callback', async (error) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    const teardown = openPerChannel(p)
+    const onError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    failSendOf(p, 'marketsContext', error)
+
+    await reopen(rws)
+    expect(onError).not.toHaveBeenCalled()
+    expect(teardown).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("'marketsContext'"),
+      error
+    )
+
+    p.sendSubscribeSpy.mockReset()
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledExactlyOnceWith({
+      id: 'marketsContext',
+    })
+    log.mockRestore()
+  })
+
+  it('keeps the sibling replay when the error listener throws', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    openPerChannel(p)
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, () => {
+      throw new Error('consumer failed')
+    })
+    const siblingError = vi.fn()
+    await p.subscribe(TRADES, vi.fn(), undefined, siblingError)
+    failSendOf(
+      p,
+      'marketsContext',
+      new PerpsError(PerpsErrorCode.SetupRequired, 'credential missing')
+    )
+    p.sendSubscribeSpy.mockClear()
+
+    await reopen(rws)
+
+    expect(p.sendSubscribeSpy).toHaveBeenCalledWith({ id: 'trades' })
+    expect(siblingError).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('subscription-error:marketsContext'),
+      expect.any(Error)
+    )
+    log.mockRestore()
+  })
+
+  it('rejects every channel the hook names for a shared wire', async () => {
+    class SharedWireProvider extends TestProvider {
+      protected override resolveChannelKeys(key: string): string[] {
+        return key === 'shared' ? ['marketsContext', 'trades'] : [key]
+      }
+    }
+    const rws = new MockRws()
+    const p = new SharedWireProvider(rws)
+    let registered = false
+    p.openImpl = async () => {
+      if (!registered) {
+        registered = true
+        await p.register('shared', { id: 'shared' })
+      }
+      return vi.fn<() => void>()
+    }
+    const errors = [vi.fn(), vi.fn()]
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, errors[0])
+    await p.subscribe(TRADES, vi.fn(), undefined, errors[1])
+    const error = new PerpsError(PerpsErrorCode.Unauthorized, 'rejected')
+    failSendOf(p, 'shared', error)
+
+    await reopen(rws)
+
+    expect(errors[0]).toHaveBeenCalledExactlyOnceWith(error)
+    expect(errors[1]).toHaveBeenCalledExactlyOnceWith(error)
+    p.sendSubscribeSpy.mockClear()
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
+  it('sends no late callback to a listener released during the replay and does not restore it', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    const teardown = openPerChannel(p)
+    const onError = vi.fn()
+    const release = await p.subscribe(
+      MARKETS_CONTEXT,
+      vi.fn(),
+      undefined,
+      onError
+    )
+    let rejectSend!: (error: unknown) => void
+    p.sendSubscribeSpy.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSend = reject
+        })
+    )
+    await reopen(rws)
+
+    release()
+    rejectSend(
+      new PerpsError(PerpsErrorCode.SetupRequired, 'credential missing')
+    )
+    await flushAsync()
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(teardown).toHaveBeenCalledTimes(1)
+    p.sendSubscribeSpy.mockReset()
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
+  it('sends no late callback when the client closes during the replay', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    openPerChannel(p)
+    const onError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    let rejectSend!: (error: unknown) => void
+    p.sendSubscribeSpy.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSend = reject
+        })
+    )
+    await reopen(rws)
+
+    p.close()
+    rejectSend(new PerpsError(PerpsErrorCode.Unauthorized, 'rejected'))
+    await flushAsync()
+
+    expect(onError).not.toHaveBeenCalled()
+    p.sendSubscribeSpy.mockReset()
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+    log.mockRestore()
+  })
+
+  it('does not reject a replacement channel when the old send fails after its wire was replaced', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    openPerChannel(p)
+    const release = await p.subscribe(MARKETS_CONTEXT, vi.fn())
+    let rejectSend!: (error: unknown) => void
+    p.sendSubscribeSpy.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSend = reject
+        })
+    )
+    await reopen(rws)
+
+    release()
+    expect(p.expireIdle('marketsContext')).toBe(true)
+    const data = vi.fn()
+    const onError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, onError)
+    rejectSend(new PerpsError(PerpsErrorCode.SetupRequired, 'stale credential'))
+    await flushAsync()
+
+    expect(onError).not.toHaveBeenCalled()
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(data).toHaveBeenCalledTimes(1)
+    p.sendSubscribeSpy.mockClear()
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledExactlyOnceWith({
+      id: 'marketsContext',
+    })
+    log.mockRestore()
+  })
+
+  it('lets a new subscribe after the failure register and stream again', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    openPerChannel(p)
+    let credential: string | undefined = 'token-1'
+    p.sendSubscribeSpy.mockImplementation(async (state: { id: string }) => {
+      if (state.id === 'marketsContext' && credential === undefined) {
+        throw new PerpsError(PerpsErrorCode.SetupRequired, 'credential missing')
+      }
+    })
+    const onError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, vi.fn(), undefined, onError)
+    credential = undefined
+    await reopen(rws)
+    expect(onError).toHaveBeenCalledTimes(1)
+
+    credential = 'token-2'
+    p.sendSubscribeSpy.mockClear()
+    const data = vi.fn()
+    const restoredError = vi.fn()
+    await p.subscribe(MARKETS_CONTEXT, data, undefined, restoredError)
+
+    expect(p.openCount).toBe(2)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledExactlyOnceWith({
+      id: 'marketsContext',
+    })
+    p.deliver('marketsContext', marketsContextEvent)
+    expect(data).toHaveBeenCalledTimes(1)
+    await reopen(rws)
+    expect(p.sendSubscribeSpy).toHaveBeenCalledTimes(2)
+    expect(restoredError).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledTimes(1)
   })
 })

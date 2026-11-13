@@ -94,7 +94,7 @@ const entryPriceBefore = (
  * portion realizes exactly zero — mirroring the Hyperliquid mapper's
  * `null`-for-zero convention.
  */
-const deriveRealizedPnl = (
+const calculateFillRealizedPnl = (
   closedSize: string | undefined,
   entryPrice: string | undefined,
   fillPrice: string,
@@ -194,7 +194,7 @@ export const mapFill = (
   // The venue figure wins and keeps the mapper's `null`-for-zero convention.
   const realizedPnl =
     venuePnl === undefined
-      ? deriveRealizedPnl(
+      ? calculateFillRealizedPnl(
           calculateFillClosedSize({ size, startPosition, classification }),
           entryPrice,
           price,

@@ -111,6 +111,31 @@ successful observation of the source, not the last poll attempt.
 The SDK returns the notices as the backend serves them. It does not filter
 them by visibility, scope, or acknowledgement. The caller does that work.
 
+## Funding averages and history
+
+`getFundingAverages(client, { provider, marketIds? })` returns the settled
+funding averages of each market for the windows `8h`, `24h`, `3d`, and `7d`.
+`getFundingHistory(client, { provider, marketId, range })` returns the
+settled funding history of one market, oldest point first. Pick `range` from
+`Provider.fundingHistoryRanges`.
+
+- Each rate is a signed fraction for one hour, the unit of
+  `MarketContext.funding.rate`. A positive rate means that the long pays.
+- An average does not include the open hour. The live rate of the open hour
+  stays in `MarketContext.funding`.
+- `coveredFrom` is the first settled funding. A window that starts before it
+  covers only the time from `coveredFrom`.
+- The backend returns no point for a bucket with no settled rate, so the
+  history can have gaps.
+
+The backend calculates all values. The SDK returns them unchanged and keeps
+no cache. The HTTP cache follows the backend `Cache-Control` header.
+
+`annualizeFundingRate(rate, ratePeriodSeconds)` gives the simple APR of a
+rate as a signed fraction: `rate × (365 × 24 × 60 × 60 ÷ ratePeriodSeconds)`.
+It does not compound. Use `Provider.funding.ratePeriodSeconds` for the live
+rate and for the settled rates, because they have the same unit.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
@@ -542,7 +567,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
 | Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
-| Formulas   | every `calculate*`, `estimate*`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`                                  |
+| Formulas   | every `calculate*`, `estimate*`, `annualizeFundingRate`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`         |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |
 
 `format*` is display only. It formats with `big.js`, shows a string that does
@@ -581,6 +606,7 @@ One verb names one kind of transformation.
 | `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
 | `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
 | `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `remarkPosition`                         |
+| `annualize<X>`              | rate for one period → simple rate for one year     | throws; `safe` form               | `annualizeFundingRate`                                     |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or
 `convert` verb, or a bare noun as its name. The boundary spec checks every
@@ -626,6 +652,25 @@ rejected private subscriptions and removes their wires from reconnect replay.
 Public subscriptions remain active. A network reconnect does not restore the
 rejected subscriptions.
 
+A reconnect sends each registered wire subscription again. A replay send that
+throws `SetupRequired` or `Unauthorized` delivers that error, with its code,
+to the `onError` listeners of each affected subscription. The provider removes
+the wire from replay and tears the channel down. The subscribe promise
+resolved earlier, so `onError` is the only delivery path at this stage.
+Lighter reads its credential on each send, so a deleted or expired read token
+produces `SetupRequired` at the replay. Ondo reads its session again after
+each socket close, so a removed or expired session produces `SetupRequired`
+at the replay. A failure on one account or channel does not stop the replay
+of other accounts or public channels. A replay that fails after `unsubscribe`
+or `close` delivers no callback.
+
+Any other replay failure, for example a closed socket, keeps the wire
+registered and logs the failure. The next socket open sends the wire again.
+
+The consumer owns the recovery. The SDK does not retry a subscription after a
+credential failure, and it does not read a new credential for the stopped
+subscription.
+
 After successful credential recovery, refresh account access and call
 `subscribe` again. The new subscription obtains the current credential.
 It does not restore the old listeners. Ondo removes only the rejected session.
@@ -638,8 +683,12 @@ protected `rejectChannel(key, error)`. The call invokes the channel teardown,
 delivers `error` to each registered `onError` listener once, and drops the
 channel without a change to the transport status. The subclass removes the
 rejected wire from the protected `wireSubs` registry, or calls
-`unregisterSub(key)`, before the teardown runs. The Lighter and Ondo provider
-READMEs describe each venue rejection frame and recovery path.
+`unregisterSub(key)`, before the teardown runs. A subclass whose registry
+keys differ from its channel keys overrides the protected
+`resolveChannelKeys(key, state)`. It returns the channel keys that a
+credential failure on that wire stops. The default returns the wire key.
+The Lighter and Ondo provider READMEs describe each venue rejection frame and
+recovery path.
 
 ### Venue rejection evidence
 

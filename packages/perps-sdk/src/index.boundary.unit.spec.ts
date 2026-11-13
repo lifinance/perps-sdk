@@ -308,6 +308,7 @@ const LIQUIDATION_INPUT = {
 
 /** One sample call per display-tier formula, keyed by its public name. */
 const MATH_SAMPLES: Record<string, readonly unknown[]> = {
+  annualizeFundingRate: ['0.0000125', 3600],
   calculateAverageFillPrice: [[{ size: '0.1', price: '725.66' }]],
   calculateEffectiveLeverage: [
     { positionValueUsd: '10000', marginUsd: '1000' },
@@ -383,7 +384,7 @@ const DECIMAL_STRING_FIELDS: Record<string, readonly string[]> = {
   calculateOrderbookWalk: ['baseSize', 'filledNotional', 'vwap'],
 }
 
-const DISPLAY_VERB = /^(calculate|estimate)/
+const DISPLAY_VERB = /^(calculate|estimate|annualize)/
 
 const mathFormulaExports = (): string[] =>
   entryExports
@@ -393,7 +394,7 @@ const mathFormulaExports = (): string[] =>
     .sort()
 
 describe('display-tier formulas give back DecimalStrings', () => {
-  it('samples every calculate/estimate export under math/', () => {
+  it('samples every calculate/estimate/annualize export under math/', () => {
     expect(mathFormulaExports()).toEqual(Object.keys(MATH_SAMPLES).sort())
   })
 
@@ -627,7 +628,7 @@ const REPRESENTATIONS = ['decimalString', 'number', 'scaledInteger', 'unknown']
 const capitalise = (token: string): string =>
   token.charAt(0).toUpperCase() + token.slice(1)
 const VOCABULARY = new RegExp(
-  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round|classify|remark)(?:[A-Z]|$)' +
+  '^(?:(?:parse|format|snap|calculate|estimate|resolve|validate|is|would|has|build|aggregate|add|subtract|multiply|divide|abs|compare|round|classify|remark|annualize)(?:[A-Z]|$)' +
     `|(?:${REPRESENTATIONS.join('|')})To(?:${REPRESENTATIONS.map(capitalise).join('|')})$)`
 )
 const BANNED_VERB = /^(derive|predict|convert)/
@@ -653,6 +654,10 @@ describe('the vocabulary pattern', () => {
 
   it('admits the domain verb remark', () => {
     expect(VOCABULARY.test('remarkPosition')).toBe(true)
+  })
+
+  it('admits the domain verb annualize', () => {
+    expect(VOCABULARY.test('annualizeFundingRate')).toBe(true)
   })
 
   it.each([

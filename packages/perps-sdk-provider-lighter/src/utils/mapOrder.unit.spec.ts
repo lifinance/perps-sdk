@@ -113,6 +113,34 @@ describe('mapOrder (Lighter)', () => {
     ).not.toHaveProperty('parentOrderId')
   })
 
+  it('maps a grouped child with a zero initial size as PENDING under its parent', () => {
+    const child = mapOrder(
+      baseOrder({
+        order_index: 43,
+        order_id: '43',
+        type: 'take-profit',
+        initial_base_amount: '0',
+        remaining_base_amount: '0',
+        trigger_price: '2100',
+        reduce_only: true,
+        trigger_status: 'parent-order',
+        parent_order_index: 42,
+        parent_order_id: '42',
+      }),
+      MARKET
+    )
+    expect(child).toMatchObject({
+      orderId: '43',
+      type: OrderType.TAKE_PROFIT_MARKET,
+      status: OrderStatus.PENDING,
+      parentOrderId: '42',
+      originalSize: '0',
+      remainingSize: '0',
+      filledSize: '0',
+    })
+    expect(child).not.toHaveProperty('averagePrice')
+  })
+
   it.each([
     [
       'take-profit',
@@ -497,6 +525,8 @@ describe('mapOrderUpdates (Lighter)', () => {
           order_index: 3,
           order_id: '3',
           type: 'take-profit',
+          initial_base_amount: '0',
+          remaining_base_amount: '0',
           trigger_status: 'parent-order',
           parent_order_id: '1',
         }),
@@ -504,11 +534,16 @@ describe('mapOrderUpdates (Lighter)', () => {
       () => MARKET
     )
     expect(
-      result.orders.map(({ orderId, status }) => [orderId, status])
+      result.orders.map(({ orderId, status, parentOrderId, originalSize }) => [
+        orderId,
+        status,
+        parentOrderId,
+        originalSize,
+      ])
     ).toEqual([
-      ['1', OrderStatus.OPEN],
-      ['2', OrderStatus.FILLED],
-      ['3', OrderStatus.PENDING],
+      ['1', OrderStatus.OPEN, undefined, '1'],
+      ['2', OrderStatus.FILLED, undefined, '1'],
+      ['3', OrderStatus.PENDING, '1', '0'],
     ])
     expect(result.terminated).toEqual(['2'])
   })
