@@ -15,8 +15,11 @@ export type FundingHistoryRange = '7d' | '30d' | '90d'
 export interface MarketFundingAverages {
   provider: ProviderId
   marketId: string
-  /** Average settled funding rate of each window, as a fraction for one hour (the unit of `MarketContext.funding.rate`). Positive: the long pays. */
-  rate: Record<FundingWindow, DecimalString>
+  /**
+   * Average settled funding rate of each window, as a fraction for one hour (the unit of `MarketContext.funding.rate`). Positive: the long pays.
+   * A window with no settled rate has no key. A measured zero rate is a decimal string, for example `'0'`.
+   */
+  rate: Partial<Record<FundingWindow, DecimalString>>
   /** First settled funding, in Unix ms. A window that starts before it covers only the time from here. */
   coveredFrom: number
 }

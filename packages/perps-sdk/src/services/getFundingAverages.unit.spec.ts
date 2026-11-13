@@ -1,5 +1,6 @@
+import type { DecimalString, FundingAveragesResponse } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { mockFundingAverages, server } from '../../test/handlers.js'
 import {
   createPerpsClient,
@@ -29,6 +30,45 @@ describe('getFundingAverages', () => {
     expect(marketIds).toBeNull()
     expect(result).toEqual(mockFundingAverages)
     expect(result.averages[1].rate['8h']).toBe('-0.0000040')
+  })
+
+  it('keeps the available rates, omits an empty window, and keeps a measured zero', async () => {
+    const response: FundingAveragesResponse = {
+      averages: [
+        {
+          provider: 'hyperliquid',
+          marketId: 'HYPE',
+          rate: { '24h': '0.0000110', '3d': '0.0000095', '7d': '0.0000100' },
+          coveredFrom: 1_700_000_000_000,
+        },
+        {
+          provider: 'hyperliquid',
+          marketId: 'SOL',
+          rate: {
+            '8h': '0',
+            '24h': '0.0000020',
+            '3d': '0.0000050',
+            '7d': '0.0000075',
+          },
+          coveredFrom: 1_700_000_000_000,
+        },
+      ],
+    }
+    server.use(
+      http.get(`${DEFAULT_API_URL}/fundingAverages`, () =>
+        HttpResponse.json(response)
+      )
+    )
+
+    const result = await getFundingAverages(client, { provider: 'hyperliquid' })
+    const [withoutRecentRate, withZeroRate] = result.averages
+
+    expect(result).toStrictEqual(response)
+    expect(withoutRecentRate.rate).not.toHaveProperty('8h')
+    expect(withZeroRate.rate['8h']).toBe('0')
+    expectTypeOf(withoutRecentRate.rate['8h']).toEqualTypeOf<
+      DecimalString | undefined
+    >()
   })
 
   it('joins marketIds into a comma-separated query param', async () => {
