@@ -34,12 +34,13 @@
     "check:circular-deps": "pnpm -r --parallel --filter './packages/**' check:circular-deps",
     "test": "pnpm -r --parallel --filter './packages/**' test",
     "test:affected": "pnpm -r --parallel --filter './packages/**' test:affected",
+    "test:changed": "pnpm -r --workspace-concurrency=1 --filter './packages/**' test:changed",
     "test:cov": "pnpm -r --parallel --filter './packages/**' test:cov",
     "test:unit": "pnpm -r --parallel --filter './packages/**' test:unit",
     "knip:check": "knip --dependencies --files --no-config-hints --exclude binaries",
     "knip:write": "pnpm knip:check --fix",
     "pre-commit": "pnpm check && pnpm check:types && pnpm check:types:spec && pnpm check:circular-deps && pnpm knip:check",
-    "pre-push": "pnpm -r --workspace-concurrency=1 --filter './packages/**' test:unit",
+    "pre-push": "pnpm test:changed",
     "prepare": "husky"
   },
   "devDependencies": {

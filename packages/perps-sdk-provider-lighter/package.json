@@ -57,6 +57,7 @@
     "check:circular-deps": "madge --circular $(find ./src -name '*.ts' -not -name '*.unit.spec.ts')",
     "test": "vitest --run",
     "test:affected": "vitest run --since-last-run",
+    "test:changed": "vitest run --changed origin/main .unit.spec.ts --passWithNoTests",
     "test:cov": "vitest --run --coverage",
     "test:unit": "vitest --run .unit.spec.ts --passWithNoTests",
     "test:consumers": "pnpm node --experimental-vm-modules ./scripts/verify-consumer-bundlers.mjs"
