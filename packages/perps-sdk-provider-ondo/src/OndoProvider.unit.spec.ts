@@ -106,6 +106,7 @@ const ACCOUNT_PROVIDER_METADATA: Provider = {
   setup: [],
   actions: [],
   supportedIntervals: [],
+  fundingHistoryRanges: [],
   categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
 }
 
@@ -3559,6 +3560,7 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     actions: [],
     categories: [{ id: 'ondo', quoteAsset: ONDO_COLLATERAL_ASSET }],
     supportedIntervals: [],
+    fundingHistoryRanges: [],
   }
 
   // Serves the LI.FI backend hops inline so `/executeAction` is observable,
