@@ -106,6 +106,7 @@ export const HYPERLIQUID_PROVIDER: Provider = {
   actions: [],
   categories: [],
   supportedIntervals: [],
+  fundingHistoryRanges: [],
   withdrawalFeeUsd: '1',
 }
 
