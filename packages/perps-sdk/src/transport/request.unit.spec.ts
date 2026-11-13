@@ -367,6 +367,97 @@ describe('request — error rehydration', () => {
   })
 })
 
+describe('request — body read failure', () => {
+  const failedBodyFetch =
+    (status: number, reason: unknown): typeof fetch =>
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(reason)
+          },
+        }),
+        { status }
+      )
+
+  // Aborts the caller signal when `request` starts to read the body, as a
+  // native `fetch` errors the body stream with `signal.reason` on an abort.
+  const requestWithAbortedBody = (
+    status: number,
+    abortReason?: unknown
+  ): { rejection: Promise<unknown>; signal: AbortSignal } => {
+    const abort = new AbortController()
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            abort.abort(abortReason)
+            controller.error(abort.signal.reason)
+          },
+        }),
+        { status }
+      )
+    return {
+      rejection: request(
+        { ...client.config, fetch: fetchImpl },
+        url,
+        { retry: false },
+        { signal: abort.signal }
+      ).catch((error: unknown) => error),
+      signal: abort.signal,
+    }
+  }
+
+  it('rejects with the read error of a reset non-2xx body stream', async () => {
+    const reason = new TypeError('terminated')
+    const config = { ...client.config, fetch: failedBodyFetch(502, reason) }
+
+    await expect(request(config, url, { retry: false })).rejects.toBe(reason)
+  })
+
+  it.each([
+    ['the default AbortError', undefined],
+    ['a custom Error reason', new Error('user left the page')],
+    [
+      'a TimeoutError reason',
+      new DOMException('signal timed out', 'TimeoutError'),
+    ],
+  ])('rejects with %s of an abort during a non-2xx body read', async (_, abortReason) => {
+    const { rejection, signal } = requestWithAbortedBody(502, abortReason)
+
+    expect(await rejection).toBe(signal.reason)
+  })
+
+  it('wraps a reset 2xx body stream as ServerError with the read error message', async () => {
+    const config = {
+      ...client.config,
+      fetch: failedBodyFetch(200, new TypeError('terminated')),
+    }
+
+    const error = await request(config, url, { retry: false }).catch(
+      (e: unknown) => e
+    )
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.ServerError,
+      message: 'terminated',
+    })
+  })
+
+  it('falls back to the status code for an empty non-2xx body', async () => {
+    mockNonJsonResponse(503, '')
+
+    const error = await request(client.config, url, { retry: false }).catch(
+      (e: unknown) => e
+    )
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.DefaultError,
+      message: 'Request failed with status code 503',
+      tool: 'unknown',
+    })
+  })
+})
+
 describe('request — header handling', () => {
   const identityCases: [
     string,
