@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import type { DecimalString } from './decimal.js'
 import type {
   FundingAveragesResponse,
   FundingHistoryRange,
@@ -27,6 +28,12 @@ describe('FundingAveragesResponse', () => {
     )
     expect(response.averages[0].rate['3d']).toBe('-0.0000050')
     expect(response.averages[0].coveredFrom).toBe(1_741_046_400_000)
+  })
+
+  it('types rate as a decimal-string rate for each window that has one', () => {
+    expectTypeOf<MarketFundingAverages['rate']>().toEqualTypeOf<
+      Partial<Record<FundingWindow, DecimalString>>
+    >()
   })
 
   it('accepts every averaging window', () => {

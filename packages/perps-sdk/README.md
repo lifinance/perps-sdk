@@ -121,6 +121,9 @@ settled funding history of one market, oldest point first. Pick `range` from
 
 - Each rate is a signed fraction for one hour, the unit of
   `MarketContext.funding.rate`. A positive rate means that the long pays.
+- A window with no settled rate has no key in `rate`. The rate is absent,
+  not `null` and not zero. A measured zero rate is a decimal string, for
+  example `'0'`. Code that reads a window rate must handle `undefined`.
 - An average does not include the open hour. The live rate of the open hour
   stays in `MarketContext.funding`.
 - `coveredFrom` is the first settled funding. A window that starts before it
