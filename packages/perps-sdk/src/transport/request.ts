@@ -86,45 +86,21 @@ export async function request<T>(
     finalOptions = await config.requestInterceptor(url, finalOptions)
   }
 
+  let response: Response
   try {
     const requestStartedAt = onResponse ? Date.now() : 0
-    const response = await fetchWithRetry(url, finalOptions, {
+    response = await fetchWithRetry(url, finalOptions, {
       policy,
       fetchImpl: config.fetch,
       signal: sdkOptions?.signal ?? finalOptions.signal ?? undefined,
     })
     const responseReceivedAt = onResponse ? Date.now() : 0
 
-    if (!response.ok) {
-      // A failed body read (an abort or a reset stream) must reach the outer
-      // catch, so only the JSON parse sits inside this try.
-      const text = await response.text()
-      let body: PerpsErrorBody | undefined
-      try {
-        body = JSON.parse(text)
-      } catch {}
-
-      const fallbackMessage = `Request failed with status code ${response.status}`
-      if (
-        body &&
-        typeof body.code === 'number' &&
-        typeof body.message === 'string'
-      ) {
-        const error = new PerpsError(body.code, body.message)
-        error.tool = body.tool ?? 'unknown'
-        throw error
-      }
-      const error = new PerpsError(
-        errorCodeFromStatus(response.status, PerpsErrorCode.DefaultError),
-        fallbackMessage
-      )
-      error.tool = 'unknown'
-      throw error
+    if (response.ok) {
+      const data = (await response.json()) as T
+      onResponse?.(response.headers, requestStartedAt, responseReceivedAt)
+      return data
     }
-
-    const data = (await response.json()) as T
-    onResponse?.(response.headers, requestStartedAt, responseReceivedAt)
-    return data
   } catch (error) {
     if (error instanceof PerpsError) {
       throw error
@@ -139,6 +115,31 @@ export async function request<T>(
       error instanceof Error ? error.message : 'Request failed'
     )
   }
+
+  // The non-2xx body read sits outside the catch above, so a failed read (an
+  // abort or a reset stream) rejects with its own error.
+  const text = await response.text()
+  let body: PerpsErrorBody | undefined
+  try {
+    body = JSON.parse(text)
+  } catch {}
+
+  const fallbackMessage = `Request failed with status code ${response.status}`
+  if (
+    body &&
+    typeof body.code === 'number' &&
+    typeof body.message === 'string'
+  ) {
+    const error = new PerpsError(body.code, body.message)
+    error.tool = body.tool ?? 'unknown'
+    throw error
+  }
+  const error = new PerpsError(
+    errorCodeFromStatus(response.status, PerpsErrorCode.DefaultError),
+    fallbackMessage
+  )
+  error.tool = 'unknown'
+  throw error
 }
 
 /**
