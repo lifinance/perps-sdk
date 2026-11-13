@@ -96,9 +96,12 @@ export async function request<T>(
     const responseReceivedAt = onResponse ? Date.now() : 0
 
     if (!response.ok) {
+      // A failed body read (an abort or a reset stream) must reach the outer
+      // catch, so only the JSON parse sits inside this try.
+      const text = await response.text()
       let body: PerpsErrorBody | undefined
       try {
-        body = await response.json()
+        body = JSON.parse(text)
       } catch {}
 
       const fallbackMessage = `Request failed with status code ${response.status}`

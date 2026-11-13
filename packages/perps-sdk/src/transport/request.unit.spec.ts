@@ -259,6 +259,100 @@ describe('request — error rehydration', () => {
   })
 })
 
+describe('request — body read failure', () => {
+  const failedBodyFetch =
+    (status: number, reason: unknown): typeof fetch =>
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(reason)
+          },
+        }),
+        { status }
+      )
+
+  // Aborts the caller signal when `request` starts to read the body, as a
+  // native `fetch` errors the body stream with `signal.reason` on an abort.
+  const requestWithAbortedBody = (
+    status: number,
+    abortReason?: unknown
+  ): { rejection: Promise<unknown>; signal: AbortSignal } => {
+    const abort = new AbortController()
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            abort.abort(abortReason)
+            controller.error(abort.signal.reason)
+          },
+        }),
+        { status }
+      )
+    return {
+      rejection: request(
+        { ...client.config, fetch: fetchImpl },
+        url,
+        { retry: false },
+        { signal: abort.signal }
+      ).catch((error: unknown) => error),
+      signal: abort.signal,
+    }
+  }
+
+  it.each([
+    200, 502,
+  ])('wraps a reset body stream of a %i response as ServerError with the read error message', async (status) => {
+    const config = {
+      ...client.config,
+      fetch: failedBodyFetch(status, new TypeError('terminated')),
+    }
+
+    const error = await request(config, url, { retry: false }).catch(
+      (e: unknown) => e
+    )
+    expect(error).toBeInstanceOf(PerpsError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.ServerError,
+      message: 'terminated',
+    })
+  })
+
+  it.each([
+    200, 502,
+  ])('rejects with the default AbortError of an abort during the body read of a %i response', async (status) => {
+    const { rejection, signal } = requestWithAbortedBody(status)
+
+    const error = await rejection
+    expect(error).toBe(signal.reason)
+    expect(error).toMatchObject({ name: 'AbortError' })
+  })
+
+  it('rejects a custom abort reason during a non-2xx body read as during a 2xx body read', async () => {
+    const reason = new Error('user left the page')
+
+    const okError = await requestWithAbortedBody(200, reason).rejection
+    const failedError = await requestWithAbortedBody(502, reason).rejection
+    expect(failedError).toEqual(okError)
+    expect(failedError).not.toMatchObject({
+      message: 'Request failed with status code 502',
+    })
+  })
+
+  it('falls back to the status code for an empty non-2xx body', async () => {
+    mockNonJsonResponse(503, '')
+
+    const error = await request(client.config, url, { retry: false }).catch(
+      (e: unknown) => e
+    )
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.DefaultError,
+      message: 'Request failed with status code 503',
+      tool: 'unknown',
+    })
+  })
+})
+
 describe('request — header handling', () => {
   const identityCases: [
     string,
