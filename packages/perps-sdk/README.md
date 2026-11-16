@@ -124,6 +124,12 @@ controls the result:
   or `{ averages: [] }`. The SDK sends no request. An empty list never
   selects all markets.
 
+`getMarkets` also removes delisted markets from its result. Thus, an omitted
+`marketIds` gives all active markets of the provider.
+
+The SDK does not validate `provider` itself. The backend validates it. Thus,
+an empty list with an unknown `provider` returns an empty result, not an error.
+
 ## Funding averages and history
 
 `getFundingAverages(client, { provider, marketIds? })` returns the settled

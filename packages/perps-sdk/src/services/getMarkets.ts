@@ -13,7 +13,7 @@ export interface GetMarketsParams {
   provider: string
   /**
    * Optional comma-joined filter of opaque `Market.id`s. Omit it to read all
-   * markets. An empty list returns no markets and sends no request.
+   * active markets. An empty list returns no markets and sends no request.
    */
   marketIds?: string[]
 }
