@@ -111,6 +111,25 @@ successful observation of the source, not the last poll attempt.
 The SDK returns the notices as the backend serves them. It does not filter
 them by visibility, scope, or acknowledgement. The caller does that work.
 
+## Market filters
+
+`getMarkets`, `getMarketsContext`, and `getFundingAverages` accept an optional
+`marketIds` list of opaque `Market.id` values. The value of this filter
+controls the result:
+
+- An omitted `marketIds` selects all markets of the provider.
+- A non-empty list selects only the listed markets. The SDK sends the
+  identifiers as one comma-separated `marketIds` query parameter.
+- An empty list returns an empty result: `{ markets: [] }`, `{ prices: [] }`,
+  or `{ averages: [] }`. The SDK sends no request. An empty list never
+  selects all markets.
+
+`getMarkets` also removes delisted markets from its result. Thus, an omitted
+`marketIds` gives all active markets of the provider.
+
+The SDK does not validate `provider` itself. The backend validates it. Thus,
+an empty list with an unknown `provider` returns an empty result, not an error.
+
 ## Funding averages and history
 
 `getFundingAverages(client, { provider, marketIds? })` returns the settled

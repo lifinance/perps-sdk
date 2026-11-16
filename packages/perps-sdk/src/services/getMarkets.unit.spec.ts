@@ -66,6 +66,25 @@ describe('getMarkets', () => {
     expect(marketIds).toBe('BTC,ETH')
   })
 
+  it('returns no markets without a request for an empty marketIds filter', async () => {
+    let requests = 0
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, () => {
+        requests += 1
+        return HttpResponse.json(mockMarkets)
+      })
+    )
+
+    const result = await getMarkets(client, {
+      provider: 'hyperliquid',
+      marketIds: [],
+    })
+
+    expect(result).toEqual({ markets: [] })
+    expect(requests).toBe(0)
+  })
+
   it('propagates a backend error as a PerpsError', async () => {
     // retry disabled so the 5xx surfaces on the first attempt (no retry delay).
     const noRetryClient = createPerpsClient({

@@ -89,6 +89,25 @@ describe('getFundingAverages', () => {
     expect(marketIds).toBe('BTC,ETH')
   })
 
+  it('returns no averages without a request for an empty marketIds filter', async () => {
+    let requests = 0
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/fundingAverages`, () => {
+        requests += 1
+        return HttpResponse.json(mockFundingAverages)
+      })
+    )
+
+    const result = await getFundingAverages(client, {
+      provider: 'hyperliquid',
+      marketIds: [],
+    })
+
+    expect(result).toEqual({ averages: [] })
+    expect(requests).toBe(0)
+  })
+
   it('reads the backend on every call', async () => {
     let requests = 0
 

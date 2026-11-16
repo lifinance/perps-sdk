@@ -11,7 +11,10 @@ import type { PerpsSDKClient } from '../types/provider.js'
  */
 export interface GetMarketsParams {
   provider: string
-  /** Optional comma-joined filter of opaque `Market.id`s. */
+  /**
+   * Optional comma-joined filter of opaque `Market.id`s. Omit it to read all
+   * active markets. An empty list returns no markets and sends no request.
+   */
   marketIds?: string[]
 }
 
@@ -36,6 +39,9 @@ export async function getMarkets(
   params: GetMarketsParams,
   options?: SDKRequestOptions
 ): Promise<MarketsResponse> {
+  if (params.marketIds?.length === 0) {
+    return { markets: [] }
+  }
   const url = buildUrl(`${client.config.apiUrl}/markets`, {
     provider: params.provider,
     marketIds: params.marketIds?.join(','),
