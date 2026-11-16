@@ -5,6 +5,7 @@ on:
   pull_request:
     paths-ignore: ['README.md', 'LICENSE', '.editorconfig']
     branches: [main, develop, staging, beta-feedback-ux-uplift]
+  merge_group:
 
 jobs:
   checks:
