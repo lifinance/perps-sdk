@@ -15,7 +15,7 @@ import {
   LIGHTER_RH_PROVIDER_KEY,
   LIGHTER_RH_WS_URL,
 } from '../constants.js'
-import { lighterProvider } from '../LighterProvider.js'
+import { lighterProvider, lighterRhProvider } from '../LighterProvider.js'
 import type { LtWsUserStatsMessage } from '../types/index.js'
 import { mapFill, mapOrder } from '../utils/index.js'
 import { LighterWsProvider, lighterWsProvider } from './LighterWsProvider.js'
@@ -304,7 +304,7 @@ describe('LighterWsProvider', () => {
       error: { code: 20013, message: 'invalid auth: account_all_orders:42' },
     }
 
-    it('stops private account channels but retains public fills and other accounts', async () => {
+    it('stops private account channels but retains public fills, positions, and other accounts', async () => {
       let token = 'old-read-token'
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
@@ -315,7 +315,7 @@ describe('LighterWsProvider', () => {
       const { p, internals, send } = connectedProvider(provider)
       const other = '0xcafecafecafecafecafecafecafecafecafecafe'
       internals.accountIndexCache.set(other, 43)
-      const errors = [vi.fn(), vi.fn(), vi.fn()]
+      const errors = [vi.fn(), vi.fn()]
       const data = vi.fn()
       const release = await p.subscribe(
         { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
@@ -324,20 +324,20 @@ describe('LighterWsProvider', () => {
         errors[0]
       )
       await p.subscribe(
-        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
         data,
         undefined,
         errors[1]
       )
-      await p.subscribe(
-        { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
-        data,
-        undefined,
-        errors[2]
-      )
       const publicError = vi.fn()
       await p.subscribe(
         { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      await p.subscribe(
+        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
         vi.fn(),
         undefined,
         publicError
@@ -380,6 +380,10 @@ describe('LighterWsProvider', () => {
           channel: 'account_all_trades/42',
         })
       )
+      expect(frames).toContainEqual({
+        type: 'subscribe',
+        channel: 'account_all_positions/42',
+      })
       expect(frames).toContainEqual(
         expect.objectContaining({
           channel: 'account_all_orders/43',
@@ -664,6 +668,163 @@ describe('LighterWsProvider', () => {
     })
   })
 
+  describe.each([
+    LIGHTER_PROVIDER_KEY,
+    LIGHTER_RH_PROVIDER_KEY,
+  ])('public positions on %s', (providerKey) => {
+    const positionsSub = {
+      channel: 'positions',
+      dex: providerKey,
+      address: TEST_ADDR,
+    } as const
+    const ordersSub = {
+      channel: 'orderUpdates',
+      dex: providerKey,
+      address: TEST_ADDR,
+    } as const
+    const positionsSubscribeFrame = {
+      type: 'subscribe',
+      channel: `account_all_positions/${ACCOUNT_IDX}`,
+    }
+    const positionsUpdate = JSON.stringify({
+      type: 'update/account_all_positions',
+      channel: `account_all_positions:${ACCOUNT_IDX}`,
+      positions: { '0': RAW_POSITION },
+    })
+    const ordersUpdate = JSON.stringify({
+      type: 'update/account_all_orders',
+      channel: `account_all_orders:${ACCOUNT_IDX}`,
+      orders: { '0': [RAW_ORDER] },
+    })
+    const tokenProvider = (
+      resolveAuthToken: () => Promise<string | undefined>
+    ) =>
+      new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        providerKey,
+        { resolveAuthToken },
+        freshClient()
+      )
+
+    it.each([
+      [
+        'without an auth resolver or a Lighter plugin',
+        () =>
+          new LighterWsProvider(
+            'ws://127.0.0.1:1',
+            providerKey,
+            {},
+            freshClient()
+          ),
+      ],
+      [
+        'when the resolver yields no token',
+        () => tokenProvider(async () => undefined),
+      ],
+      [
+        'when the Lighter plugin holds no token',
+        () =>
+          new LighterWsProvider(
+            'ws://127.0.0.1:1',
+            providerKey,
+            {},
+            createPerpsClient({
+              integrator: 'test-app',
+              apiKey: 'test-key',
+              providers: [
+                providerKey === LIGHTER_RH_PROVIDER_KEY
+                  ? lighterRhProvider()
+                  : lighterProvider(),
+              ],
+            })
+          ),
+      ],
+    ])('subscribes account_all_positions without auth %s', async (_, create) => {
+      const { p, internals, send } = connectedProvider(create())
+      const listener = vi.fn()
+
+      await p.subscribe(positionsSub, listener)
+      internals.handleMessage(positionsUpdate)
+
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        positionsSubscribeFrame,
+      ])
+      expect(listener).toHaveBeenCalledOnce()
+      expect(listener.mock.calls[0][0].data).toMatchObject([
+        { market: { id: '0' }, size: '1' },
+      ])
+      p.close()
+    })
+
+    it('replays positions without auth after the token is deleted, and reports SetupRequired to order listeners only', async () => {
+      let token: string | undefined = 'read-token'
+      const { p, internals, send } = connectedProvider(
+        tokenProvider(async () => token)
+      )
+      const positions = vi.fn()
+      const positionsError = vi.fn()
+      const orders = vi.fn()
+      const ordersError = vi.fn()
+      await p.subscribe(positionsSub, positions, undefined, positionsError)
+      await p.subscribe(ordersSub, orders, undefined, ordersError)
+      token = undefined
+      send.mockClear()
+
+      await internals.replaySubs()
+      internals.handleMessage(positionsUpdate)
+      internals.handleMessage(ordersUpdate)
+
+      expect(ordersError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.SetupRequired })
+      )
+      expect(positionsError).not.toHaveBeenCalled()
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        positionsSubscribeFrame,
+      ])
+      expect(positions).toHaveBeenCalledOnce()
+      expect(orders).not.toHaveBeenCalled()
+      p.close()
+    })
+
+    it('reports an account_all_orders auth rejection as Unauthorized to order listeners and keeps positions', async () => {
+      const { p, internals, send } = connectedProvider(
+        tokenProvider(async () => 'read-token')
+      )
+      const positions = vi.fn()
+      const positionsError = vi.fn()
+      const ordersError = vi.fn()
+      await p.subscribe(positionsSub, positions, undefined, positionsError)
+      await p.subscribe(ordersSub, vi.fn(), undefined, ordersError)
+      send.mockClear()
+
+      internals.handleMessage(
+        JSON.stringify({
+          error: {
+            code: 20013,
+            message: `invalid auth: account_all_orders:${ACCOUNT_IDX}`,
+          },
+        })
+      )
+      internals.handleMessage(positionsUpdate)
+
+      expect(ordersError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+      )
+      expect(positionsError).not.toHaveBeenCalled()
+      expect(send).not.toHaveBeenCalled()
+      expect([...internals.wireSubs.keys()]).toEqual([
+        `account_all_positions/${ACCOUNT_IDX}`,
+      ])
+      expect(positions).toHaveBeenCalledOnce()
+
+      await internals.replaySubs()
+      expect(send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+        positionsSubscribeFrame,
+      ])
+      p.close()
+    })
+  })
+
   it('rejects a synchronous venue failure only through the initial promise', async () => {
     const provider = new LighterWsProvider(
       'ws://127.0.0.1:1',
@@ -709,7 +870,7 @@ describe('LighterWsProvider', () => {
     const onError = vi.fn()
     await expect(
       p.subscribe(
-        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
         vi.fn(),
         undefined,
         onError
@@ -2751,7 +2912,6 @@ describe('LighterWsProvider', () => {
           JSON.stringify({
             type: 'subscribe',
             channel: `account_all_positions/${ACCOUNT_IDX}`,
-            auth: 'token',
           })
         )
         provider.close()
@@ -2790,7 +2950,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it('still syncs the market registry for auth channels (positions)', async () => {
+    it('still syncs the market registry for account channels (positions)', async () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
         'lighter',
@@ -3552,14 +3712,14 @@ describe('LighterWsProvider', () => {
       ;(provider as any).rws.send = send
 
       await provider.subscribe(
-        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
         vi.fn()
       )
 
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
           type: 'subscribe',
-          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          channel: `account_all_orders/${ACCOUNT_IDX}`,
           auth: 'token-1',
         })
       )
@@ -3576,7 +3736,7 @@ describe('LighterWsProvider', () => {
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
           type: 'subscribe',
-          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          channel: `account_all_orders/${ACCOUNT_IDX}`,
           auth: 'token-2',
         })
       )
@@ -3595,7 +3755,7 @@ describe('LighterWsProvider', () => {
 
       await expect(
         provider.subscribe(
-          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
       ).rejects.toMatchObject({
@@ -3620,7 +3780,7 @@ describe('LighterWsProvider', () => {
 
       await expect(
         provider.subscribe(
-          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
       ).rejects.toThrow(/no token was available for/)
@@ -3648,20 +3808,20 @@ describe('LighterWsProvider', () => {
       ;(provider as any).rws.send = send
 
       await provider.subscribe(
-        { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
         vi.fn()
       )
 
       expect(send).not.toHaveBeenCalled()
       expect([...(provider as any).wireSubs.keys()]).toEqual([
-        `account_all_positions/${ACCOUNT_IDX}`,
+        `account_all_orders/${ACCOUNT_IDX}`,
       ])
 
       await (provider as any).replaySubs()
       expect(send).toHaveBeenCalledWith(
         JSON.stringify({
           type: 'subscribe',
-          channel: `account_all_positions/${ACCOUNT_IDX}`,
+          channel: `account_all_orders/${ACCOUNT_IDX}`,
           auth: 'token-1',
         })
       )
@@ -3704,7 +3864,7 @@ describe('LighterWsProvider', () => {
 
       await expect(
         provider.subscribe(
-          { channel: 'positions', dex: 'lighter', address: TEST_ADDR },
+          { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
       ).rejects.toMatchObject({
@@ -3714,10 +3874,7 @@ describe('LighterWsProvider', () => {
       provider.close()
     })
 
-    it.each([
-      'positions',
-      'orderUpdates',
-    ] as const)('%s throws SetupRequired before the account lookup when the wallet has no token and no account', async (channel) => {
+    it('orderUpdates throws SetupRequired before the account lookup when the wallet has no token and no account', async () => {
       const client = createPerpsClient({
         integrator: 'test-app',
         apiKey: 'test-key',
@@ -3734,7 +3891,7 @@ describe('LighterWsProvider', () => {
 
       await expect(
         provider.subscribe(
-          { channel, dex: 'lighter', address: TEST_ADDR },
+          { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
           vi.fn()
         )
       ).rejects.toMatchObject({ code: PerpsErrorCode.SetupRequired })
