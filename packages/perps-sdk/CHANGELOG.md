@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 34.0.1
+
+### Patch Changes
+
+- [#739](https://github.com/lifinance/perps-sdk/pull/739) [`47975b7`](https://github.com/lifinance/perps-sdk/commit/47975b791d571e7469d1c04fe6c0dfa04f6263e0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `getMarkets`, `getMarketsContext`, and `getFundingAverages` with an empty `marketIds` list now return an empty result and send no request. Before this fix, the backend rejected the empty `marketIds=` parameter with an HTTP 400 error.
+
 ## 34.0.0
 
 ### Major Changes
