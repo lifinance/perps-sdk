@@ -80,12 +80,11 @@ import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 // Public channels: `marketsContext` (market_stats/all + spot_market_stats/all),
 // `marketContext` (market_stats/N or spot_market_stats/N), `orderbook`
 // (order_book/N), `trades` (trade/N), `candle` (candle/N/resolution),
+// `fills` (account_all_trades/N), `positions` (account_all_positions/N),
 // `accountSummary` (user_stats/N + account_all/N, priced by the
 // `marketsContext` spot marks).
 // Authenticated channels (resolve an auth token per subscribe send):
 //   - orderUpdates → account_all_orders/{account_index}
-//   - fills        → account_all_trades/{account_index}
-//   - positions    → account_all_positions/{account_index}
 //   - accountSummary spot balances → account_all_assets/{account_index}, when
 //     a token resolves at subscribe time; else the public account_all/N
 //
@@ -107,7 +106,7 @@ import { askOrder, bidOrder, OrderBookSide } from './orderBookSide.js'
 // Orderbook is stateful: the first message is a full snapshot, subsequent
 // messages are deltas where size=0 deletes a level.
 
-const LIGHTER_AUTH_CHANNEL = {
+const LIGHTER_ACCOUNT_CHANNEL = {
   orderUpdates: 'account_all_orders',
   fills: 'account_all_trades',
   positions: 'account_all_positions',
@@ -177,9 +176,10 @@ export interface LighterWsProviderOptions {
   restUrl?: string
   /**
    * Override for auth-token resolution on authenticated channels
-   * (orderUpdates, positions). Defaults to the co-registered `lighterProvider`
-   * plugin's `resolveAuthToken`; supply this only for a standalone WS client
-   * with no Lighter REST plugin on the same {@link PerpsSDKClient}.
+   * (orderUpdates, accountSummary spot balances). Defaults to the co-registered
+   * `lighterProvider` plugin's `resolveAuthToken`; supply this only for a
+   * standalone WS client with no Lighter REST plugin on the same
+   * {@link PerpsSDKClient}.
    */
   resolveAuthToken?: LighterAuthTokenResolver
 }
@@ -616,12 +616,10 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
       sub.channel === 'fills' ||
       sub.channel === 'positions'
     ) {
-      const lighterChannel = LIGHTER_AUTH_CHANNEL[sub.channel]
-      // `account_all_trades` is publicly readable per the Lighter WS spec —
-      // an auth token only filters events to the user's own account, which
-      // we don't currently use to scope further. Skip the token here so a
-      // user without a registered API key still gets their fill stream.
-      const needsAuth = sub.channel !== 'fills'
+      const lighterChannel = LIGHTER_ACCOUNT_CHANNEL[sub.channel]
+      // Lighter serves `account_all_trades` and `account_all_positions` without
+      // a token; of these three, only `account_all_orders` needs a valid token.
+      const needsAuth = sub.channel === 'orderUpdates'
       // Before the account lookup and before registration: a registered sub
       // with no token would fail on every reopen without the caller seeing it.
       if (needsAuth) {
