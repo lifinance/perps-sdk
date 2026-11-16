@@ -55,6 +55,25 @@ describe('getMarketsContext', () => {
     expect(marketIds).toBe('BTC,ETH')
   })
 
+  it('returns no market context without a request for an empty marketIds filter', async () => {
+    let requests = 0
+
+    server.use(
+      http.get(`${DEFAULT_API_URL}/marketsContext`, () => {
+        requests += 1
+        return HttpResponse.json(mockPrices)
+      })
+    )
+
+    const result = await getMarketsContext(client, {
+      provider: 'hyperliquid',
+      marketIds: [],
+    })
+
+    expect(result).toEqual({ prices: [] })
+    expect(requests).toBe(0)
+  })
+
   it('propagates a backend error as a PerpsError', async () => {
     // retry disabled so the 5xx surfaces on the first attempt (no retry delay).
     const noRetryClient = createPerpsClient({

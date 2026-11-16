@@ -10,7 +10,10 @@ import type { PerpsSDKClient } from '../types/provider.js'
  */
 export interface GetFundingAveragesParams {
   provider: string
-  /** Optional filter of opaque `Market.id`s (not display symbols). */
+  /**
+   * Optional filter of opaque `Market.id`s (not display symbols). Omit it to
+   * read all markets. An empty list returns no averages and sends no request.
+   */
   marketIds?: string[]
 }
 
@@ -26,6 +29,9 @@ export async function getFundingAverages(
   params: GetFundingAveragesParams,
   options?: SDKRequestOptions
 ): Promise<FundingAveragesResponse> {
+  if (params.marketIds?.length === 0) {
+    return { averages: [] }
+  }
   const url = buildUrl(`${client.config.apiUrl}/fundingAverages`, {
     provider: params.provider,
     marketIds: params.marketIds?.join(','),
