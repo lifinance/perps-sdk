@@ -1,5 +1,11 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 48.0.1
+
+### Patch Changes
+
+- [#738](https://github.com/lifinance/perps-sdk/pull/738) [`16284d7`](https://github.com/lifinance/perps-sdk/commit/16284d72daa9051ff34f8cc9cc005a8621654108) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter `positions` WebSocket subscription no longer requires a read token. A missing or rejected token stops only `orderUpdates` and other authenticated channels, and positions continue to update.
+
 ## 48.0.0
 
 ### Patch Changes
