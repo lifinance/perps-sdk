@@ -10,4 +10,4 @@ export const name = '@lifi/perps-sdk'
  *
  * @public
  */
-export const version = '34.0.1'
+export const version = '35.0.0'
