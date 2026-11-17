@@ -1,5 +1,6 @@
 import {
   type ActionSignerContribution,
+  compareDecimalStrings,
   type DepositFlow,
   HYPERLIQUID_USDC,
   isSpotCategory,
@@ -486,6 +487,9 @@ export function hyperliquidProvider(
 
     snapOrderSize: (market: Market, size: DecimalString): DecimalString =>
       snapOrderSize(size, market.szDecimals),
+
+    isLeverageEqual: (requested, reported) =>
+      compareDecimalStrings(requested, reported) === 0,
 
     triggerOrders: { modifyCanChangeType: true },
 

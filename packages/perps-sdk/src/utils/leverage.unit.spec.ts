@@ -11,7 +11,7 @@ describe('isLeverageEqual', () => {
     ['15', '14.99', false],
     ['15', '15.01', false],
     ['1.0000000000000001', '1', false],
-  ])('compares %s with %s exactly without a provider rule', (requested, reported, expected) => {
+  ])('uses the provider comparison for %sx and %sx', (requested, reported, expected) => {
     expect(isLeverageEqual(sdk, VENUE_PROVIDER_ID, requested, reported)).toBe(
       expected
     )

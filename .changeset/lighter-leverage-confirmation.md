@@ -1,6 +1,8 @@
 ---
-"@lifi/perps-sdk": minor
+"@lifi/perps-sdk": major
+"@lifi/perps-sdk-provider-hyperliquid": minor
 "@lifi/perps-sdk-provider-lighter": minor
+"@lifi/perps-sdk-provider-ondo": minor
 ---
 
-Add provider-aware leverage comparison so Lighter confirms the requested leverage through its integer IMF instead of rejecting a rounded venue value.
+Require `PerpsProviderPlugin.isLeverageEqual` on every custom provider plugin. Hyperliquid and Ondo compare decimal values exactly. Lighter compares the stored integer IMF and rejects unsupported requested precision and zero IMF values.

@@ -1,6 +1,10 @@
-import { createPerpsClient, isLeverageEqual } from '@lifi/perps-sdk'
-import { MarginMode } from '@lifi/perps-types'
-import { describe, expect, it } from 'vitest'
+import {
+  createPerpsClient,
+  isLeverageEqual,
+  safeIsLeverageEqual,
+} from '@lifi/perps-sdk'
+import { MarginMode, PerpsErrorCode } from '@lifi/perps-types'
+import { describe, expect, it, vi } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
 import { LT_MARGIN_MODE_CROSS } from './types/index.js'
 
@@ -96,5 +100,62 @@ describe('Lighter getMarketSettings leverage read-back', () => {
     expect(isLeverageEqual(client, 'lighter', '15', settings.leverage)).toBe(
       false
     )
+  })
+})
+
+describe('Lighter leverage comparison validation', () => {
+  it.each([
+    ['1.001', '1'],
+    ['3.125', '3.13'],
+    ['9.7752', '9.78'],
+  ])('rejects the unsupported requested precision of %sx', (requested, reported) => {
+    const { client, provider } = setup('6.67')
+    const error = expect.objectContaining({
+      code: PerpsErrorCode.ValidationError,
+      message: expect.stringContaining('2 decimal places'),
+    })
+    expect(() =>
+      isLeverageEqual(client, 'lighter', requested, reported)
+    ).toThrow(error)
+    expect(() => provider.isLeverageEqual(requested, reported)).toThrow(error)
+  })
+
+  it.each([
+    ['20000.01', '15'],
+    ['15', '20000.01'],
+    ['1000000', '50000'],
+  ])('rejects a zero IMF for %sx compared with %sx', (requested, reported) => {
+    const { client, provider } = setup('6.67')
+    const error = expect.objectContaining({
+      code: PerpsErrorCode.ValidationError,
+      message: expect.stringContaining('IMF'),
+    })
+    expect(() =>
+      isLeverageEqual(client, 'lighter', requested, reported)
+    ).toThrow(error)
+    expect(() => provider.isLeverageEqual(requested, reported)).toThrow(error)
+  })
+
+  it('accepts trailing zeros within the requested precision', () => {
+    const { client } = setup('6.67')
+    expect(isLeverageEqual(client, 'lighter', '15.000', '14.99')).toBe(true)
+  })
+
+  it('rounds a half-basis-point IMF up to one rather than zero', () => {
+    const { client } = setup('0.01')
+    expect(isLeverageEqual(client, 'lighter', '20000', '10000')).toBe(true)
+  })
+
+  it('returns no safe comparison and warns for unsupported requested precision', () => {
+    const { client } = setup('32.00')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(
+        safeIsLeverageEqual(client, 'lighter', '3.125', '3.13')
+      ).toBeUndefined()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

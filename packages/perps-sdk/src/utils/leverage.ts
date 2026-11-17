@@ -1,14 +1,15 @@
 import type { DecimalString } from '@lifi/perps-types'
 import { requireProvider } from '../client/requireProvider.js'
-import {
-  compareDecimalStrings,
-  isDecimalStringGreaterThan,
-} from '../decimal/compare.js'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import { invalidInput } from '../errors/invalidInput.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
 
-/** Compare leverage under the provider's storage rules, or exactly when it has no quantization rule. @public */
+/**
+ * Compare leverage under the registered provider's storage rules.
+ * @throws {PerpsError} `ValidationError` for invalid, non-positive, or provider-unsupported leverage; `SDKError` for an unregistered provider.
+ * @public
+ */
 export function isLeverageEqual(
   sdk: PerpsSDKClient,
   provider: string,
@@ -22,9 +23,7 @@ export function isLeverageEqual(
   if (!isDecimalStringGreaterThan(reported, '0')) {
     throw invalidInput('reported', 'leverage must be above zero')
   }
-  return plugin.isLeverageEqual
-    ? plugin.isLeverageEqual(requested, reported)
-    : compareDecimalStrings(requested, reported) === 0
+  return plugin.isLeverageEqual(requested, reported)
 }
 
 /** Return no comparison and log a warning when {@link isLeverageEqual} throws. @public */

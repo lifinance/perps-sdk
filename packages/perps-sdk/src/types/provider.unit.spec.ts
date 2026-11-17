@@ -10,6 +10,7 @@ import type {
 } from '@lifi/perps-types'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createPerpsClient } from '../client/createPerpsClient.js'
+import { compareDecimalStrings } from '../decimal/compare.js'
 import type { PerpsClientOptions, PerpsConfig } from './api.js'
 import type { PerpsBaseConfig } from './config.js'
 import type { PerpsProviderPlugin } from './provider.js'
@@ -32,6 +33,8 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     getAccountSummary: () => stub() as unknown as AccountSummary,
     snapOrderPrice: (_market, price) => price,
     snapOrderSize: (_market, size) => size,
+    isLeverageEqual: (requested, reported) =>
+      compareDecimalStrings(requested, reported) === 0,
     estimateLiquidationPrice: () => undefined,
     positionRemovableMargin: () => undefined,
     getMarketSettings: () => stub(),

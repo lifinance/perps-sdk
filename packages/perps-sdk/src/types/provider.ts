@@ -519,9 +519,9 @@ export interface PerpsProviderPlugin {
     options?: SDKRequestOptions
   ): Promise<MarketSettings>
 
-  /** Compare positive decimal leverages through the venue's storage quantization, without I/O.
-   * Omit when the venue preserves leverage exactly. */
-  isLeverageEqual?(requested: DecimalString, reported: DecimalString): boolean
+  /** Compare positive decimal leverages under the venue's storage rules, without I/O.
+   * Throw `ValidationError` for unsupported leverage precision or representation. */
+  isLeverageEqual(requested: DecimalString, reported: DecimalString): boolean
 
   /**
    * The amounts the account can still buy and sell on one market, in that

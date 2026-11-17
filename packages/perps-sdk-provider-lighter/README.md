@@ -163,6 +163,9 @@ Lighter stores `round(10000 / leverage)` as an integer IMF, so the reported leve
 For example, `15` stores IMF `667` and reads as `14.99`.
 Use `isLeverageEqual(sdk, provider, requested, reported)` from `@lifi/perps-sdk` to compare both leverages through the stored IMF.
 The helper accepts decimal strings and preserves the reported leverage.
+The requested leverage must use at most two decimal places. Trailing zeros do not increase the precision.
+The comparison throws `ValidationError` for unsupported requested precision or a zero IMF.
+It does not normalize unsupported requests.
 `initialMarginRequirement` and the cross `marginUsed` use the unrounded `initial_margin_fraction`.
 
 `returnOnEquity` uses the rounded `leverage`: `unrealizedPnl × leverage ÷ (|size| × entryPrice) × 100`.
