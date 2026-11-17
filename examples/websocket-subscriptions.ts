@@ -8,15 +8,15 @@ async function run() {
   })
 
   // Create the WebSocket client. Each provider key maps to a factory that is
-  // invoked lazily on first subscribe. Lighter authenticated channels
-  // (orderUpdates, positions) require an authProvider that returns a fresh
-  // token for the given wallet address — see LighterAuthProvider in
-  // @lifi/perps-sdk-provider-lighter. Public channels work without it.
+  // invoked lazily on first subscribe. Bare lighterWsProvider() takes the auth
+  // token for orderUpdates (and accountSummary spot balances) from a
+  // co-registered lighterProvider(). Pass resolveAuthToken
+  // (LighterAuthTokenResolver) only for a standalone WebSocket client.
   const ws = new PerpsWsClient(client, {
     wsProviders: {
       hyperliquid: hyperliquidWsProvider(),
       lighter: lighterWsProvider({
-        // authProvider: (address) => myPlugin.resolveAuthToken(address),
+        // resolveAuthToken: (address) => fetchLighterAuthToken(address),
       }),
     },
   })
