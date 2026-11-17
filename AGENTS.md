@@ -144,6 +144,10 @@ Read these two files before you start work:
 - [README.md](./README.md) describes the monorepo, the packages, and the package layers.
 - [packages/perps-sdk/README.md](./packages/perps-sdk/README.md) describes the client, the decimal strings, the `X` and `safeX` pairs, the three tiers, the vocabulary, and the WebSocket API.
 
+## Ownership
+
+Orderbook squad, reviewer Aaron (`@aaronmboyd`). Review requests: request the reviewer above on the PR.
+
 ## Node Version
 
 Before you run a command or start a sub-agent, use the correct Node version. Read the `engines` field in `package.json`. If the field does not exist, use Node 26.
