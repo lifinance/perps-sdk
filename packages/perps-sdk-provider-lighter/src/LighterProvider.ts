@@ -36,6 +36,7 @@ import {
   paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
+  roundDecimalString,
   type SDKRequestOptions,
   type SignActionsContext,
   type SignActionsResult,
@@ -192,6 +193,10 @@ const tickToFeeString = (tick: number): string =>
     numberToDecimalString(tick),
     numberToDecimalString(LIGHTER_FEE_TICK_SCALE)
   )
+
+// UpdateLeverage stores a half-up integer initial margin fraction in basis points.
+const calculateLeverageImf = (leverage: string): string =>
+  roundDecimalString(divideDecimalString('10000', leverage), 0, 'round')
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -1994,6 +1999,9 @@ export const createLighterProvider = (
     snapOrderPrice,
 
     snapOrderSize,
+
+    isLeverageEqual: (requested, reported) =>
+      calculateLeverageImf(requested) === calculateLeverageImf(reported),
 
     // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.
     triggerOrders: {

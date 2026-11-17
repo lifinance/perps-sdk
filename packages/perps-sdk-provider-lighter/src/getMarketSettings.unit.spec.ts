@@ -1,4 +1,4 @@
-import { createPerpsClient } from '@lifi/perps-sdk'
+import { createPerpsClient, isLeverageEqual } from '@lifi/perps-sdk'
 import { MarginMode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { lighterProvider } from './LighterProvider.js'
@@ -40,7 +40,7 @@ const setup = (initialMarginFraction: string) => {
   if (provider === undefined) {
     throw new Error('Lighter provider was not registered')
   }
-  return provider
+  return { client, provider }
 }
 
 describe('Lighter getMarketSettings leverage read-back', () => {
@@ -53,10 +53,48 @@ describe('Lighter getMarketSettings leverage read-back', () => {
     ['11.11', '9'],
   ])('reads IMF %s back as the saved %sx leverage', async (imf, leverage) => {
     await expect(
-      setup(imf).getMarketSettings({
+      setup(imf).provider.getMarketSettings({
         address: ADDRESS,
         market: { marketId: MARKET_ID, categoryId: 'lighter' },
       })
     ).resolves.toEqual({ marginMode: MarginMode.CROSS, leverage })
+  })
+
+  it.each([
+    ['15', '6.67', '14.99'],
+    ['13', '7.69', '13'],
+    ['17', '5.88', '17.01'],
+    ['30', '3.33', '30.03'],
+    ['32', '3.13', '31.95'],
+    ['49', '2.04', '49.02'],
+    ['14.5', '6.90', '14.49'],
+    ['5', '20.00', '5'],
+  ])('confirms %sx from IMF %s without changing the reported leverage', async (requested, imf, reported) => {
+    const { client, provider } = setup(imf)
+    const settings = await provider.getMarketSettings({
+      address: ADDRESS,
+      market: { marketId: MARKET_ID, categoryId: 'lighter' },
+    })
+
+    expect(settings.leverage).toBe(reported)
+    expect(
+      isLeverageEqual(client, 'lighter', requested, settings.leverage)
+    ).toBe(true)
+  })
+
+  it.each([
+    '6.66',
+    '6.68',
+    '10.00',
+  ])('rejects a different stored IMF %s after a request for 15x', async (imf) => {
+    const { client, provider } = setup(imf)
+    const settings = await provider.getMarketSettings({
+      address: ADDRESS,
+      market: { marketId: MARKET_ID, categoryId: 'lighter' },
+    })
+
+    expect(isLeverageEqual(client, 'lighter', '15', settings.leverage)).toBe(
+      false
+    )
   })
 })

@@ -358,6 +358,15 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Leverage confirmation
+
+`isLeverageEqual(sdk, provider, requested, reported)` compares positive decimal strings under the provider's storage rules.
+Lighter compares the half-up integer IMF of both leverages, so `15` and its reported value `14.99` agree.
+Providers without a quantization rule use exact decimal comparison.
+The helper does not change the reported value or confirm the margin mode.
+An invalid decimal or non-positive leverage throws `ValidationError`. An unregistered provider throws `SDKError`.
+`safeIsLeverageEqual` logs a warning and returns `undefined` when the comparison throws.
+
 ### Order amounts and venue grids
 
 Order amounts cross the API as a `DecimalString`: a plain decimal string with

@@ -159,7 +159,10 @@ WebSocket order updates contain `{ orders, terminated }`, including terminal ord
 ## Position leverage and return on equity
 
 `Position.leverage` shows `100 ÷ initial_margin_fraction`, rounded half-up to two decimal places.
-A client reads back the leverage that it saved.
+Lighter stores `round(10000 / leverage)` as an integer IMF, so the reported leverage can differ from the requested leverage.
+For example, `15` stores IMF `667` and reads as `14.99`.
+Use `isLeverageEqual(sdk, provider, requested, reported)` from `@lifi/perps-sdk` to compare both leverages through the stored IMF.
+The helper accepts decimal strings and preserves the reported leverage.
 `initialMarginRequirement` and the cross `marginUsed` use the unrounded `initial_margin_fraction`.
 
 `returnOnEquity` uses the rounded `leverage`: `unrealizedPnl × leverage ÷ (|size| × entryPrice) × 100`.
