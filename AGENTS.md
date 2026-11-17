@@ -4,7 +4,7 @@
 
 Read `LANGUAGE.md` before you write any text. The rules apply to all written text, except code, code comments, and code identifiers.
 
-@LANGUAGE.md
+Open [LANGUAGE.md](./LANGUAGE.md) and read all of it before you write any text. This file does not import it.
 
 ## Code Quality
 
@@ -139,119 +139,15 @@ If the trunk has a conflicting change, tell the user before you change the PR hi
 
 The Perps SDK is a TypeScript SDK for perpetual futures trading (`@lifi/perps-sdk`). The [full docs](https://public-perps-docs.mintlify.app/) give more information.
 
-Read these two files before you start work:
+Read each file below when its task starts:
 
-- [README.md](./README.md) describes the monorepo, the packages, and the package layers.
-- [packages/perps-sdk/README.md](./packages/perps-sdk/README.md) describes the client, the decimal strings, the `X` and `safeX` pairs, the three tiers, the vocabulary, and the WebSocket API.
+- Before you start work: [docs/agents/before-you-start.md](./docs/agents/before-you-start.md).
+- Before you run a command or a test: [docs/agents/commands.md](./docs/agents/commands.md).
+- Before you add a test, a type, or a file: [docs/agents/conventions.md](./docs/agents/conventions.md).
+- Before you name a function, a constant, or a type: [docs/agents/names.md](./docs/agents/names.md).
+- Before you write a function that can fail or that works with a decimal value: [docs/agents/values.md](./docs/agents/values.md).
+- Before you commit, and after you complete a feature: [docs/agents/documentation-and-commits.md](./docs/agents/documentation-and-commits.md).
 
 ## Ownership
 
 Orderbook squad, reviewer Aaron (`@aaronmboyd`). Review requests: request the reviewer above on the PR.
-
-## Node Version
-
-Before you run a command or start a sub-agent, use the correct Node version. Read the `engines` field in `package.json`. If the field does not exist, use Node 26.
-
-```bash
-nvm use 26  # or whichever version satisfies the engines field
-```
-
-## Commands
-
-```bash
-pnpm build           # Build CJS + ESM + types
-pnpm test            # Run all tests (vitest)
-pnpm test:unit       # Unit tests only
-pnpm test:affected   # Fast loop: only tests affected since the last run
-pnpm test:changed    # Unit tests that import a file changed since origin/main
-pnpm check           # Biome lint/format check
-pnpm check:write     # Biome auto-fix
-pnpm check:types     # TypeScript type checking
-pnpm knip:check      # Unused deps/exports check
-```
-
-Use `pnpm test:affected` for the fast loop. Run `pnpm test:changed` before you push, not the full `pnpm test`. The `pre-push` hook runs `pnpm test:changed`.
-
-`pnpm test:changed` runs only the unit specs that import a file changed since `origin/main`. If you change one of these items, run the full suites with `pnpm test`:
-
-- A dependency version.
-- A `package.json` file.
-- The lockfile, `pnpm-lock.yaml`.
-- A `vitest.config.ts` file.
-- `vitest.shared.ts`.
-- A test setup file, for example `packages/perps-sdk/test/setup.ts`.
-- A file that tests read from disk, for example a fixture or `packages/perps-sdk-provider-lighter/wasm/lighter-signer.wasm`.
-
-Note: no spec imports these files. Vitest runs all specs after a change to a `package.json` or `vitest.config.ts` file. After a change to the other files, `pnpm test:changed` can skip a spec that the change breaks. CI runs the full suites on each PR.
-
-## Conventions
-
-- Use Biome for lint and format. Do not use ESLint.
-- Put a unit test next to its source file. Name the test `FILENAME.unit.spec.ts`.
-- The SDK packages use `@lifi/perps-types` from `packages/perps-types` in this monorepo (`workspace:^`).
-
-## Function Names
-
-The verb at the start of a function name tells the type of change that the function does.
-
-- Read the verb table in `packages/perps-sdk/README.md` § Vocabulary before you name a function.
-- Use only a verb from that table.
-- Do not use the verbs `derive`, `predict`, or `convert`.
-- Do not use a noun alone as a function name.
-- Do not add an exception to `NAMING_EXCEPTIONS` in `packages/perps-sdk/src/index.boundary.unit.spec.ts`. The list must stay empty.
-- If you add a verb, add it to `VOCABULARY` in the spec and to the README table in the same commit.
-
-Note: the spec checks the function names in `decimal/`, `math/`, and `wire/` only. Use the same verbs in all other folders.
-
-## Throwing and Safe Functions
-
-A function that can fail has two forms:
-
-- `X` throws a `PerpsError`.
-- `safeX` gives `undefined` and logs a warning. Make `safeX` with `createSafeFunction` from `packages/perps-sdk/src/utils/createSafeFunction.ts`.
-
-Use these rules for the two forms:
-
-- Do not add a default parameter to `safeX`. The caller writes `?? fallback`.
-- Add a `safeX` only for a function that can fail.
-- Each `safeX` must have its throwing twin `X`.
-
-## Money Path and Display Path
-
-The use of a value decides which form to call.
-
-- On the money path, call `X`. If `X` throws, show the `ValidationError` to the user. Never use `0` or a default value.
-- On the display path, call `safeX`. If `safeX` gives `undefined`, show a placeholder and keep the row.
-- Skip a row only when an identity field (`id` or market) is missing.
-- Do not let one bad row remove the full list.
-- Show a value from a provider as the provider sends it. Do not parse it or format it.
-
-## Decimal Values
-
-- Do all arithmetic with the helpers in `packages/perps-sdk/src/decimal/`, for example `multiplyDecimalString`.
-- Do not call `Big` outside `decimal/`. A `Big` value must never cross the public boundary.
-- Use `decimalStringToNumber` only for a chart value or a pixel value. This conversion loses precision.
-- Do not use `Decimal` alone as a name prefix.
-
-## Folders
-
-- `decimal/` holds string arithmetic, compare, conversion, and format functions. Do not put domain words in this folder.
-- `math/` holds trading formulas for display and preview.
-- `wire/` holds values that are ready for a provider. A value that goes to a provider comes from `wire/` or from a provider field.
-
-## Names of Constants and Types
-
-- The name of a constant must tell what it is and where it is used.
-- A message constant has the name of its enum member, for example `ORDER_SUBMITTED_MESSAGE`.
-- Do not write a one-line wrapper function for an enum compare. Write the compare in the code.
-- Give a shared base type the name `<Name>Base`.
-
-## Documentation
-
-After you complete a feature or a large change, read `README.md` and `packages/perps-sdk/README.md` again. Tell the user about each part that is not correct.
-
-## Commits
-
-- Write each commit message on one line, in the Conventional Commits format.
-- Do not put a scope before the colon. Write `feat: add X`, not `feat(module): add X`.
-- If the commit resolves a Linear issue, add a comment with the fix details to the issue. Then add `(ORD-<id>)` to the end of the commit message.
