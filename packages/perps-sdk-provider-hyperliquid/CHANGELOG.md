@@ -1,5 +1,16 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 38.0.0
+
+### Minor Changes
+
+- [#743](https://github.com/lifinance/perps-sdk/pull/743) [`7181eca`](https://github.com/lifinance/perps-sdk/commit/7181eca8a2ef22d3ccb6c7320ec175548ec2d8d3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Require `PerpsProviderPlugin.isLeverageEqual` on every custom provider plugin. Hyperliquid and Ondo compare decimal values exactly. Lighter compares the stored integer IMF and rejects unsupported requested precision and zero IMF values.
+
+### Patch Changes
+
+- Updated dependencies [[`7181eca`](https://github.com/lifinance/perps-sdk/commit/7181eca8a2ef22d3ccb6c7320ec175548ec2d8d3)]:
+  - @lifi/perps-sdk@35.0.0
+
 ## 37.0.0
 
 ### Patch Changes
