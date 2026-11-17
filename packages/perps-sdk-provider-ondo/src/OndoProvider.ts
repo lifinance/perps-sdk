@@ -3,6 +3,7 @@ import {
   type ActionSignerContribution,
   buildFill,
   calculateTransferable,
+  compareDecimalStrings,
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
@@ -1181,6 +1182,9 @@ export const ondoProvider = (
     snapOrderPrice,
 
     snapOrderSize,
+
+    isLeverageEqual: (requested, reported) =>
+      compareDecimalStrings(requested, reported) === 0,
 
     triggerOrders: { modifyCanChangeType: false },
 

@@ -737,3 +737,15 @@ describe('hyperliquidProvider — per-user reads without setup', () => {
     )
   })
 })
+
+describe('Hyperliquid leverage comparison', () => {
+  it.each([
+    ['15', '15.00', true],
+    ['15', '14.99', false],
+    ['1.0000000000000001', '1', false],
+  ])('compares %sx with %sx exactly', (requested, reported, expected) => {
+    expect(hyperliquidProvider().isLeverageEqual(requested, reported)).toBe(
+      expected
+    )
+  })
+})

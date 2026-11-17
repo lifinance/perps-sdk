@@ -24,10 +24,10 @@ import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
- * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION`, so the value a
- * client reads is the value it saved. Provider risk calculations consume the
- * original decimal IMF instead. `undefined` for a non-positive or unparsable
- * IMF.
+ * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION`. The stored IMF
+ * can make this differ from the requested leverage. Provider risk calculations
+ * consume the original decimal IMF instead. `undefined` for a non-positive
+ * or unparsable IMF.
  * @public
  */
 export const leverageFromImf = (imf: string): string | undefined => {

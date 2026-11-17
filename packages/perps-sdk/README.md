@@ -358,6 +358,18 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Leverage confirmation
+
+`isLeverageEqual(sdk, provider, requested, reported)` compares positive decimal strings under the provider's storage rules.
+Lighter compares the half-up integer IMF of both leverages, so `15` and its reported value `14.99` agree.
+Each provider must implement `PerpsProviderPlugin.isLeverageEqual(requested, reported)`.
+Hyperliquid and Ondo use exact decimal comparison.
+Custom provider plugins must add this method. The SDK applies no default comparison.
+The helper does not change the reported value or confirm the margin mode.
+An invalid decimal or non-positive leverage throws `ValidationError`. An unregistered provider throws `SDKError`.
+Lighter also rejects requested precision above two decimal places and leverage that produces a zero IMF.
+`safeIsLeverageEqual` logs a warning and returns `undefined` when the comparison throws.
+
 ### Order amounts and venue grids
 
 Order amounts cross the API as a `DecimalString`: a plain decimal string with

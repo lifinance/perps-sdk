@@ -3716,3 +3716,13 @@ describe('OndoProvider — SIWE login stays client-side', () => {
     )
   })
 })
+
+describe('Ondo leverage comparison', () => {
+  it.each([
+    ['15', '15.00', true],
+    ['15', '14.99', false],
+    ['1.0000000000000001', '1', false],
+  ])('compares %sx with %sx exactly', (requested, reported, expected) => {
+    expect(ondoProvider().isLeverageEqual(requested, reported)).toBe(expected)
+  })
+})

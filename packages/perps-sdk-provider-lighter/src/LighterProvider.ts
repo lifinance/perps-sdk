@@ -1,6 +1,7 @@
 import {
   ACTIVE_ORDER_STATUSES,
   calculateTransferable,
+  compareDecimalStrings,
   type DepositFlow,
   divideDecimalString,
   estimateLiquidationPriceAtMarketRate,
@@ -36,6 +37,7 @@ import {
   paginateActivity,
   resolveQuote,
   resolveRetryPolicy,
+  roundDecimalString,
   type SDKRequestOptions,
   type SignActionsContext,
   type SignActionsResult,
@@ -96,6 +98,7 @@ import {
   LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
+  LIGHTER_LEVERAGE_PRECISION,
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
   type LighterDeployment,
@@ -192,6 +195,10 @@ const tickToFeeString = (tick: number): string =>
     numberToDecimalString(tick),
     numberToDecimalString(LIGHTER_FEE_TICK_SCALE)
   )
+
+// UpdateLeverage stores a half-up integer initial margin fraction in basis points.
+const calculateLeverageImf = (leverage: string): string =>
+  roundDecimalString(divideDecimalString('10000', leverage), 0, 'round')
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -1994,6 +2001,29 @@ export const createLighterProvider = (
     snapOrderPrice,
 
     snapOrderSize,
+
+    isLeverageEqual(requested, reported) {
+      if (
+        compareDecimalStrings(
+          requested,
+          roundDecimalString(requested, LIGHTER_LEVERAGE_PRECISION, 'truncate')
+        ) !== 0
+      ) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          `Lighter requested leverage must use at most ${LIGHTER_LEVERAGE_PRECISION} decimal places`
+        )
+      }
+      const requestedImf = calculateLeverageImf(requested)
+      const reportedImf = calculateLeverageImf(reported)
+      if (requestedImf === '0' || reportedImf === '0') {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          'Lighter leverage must produce a positive IMF'
+        )
+      }
+      return requestedImf === reportedImf
+    },
 
     // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.
     triggerOrders: {
