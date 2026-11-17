@@ -1,4 +1,3 @@
-import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -6,8 +5,11 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
+import { ondoProvider } from '../OndoProvider.js'
 import type { OndoPosition } from '../types/wire.js'
 import { isOpenPosition, mapOpenPositions, mapPosition } from './mapPosition.js'
+
+const { remarkPosition } = ondoProvider()
 
 const MARKET: PerpsMarketDisplay = {
   providerId: 'ondo',

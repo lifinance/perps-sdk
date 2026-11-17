@@ -60,8 +60,10 @@ export interface Position {
    * value when the position returns to flat.
    */
   accruedFunding?: DecimalString
-  /** Position leverage as a decimal string multiple. */
+  /** Display leverage multiple; Lighter rounds half-up to one decimal place. */
   leverage?: DecimalString
+  /** Provider-native leverage source. Lighter uses integer basis-point IMF strings; '667' means 6.67%. */
+  leverageSource?: DecimalString
   /**
    * Margin reserved by this position as a decimal string: the venue figure of
    * each provider, unchanged. Its unrealized-PnL treatment differs by venue.
@@ -81,9 +83,9 @@ export interface Position {
    */
   positionValue?: DecimalString
   /** Percent (`'10'` is 10%), without display rounding.
-   * `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
-   * Hyperliquid and Ondo fractions become percents; re-marking recalculates.
-   * Absent without venue ROE when PnL, size, entry price or leverage is unusable.
+   * Lighter uses entry notional and its native IMF, not display leverage.
+   * Hyperliquid and Ondo fractions become percents; provider remarking recalculates.
+   * Absent when the provider cannot calculate it from usable inputs.
    */
   returnOnEquity?: DecimalString
   /** Display multiple: `positionValue ÷ marginUsed`, rounded half-up to two decimals.
@@ -257,12 +259,16 @@ export interface AvailableToTrade {
 
 /**
  * The user's complete venue-side settings for one perps market: the margin
- * mode and display leverage the next order on it will use.
+ * mode and request-compatible leverage the next order on it will use.
  * @public
  */
 export interface MarketSettings {
   marginMode: MarginMode
   leverage: DecimalString
+  /** Provider-calculated display multiple when presentation precision differs from the order value. */
+  displayLeverage?: DecimalString
+  /** Provider-native setting. Lighter uses integer basis-point IMF strings; other providers omit it. */
+  leverageSource?: DecimalString
 }
 
 /**

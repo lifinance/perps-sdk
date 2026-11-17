@@ -1,11 +1,13 @@
-import { createPerpsClient, PerpsError, remarkPosition } from '@lifi/perps-sdk'
+import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HL_CLEARINGHOUSE_STATE, HL_MARKETS } from '../../test/fixtures.js'
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
+import { hyperliquidProvider } from '../HyperliquidProvider.js'
 import { getPositions } from './getPositions.js'
 
+const { remarkPosition } = hyperliquidProvider()
 const ADDRESS = '0x1234567890123456789012345678901234567890' as const
 const client = createPerpsClient({
   integrator: 'test',

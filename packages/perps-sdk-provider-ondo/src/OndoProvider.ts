@@ -150,6 +150,7 @@ import {
   snapOrderSize,
 } from './utils/index.js'
 import { mapPortfolioHistory } from './utils/mapPortfolioHistory.js'
+import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
 import {
   decodeOrderCursor,
   encodeOrderCursor,
@@ -1183,8 +1184,22 @@ export const ondoProvider = (
 
     snapOrderSize,
 
-    isLeverageEqual: (requested, reported) =>
-      compareDecimalStrings(requested, reported) === 0,
+    calculateRoe,
+
+    remarkPosition,
+
+    isLeverageEqual: (requested, reported) => {
+      if (
+        !isDecimalStringGreaterThan(requested, '0') ||
+        !isDecimalStringGreaterThan(reported.leverage, '0')
+      ) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          'Leverage must be above zero'
+        )
+      }
+      return compareDecimalStrings(requested, reported.leverage) === 0
+    },
 
     triggerOrders: { modifyCanChangeType: false },
 

@@ -6980,6 +6980,8 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
       leverage: '2',
+      displayLeverage: '2',
+      leverageSource: '5000',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -6990,10 +6992,12 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
       leverage: '50',
+      displayLeverage: '50',
+      leverageSource: '200',
     })
   })
 
-  it('rounds fractional venue leverage to two decimal places', async () => {
+  it('rounds fractional venue leverage to one decimal place', async () => {
     accountResponse = () =>
       respond(
         withPositions([
@@ -7007,6 +7011,8 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('0')).resolves.toEqual({
       marginMode: MarginMode.ISOLATED,
       leverage: '1.67',
+      displayLeverage: '1.7',
+      leverageSource: '6000',
     })
   })
 
@@ -7014,6 +7020,8 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
       leverage: '20',
+      displayLeverage: '20',
+      leverageSource: '500',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -7033,6 +7041,8 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
       leverage: '20',
+      displayLeverage: '20',
+      leverageSource: '500',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })
@@ -7044,6 +7054,8 @@ describe('LighterProvider — getMarketSettings', () => {
     await expect(settingsFor('1')).resolves.toEqual({
       marginMode: MarginMode.CROSS,
       leverage: '20',
+      displayLeverage: '20',
+      leverageSource: '500',
     })
     expect(orderBookDetailsRequests()).toHaveLength(0)
   })

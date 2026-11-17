@@ -15,6 +15,7 @@ import {
   isDecimalStringGreaterThan,
   isSpotCategory,
   localStorageAdapter,
+  multiplyDecimalString,
   numberToDecimalString,
   PerpsError,
   type PerpsProviderPlugin,
@@ -98,6 +99,8 @@ import {
   LIGHTER_CLIENT_ORDER_INDEX_ID_PREFIX,
   LIGHTER_FEE_TICK_SCALE,
   LIGHTER_HISTORY_PAGE_SIZE,
+  LIGHTER_IMF_PERCENT_SCALE,
+  LIGHTER_LEVERAGE_DISPLAY_PRECISION,
   LIGHTER_LEVERAGE_PRECISION,
   LIGHTER_MAINNET_DEPLOYMENT,
   LIGHTER_RH_DEPLOYMENT,
@@ -160,7 +163,6 @@ import {
   fetchDetailedAccount,
   LIGHTER_MARKET_SLIPPAGE_PERCENT,
   type LighterFastWithdrawal,
-  leverageFromImf,
   lighterAsset,
   lighterFastWithdrawal,
   lighterWithdrawableBalances,
@@ -175,6 +177,7 @@ import {
   toIsoFromMs,
   toIsoFromSeconds,
 } from './utils/index.js'
+import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -947,9 +950,17 @@ export const createLighterProvider = (
         `The backend market '${marketId}' carries no positive Lighter default leverage`
       )
     }
+    const orderLeverage = numberToDecimalString(leverage)
+    const leverageSource = calculateLeverageImf(orderLeverage)
     return {
       marginMode: MarginMode.CROSS,
-      leverage: numberToDecimalString(leverage),
+      leverage: orderLeverage,
+      displayLeverage: roundDecimalString(
+        divideDecimalString('10000', leverageSource),
+        LIGHTER_LEVERAGE_DISPLAY_PRECISION,
+        'round'
+      ),
+      leverageSource,
     }
   }
 
@@ -1472,26 +1483,37 @@ export const createLighterProvider = (
       const row = account?.positions.find(
         (p) => String(p.market_id) === marketId
       )
-      // An unparsable IMF throws; a non-positive one means no stored setting.
-      const leverage =
-        row === undefined
-          ? undefined
-          : leverageFromImf(
-              unknownToDecimalString(
-                row.initial_margin_fraction,
-                'initial_margin_fraction',
-                providerKey
-              )
-            )
-      if (row === undefined || leverage === undefined) {
+      if (row === undefined) {
         return resolveDefaultMarketSettings(marketId)
       }
+      const imf = unknownToDecimalString(
+        row.initial_margin_fraction,
+        'initial_margin_fraction',
+        providerKey
+      )
+      if (!isDecimalStringGreaterThan(imf, '0')) {
+        return resolveDefaultMarketSettings(marketId)
+      }
+      const decodedLeverage = divideDecimalString('100', imf)
       return {
         marginMode:
           row.margin_mode === LT_MARGIN_MODE_ISOLATED
             ? MarginMode.ISOLATED
             : MarginMode.CROSS,
-        leverage,
+        leverage: roundDecimalString(
+          decodedLeverage,
+          LIGHTER_LEVERAGE_PRECISION,
+          'round'
+        ),
+        displayLeverage: roundDecimalString(
+          decodedLeverage,
+          LIGHTER_LEVERAGE_DISPLAY_PRECISION,
+          'round'
+        ),
+        leverageSource: multiplyDecimalString(
+          imf,
+          String(LIGHTER_IMF_PERCENT_SCALE)
+        ),
       }
     },
 
@@ -2002,7 +2024,20 @@ export const createLighterProvider = (
 
     snapOrderSize,
 
+    calculateRoe,
+
+    remarkPosition,
+
     isLeverageEqual(requested, reported) {
+      if (
+        !isDecimalStringGreaterThan(requested, '0') ||
+        !isDecimalStringGreaterThan(reported.leverage, '0')
+      ) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          'Leverage must be above zero'
+        )
+      }
       if (
         compareDecimalStrings(
           requested,
@@ -2015,14 +2050,22 @@ export const createLighterProvider = (
         )
       }
       const requestedImf = calculateLeverageImf(requested)
-      const reportedImf = calculateLeverageImf(reported)
-      if (requestedImf === '0' || reportedImf === '0') {
+      const reportedImf = reported.leverageSource
+      if (
+        requestedImf === '0' ||
+        reportedImf === undefined ||
+        !isDecimalStringGreaterThan(reportedImf, '0') ||
+        compareDecimalStrings(
+          reportedImf,
+          roundDecimalString(reportedImf, 0, 'truncate')
+        ) !== 0
+      ) {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
-          'Lighter leverage must produce a positive IMF'
+          'Lighter leverage must carry a positive integer IMF'
         )
       }
-      return requestedImf === reportedImf
+      return compareDecimalStrings(requestedImf, reportedImf) === 0
     },
 
     // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.

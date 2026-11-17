@@ -191,6 +191,8 @@ export const LIGHTER_FEE_TICK_SCALE = 1_000_000
  */
 export const LIGHTER_LEVERAGE_PRECISION = 2
 
+export const LIGHTER_LEVERAGE_DISPLAY_PRECISION = 1
+
 /**
  * Scale of the integer `initial_margin_fraction` values Lighter publishes on
  * trade rows and order-book details: the integer is a percent times 100, so

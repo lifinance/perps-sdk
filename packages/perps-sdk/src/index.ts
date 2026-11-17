@@ -133,7 +133,7 @@ export {
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
-  remarkPosition,
+  remarkPositionValues,
   safeCalculateEffectiveLeverage,
   safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
@@ -338,7 +338,6 @@ export {
   explorerTxUrl,
   explorerTxUrlFromBase,
 } from './utils/explorer.js'
-export { isLeverageEqual, safeIsLeverageEqual } from './utils/leverage.js'
 export { isSpotCategory } from './utils/marketCategory.js'
 export {
   ACTIVE_ORDER_STATUSES,

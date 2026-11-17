@@ -360,15 +360,18 @@ console.log(availableToTrade.buy, availableToTrade.sell)
 
 ### Leverage confirmation
 
-`isLeverageEqual(sdk, provider, requested, reported)` compares positive decimal strings under the provider's storage rules.
-Lighter compares the half-up integer IMF of both leverages, so `15` and its reported value `14.99` agree.
-Each provider must implement `PerpsProviderPlugin.isLeverageEqual(requested, reported)`.
-Hyperliquid and Ondo use exact decimal comparison.
-Custom provider plugins must add this method. The SDK applies no default comparison.
-The helper does not change the reported value or confirm the margin mode.
-An invalid decimal or non-positive leverage throws `ValidationError`. An unregistered provider throws `SDKError`.
-Lighter also rejects requested precision above two decimal places and leverage that produces a zero IMF.
-`safeIsLeverageEqual` logs a warning and returns `undefined` when the comparison throws.
+`provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.
+Lighter compares the half-up integer IMF of the request with `reportedSettings.leverageSource`.
+It can reject different stored IMFs even when both display values are `15`.
+Hyperliquid and Ondo compare `reportedSettings.leverage` with exact decimal arithmetic.
+Each provider implements this required method without I/O or a default comparison.
+Invalid or non-positive leverage throws `ValidationError`.
+Lighter also rejects requested precision above two decimal places, a zero requested IMF, and a missing or invalid reported IMF.
+
+`MarketSettings.leverage` remains the request-compatible value for orders.
+Use `displayLeverage ?? leverage` for presentation; Lighter calculates `displayLeverage` directly from its native source at one decimal place.
+The comparison method does not change either value or confirm the margin mode.
+Call the bound provider directly and handle its errors at the operation boundary.
 
 ### Order amounts and venue grids
 
@@ -487,43 +490,47 @@ and on the `positions` stream:
 - `positionValue`: the absolute position value in quote-asset units.
   Hyperliquid sends `positionValue`, Lighter sends `position_value` and Ondo
   sends `notionalValue`.
-- `returnOnEquity`: a percent (`'10'` is 10%) of the entry notional ÷ the current leverage:
-  `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`. Hyperliquid and
-  Ondo send this figure as a fraction, and the SDK multiplies it by 100. For
-  Lighter, the SDK calculates it. Margin that the user adds to an isolated
-  position does not change it.
-  The SDK does not round ROE for display.
+- `returnOnEquity`: a percent (`'10'` is 10%) calculated under the provider's
+  initial-margin-at-entry rules. Hyperliquid and Ondo map valid venue fractions
+  to percents. Lighter calculates the entry margin from its exact IMF.
+  Added isolated margin does not change the ROE denominator. The SDK does not
+  round ROE for display.
 - `effectiveLeverage`: `positionValue ÷ marginUsed`, rounded half-up to two
   decimal places for display.
 - `liquidationDistance`: the distance from `markPrice` to `liquidationPrice`,
   as a percent of `markPrice`, rounded half-up to two decimal places for
   display.
 
+`Position.leverage` is a display multiple. Lighter rounds it directly from the
+IMF to one decimal place and retains the integer IMF in `leverageSource`.
+For example, IMF `'667'` gives display leverage `'15'`. Hyperliquid and Ondo
+leave `leverageSource` absent.
+
 A field is absent when one of its inputs is absent or is not usable. A
 `liquidationPrice` that is not above zero gives no `liquidationDistance`.
-`buildPosition(position)` calculates each field that the venue does not send.
-It always calculates `effectiveLeverage` and `liquidationDistance` again. All
-three providers use it.
+`buildPosition(position)` completes provider-independent position fields.
+It retains explicit ROE and recalculates `effectiveLeverage` and
+`liquidationDistance`. Each provider implements `calculateRoe(position)` for
+its financial rules. The separate `calculateRoe(pnl, margin)` utility remains
+provider-independent arithmetic.
 
-`remarkPosition(position, markPrice)` gives a new `Position` for a live mark
-price. It calculates `markPrice`, `positionValue`, `unrealizedPnl`,
-`returnOnEquity`, `effectiveLeverage` and `liquidationDistance` again. It does
-not change its input. When `markPrice` is not a positive decimal string, it
-gives the input position unchanged.
+`provider.remarkPosition(position, markPrice)` gives a new `Position` for a
+live mark price. It recalculates `markPrice`, `positionValue`, `unrealizedPnl`,
+`returnOnEquity`, `effectiveLeverage`, and `liquidationDistance`.
+It does not change its input. An invalid mark returns the input unchanged.
 
-`remarkPosition` keeps `marginUsed` and `initialMarginRequirement` from the
-input position. The SDK has no venue margin model for a new mark, so
-`effectiveLeverage` uses the margin of the input position snapshot. For
-example, Lighter cross margin follows the position value, so the venue figure
-at the new mark can differ. Read the positions again for venue margin figures.
-`returnOnEquity` uses the entry notional ÷ the leverage, which does not change with
-the mark. When `entryPrice` is not a positive decimal string, or `size` is not
-a decimal string, `unrealizedPnl` keeps the input figure.
+Provider remarking retains `leverage`, `leverageSource`, `marginUsed`, and
+`initialMarginRequirement` from the input snapshot. Effective leverage uses
+the snapshot margin. Read positions again for updated venue margin figures.
+Lighter ROE uses the retained IMF, never its rounded display leverage.
+Hyperliquid and Ondo use entry notional divided by their leverage.
+Invalid entry prices or sizes retain the input unrealized PnL.
+
+The shared `remarkPositionValues` helper only recalculates provider-independent
+mark fields and clears stale ROE. Consumers use the bound provider method.
 
 ```ts
-import { remarkPosition } from '@lifi/perps-sdk'
-
-const livePosition = remarkPosition(position, liveMarkPrice)
+const livePosition = provider.remarkPosition(position, liveMarkPrice)
 ```
 
 ### Closing fill values
@@ -639,7 +646,7 @@ One verb names one kind of transformation.
 | `add` `subtract` `multiply` `divide` `abs` `compare` `round` | decimal strings → exact `DecimalString`, or `-1 \| 0 \| 1` for `compare` | throws; `safe` form | `addDecimalString`, `addDecimalStrings`, `compareDecimalStrings`, `roundDecimalString` |
 | `validate<X>`               | value → the value, or an error if a rule fails     | throws                            | —                                                          |
 | `classify<X>`               | values → a domain category                         | —                                 | `classifyFillFromPosition`                                 |
-| `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `remarkPosition`                         |
+| `remark<X>`                 | `Position` and a mark price → a new `Position` at that mark | no; gives the input on a mark that is not a positive decimal | `provider.remarkPosition`                |
 | `annualize<X>`              | rate for one period → simple rate for one year     | throws; `safe` form               | `annualizeFundingRate`                                     |
 
 No function in `decimal/`, `math/` or `wire/` uses a `derive`, `predict` or

@@ -1,4 +1,3 @@
-import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -6,8 +5,11 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { hyperliquidProvider } from '../HyperliquidProvider.js'
 import type { HlAssetPosition } from '../types/index.js'
 import { isOpenAssetPosition, mapPosition } from './mapPosition.js'
+
+const { remarkPosition } = hyperliquidProvider()
 
 const BTC_MARKET: PerpsMarketDisplay = {
   providerId: 'hyperliquid',

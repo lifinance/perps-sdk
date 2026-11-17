@@ -3723,6 +3723,36 @@ describe('Ondo leverage comparison', () => {
     ['15', '14.99', false],
     ['1.0000000000000001', '1', false],
   ])('compares %sx with %sx exactly', (requested, reported, expected) => {
-    expect(ondoProvider().isLeverageEqual(requested, reported)).toBe(expected)
+    expect(
+      ondoProvider().isLeverageEqual(requested, {
+        marginMode: MarginMode.CROSS,
+        leverage: reported,
+      })
+    ).toBe(expected)
+  })
+
+  it.each([
+    '0',
+    '-1',
+    '',
+    'NaN',
+    '1e1',
+  ])('rejects invalid leverage %j on either side', (value) => {
+    const provider = ondoProvider()
+    const error = expect.objectContaining({
+      code: PerpsErrorCode.ValidationError,
+    })
+    expect(() =>
+      provider.isLeverageEqual(value, {
+        marginMode: MarginMode.CROSS,
+        leverage: '15',
+      })
+    ).toThrow(error)
+    expect(() =>
+      provider.isLeverageEqual('15', {
+        marginMode: MarginMode.CROSS,
+        leverage: value,
+      })
+    ).toThrow(error)
   })
 })

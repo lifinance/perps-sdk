@@ -82,7 +82,7 @@ entry notional ÷ the current leverage, not of `usedMargin`. For an XAU short wi
 `1.391301 ÷ (0.035 × 4045.34 ÷ 25)`. `unrealizedPnl ÷ usedMargin` gives
 `0.248103…`, because `usedMargin` follows the mark price.
 
-`remarkPosition` does not keep the venue figure. It calculates the same formula
+`provider.remarkPosition` does not keep the venue figure. It calculates the same formula
 at the new mark: `unrealizedPnl ÷ (|size| × entryPrice ÷ leverage) × 100`.
 
 ## Orders

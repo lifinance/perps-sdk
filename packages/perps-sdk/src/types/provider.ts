@@ -506,6 +506,12 @@ export interface PerpsProviderPlugin {
     options?: SDKRequestOptions
   ): Promise<PositionsResponse>
 
+  /** Calculate position ROE as a percentage without I/O; omit it for unusable inputs. */
+  calculateRoe(position: Position): DecimalString | undefined
+
+  /** Recalculate mark-dependent position fields under the venue's financial rules, without I/O. */
+  remarkPosition(position: Position, markPrice: DecimalString): Position
+
   /**
    * The user's current venue-side settings for one perps market — the margin
    * mode and leverage the next order on it will use. Resolves the venue value
@@ -519,9 +525,9 @@ export interface PerpsProviderPlugin {
     options?: SDKRequestOptions
   ): Promise<MarketSettings>
 
-  /** Compare positive decimal leverages under the venue's storage rules, without I/O.
-   * Throw `ValidationError` for unsupported leverage precision or representation. */
-  isLeverageEqual(requested: DecimalString, reported: DecimalString): boolean
+  /** Compare a requested leverage with the venue setting, without I/O.
+   * Throw `ValidationError` for unusable or unsupported values or missing required source data. */
+  isLeverageEqual(requested: DecimalString, reported: MarketSettings): boolean
 
   /**
    * The amounts the account can still buy and sell on one market, in that

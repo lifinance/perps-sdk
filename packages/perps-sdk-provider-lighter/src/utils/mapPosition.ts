@@ -1,11 +1,17 @@
 import {
   absDecimalString,
   buildPosition,
+  calculateRoe as calculateMarginRoe,
+  calculateNotionalValue,
+  compareDecimalStrings,
   createWarnOnce,
   divideDecimalString,
   isDecimalString,
+  isDecimalStringGreaterThan,
   isDecimalStringZero,
   multiplyDecimalString,
+  remarkPositionValues,
+  roundDecimalString,
   safeDivideDecimalString,
   safeIsDecimalStringGreaterThan,
   safeNumberToDecimalString,
@@ -16,6 +22,7 @@ import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import {
   LIGHTER_IMF_PERCENT_SCALE,
+  LIGHTER_LEVERAGE_DISPLAY_PRECISION,
   LIGHTER_LEVERAGE_PRECISION,
   LIGHTER_PROVIDER_KEY,
 } from '../constants.js'
@@ -24,20 +31,23 @@ import { LT_MARGIN_MODE_ISOLATED } from '../types/index.js'
 
 /**
  * Display leverage from an IMF percent string: `100 / IMF` in exact decimal
- * arithmetic, rounded half-up to `LIGHTER_LEVERAGE_PRECISION`. The stored IMF
- * can make this differ from the requested leverage. Provider risk calculations
- * consume the original decimal IMF instead. `undefined` for a non-positive
+ * arithmetic, rounded half-up to the given precision (two decimals by default).
+ * The stored IMF can make this differ from the requested leverage.
+ * Returns `undefined` for a non-positive
  * or unparsable IMF.
  * @public
  */
-export const leverageFromImf = (imf: string): string | undefined => {
+export const leverageFromImf = (
+  imf: string,
+  precision = LIGHTER_LEVERAGE_PRECISION
+): string | undefined => {
   if (safeIsDecimalStringGreaterThan(imf, '0') !== true) {
     return undefined
   }
   const leverage = safeDivideDecimalString('100', imf)
   return leverage === undefined
     ? undefined
-    : safeRoundDecimalString(leverage, LIGHTER_LEVERAGE_PRECISION, 'round')
+    : safeRoundDecimalString(leverage, precision, 'round')
 }
 
 /**
@@ -53,6 +63,48 @@ export const leverageFromScaledImf = (imf: number): string | undefined => {
       ? undefined
       : safeDivideDecimalString(scaled, String(LIGHTER_IMF_PERCENT_SCALE))
   return percent === undefined ? undefined : leverageFromImf(percent)
+}
+
+export const calculateRoe = (position: Position): string | undefined => {
+  const { unrealizedPnl, size, entryPrice, leverageSource } = position
+  if (
+    !isDecimalString(unrealizedPnl) ||
+    !isDecimalString(size) ||
+    !isDecimalStringGreaterThan(size, '0') ||
+    !isDecimalString(entryPrice) ||
+    !isDecimalStringGreaterThan(entryPrice, '0') ||
+    !isDecimalString(leverageSource) ||
+    !isDecimalStringGreaterThan(leverageSource, '0') ||
+    compareDecimalStrings(
+      leverageSource,
+      roundDecimalString(leverageSource, 0, 'truncate')
+    ) !== 0
+  ) {
+    return undefined
+  }
+  const margin = divideDecimalString(
+    multiplyDecimalString(
+      calculateNotionalValue(size, entryPrice),
+      leverageSource
+    ),
+    '10000'
+  )
+  return calculateMarginRoe(unrealizedPnl, margin)
+}
+
+export const remarkPosition = (
+  position: Position,
+  markPrice: string
+): Position => {
+  const remarked = remarkPositionValues(position, markPrice)
+  if (remarked === position) {
+    return position
+  }
+  const roe = calculateRoe(remarked)
+  if (roe !== undefined) {
+    remarked.returnOnEquity = roe
+  }
+  return remarked
 }
 
 const skipPosition = (
@@ -102,7 +154,9 @@ export const mapPosition = (
     warnUnreadableField('position_value', pos.position_value)
   }
   const imf = pos.initial_margin_fraction
-  const leverage = isDecimalString(imf) ? leverageFromImf(imf) : undefined
+  const leverage = isDecimalString(imf)
+    ? leverageFromImf(imf, LIGHTER_LEVERAGE_DISPLAY_PRECISION)
+    : undefined
   if (leverage === undefined) {
     warnUnreadableField('initial_margin_fraction', imf)
   }
@@ -115,7 +169,7 @@ export const mapPosition = (
     ? !isDecimalStringZero(liquidationPrice)
     : liquidationPrice !== ''
 
-  return buildPosition({
+  const mapped = buildPosition({
     market,
     side: pos.sign >= 0 ? PositionSide.LONG : PositionSide.SHORT,
     size,
@@ -132,7 +186,15 @@ export const mapPosition = (
     ...(hasLiquidationPrice ? { liquidationPrice } : {}),
     unrealizedPnl: pos.unrealized_pnl,
     accruedFunding: pos.total_funding_paid_out ?? '0',
-    ...(leverage === undefined ? {} : { leverage }),
+    ...(leverage === undefined
+      ? {}
+      : {
+          leverage,
+          leverageSource: multiplyDecimalString(
+            imf,
+            String(LIGHTER_IMF_PERCENT_SCALE)
+          ),
+        }),
     marginUsed: isIsolated
       ? pos.allocated_margin
       : (initialMarginRequirement ?? '0'),
@@ -141,4 +203,9 @@ export const mapPosition = (
       : { initialMarginRequirement }),
     marginMode: isIsolated ? MarginMode.ISOLATED : MarginMode.CROSS,
   })
+  const roe = calculateRoe(mapped)
+  if (roe !== undefined) {
+    mapped.returnOnEquity = roe
+  }
+  return mapped
 }

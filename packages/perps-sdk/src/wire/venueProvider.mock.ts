@@ -84,7 +84,14 @@ export const venueProviderPlugin = (
     },
     snapOrderSize: venueSnapSize,
     snapOrderPrice: venueSnapPrice,
-    isLeverageEqual: (requested, reported) => new Big(requested).eq(reported),
+    isLeverageEqual: (requested, reported) =>
+      new Big(requested).eq(reported.leverage),
+    calculateRoe: () => {
+      throw new Error('venueProviderPlugin: method not implemented')
+    },
+    remarkPosition: () => {
+      throw new Error('venueProviderPlugin: method not implemented')
+    },
     estimateLiquidationPrice: () => {
       throw new Error('venueProviderPlugin: method not implemented')
     },
