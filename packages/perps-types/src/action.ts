@@ -135,6 +135,94 @@ export interface SiweActionStep {
 }
 
 /**
+ * Settlement fields of a Stark order. Each value is an integer as a decimal or
+ * `0x` hex string. Amounts are signed: the side that the account pays is
+ * negative.
+ *
+ * @public
+ */
+export interface StarkOrderFields {
+  positionId: string
+  baseAssetId: string
+  baseAmount: string
+  quoteAssetId: string
+  quoteAmount: string
+  feeAssetId: string
+  feeAmount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * Settlement fields of a transfer between two Stark positions. Each value is
+ * an integer as a decimal or `0x` hex string.
+ *
+ * @public
+ */
+export interface StarkTransferFields {
+  recipientPositionId: string
+  senderPositionId: string
+  collateralId: string
+  amount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * Settlement fields of a Stark withdrawal. Each value is an integer as a
+ * decimal or `0x` hex string.
+ *
+ * @public
+ */
+export interface StarkWithdrawalFields {
+  /** Starknet contract address that receives the withdrawal. */
+  recipient: string
+  positionId: string
+  collateralId: string
+  amount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * One message that a Stark step signs. The provider signs it with the
+ * account's Stark key and writes the `{ r, s }` signature into the request
+ * body at `signaturePath`.
+ *
+ * @public
+ */
+export type StarkMessage = {
+  /** Object keys from the body root to the signature, e.g. `['settlement', 'signature']`. */
+  signaturePath: string[]
+} & (
+  | { type: 'order'; fields: StarkOrderFields }
+  | { type: 'transfer'; fields: StarkTransferFields }
+  | { type: 'withdrawal'; fields: StarkWithdrawalFields }
+)
+
+/**
+ * A venue request that the provider sends from the client with its
+ * client-held API key. The provider first signs each `stark` message and
+ * writes the signatures into `request.body`. An empty `stark` list marks a
+ * request that the API key alone authorizes, e.g. a cancel.
+ * @public
+ */
+export interface StarkActionStep {
+  action: ActionType
+  request: {
+    method: 'POST' | 'PATCH' | 'DELETE'
+    /** Venue-relative, e.g. `/user/order`; base URL resolution is provider-side. */
+    path: string
+    /** Large integers are strings, so a JSON round trip keeps them exact. */
+    body?: Record<string, unknown>
+  }
+  stark: StarkMessage[]
+}
+
+/**
  * Union of all unsigned action-step encodings produced by `createAction`.
  *
  * @public
@@ -146,6 +234,7 @@ export type ActionStep =
   | HmacActionStep
   | SessionActionStep
   | SiweActionStep
+  | StarkActionStep
 
 /**
  * Signed EIP-712 action step ready for backend execution.

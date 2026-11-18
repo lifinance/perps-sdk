@@ -345,6 +345,12 @@ export enum SigningMethod {
   SIWE = 'siwe',
   /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
   SESSION = 'session',
+  /**
+   * Client-only venue request that the provider sends with a client-held API
+   * key, after it signs the step's Stark messages with the account's Stark
+   * key; produces no backend-bound signed step, so `executeAction` is skipped.
+   */
+  STARK = 'stark',
 }
 
 /**

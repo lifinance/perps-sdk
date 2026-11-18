@@ -17,6 +17,9 @@ import type {
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
+  StarkActionStep,
+  StarkMessage,
+  StarkOrderFields,
   TriggerOrderInput,
   UpdateLeverageParams,
   WithdrawalAssetRef,
@@ -503,6 +506,66 @@ describe('Session steps', () => {
     const params: Resolved = {}
 
     expect(params).toEqual({})
+  })
+})
+
+describe('Stark steps', () => {
+  const orderFields: StarkOrderFields = {
+    positionId: '430876',
+    baseAssetId: '344400637349001255728961162330505216',
+    baseAmount: '100',
+    quoteAssetId: '0x1',
+    quoteAmount: '-5129500',
+    feeAssetId: '0x1',
+    feeAmount: '1283',
+    expiration: '1796216400',
+    salt: '1',
+  }
+  const placeOrder: StarkActionStep = {
+    action: ActionType.PLACE_ORDER,
+    request: {
+      method: 'POST',
+      path: '/user/order',
+      body: { id: '1802919074413810230028133407912464447540939052479071' },
+    },
+    stark: [
+      {
+        type: 'order',
+        signaturePath: ['settlement', 'signature'],
+        fields: orderFields,
+      },
+    ],
+  }
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = placeOrder
+
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+  })
+
+  it('carries an empty message list for a request that the API key alone authorizes', () => {
+    const updateLeverage: StarkActionStep = {
+      action: ActionType.UPDATE_LEVERAGE,
+      request: {
+        method: 'PATCH',
+        path: '/user/leverage',
+        body: { market: 'BTC-USD', leverage: '10' },
+      },
+      stark: [],
+    }
+
+    expect(updateLeverage.stark).toEqual([])
+  })
+
+  it('binds the fields to the message type', () => {
+    // @ts-expect-error order fields are not withdrawal fields
+    const bad: StarkMessage = {
+      type: 'withdrawal',
+      signaturePath: ['settlement', 'signature'],
+      fields: orderFields,
+    }
+
+    expect(bad.type).toBe('withdrawal')
   })
 })
 

@@ -1,0 +1,1972 @@
+{
+  "meta": {
+    "source": "x10xchange/python_sdk branch starknet (x10-python-trading-starknet 2.6.0+)",
+    "frozenNow": "2026-11-18T12:00:00Z",
+    "ethPrivateKey": "50c8e358cc974aaaa6e460641e53f78bdc550fd372984aa78ef8fd27c751e6f4",
+    "ethAddress": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+    "notes": [
+      "ethPrivateKey is the public test key from x10xchange/python_sdk tests/fixtures/onboarding.py. It holds no funds and is not a secret.",
+      "All big integers are decimal strings unless prefixed 0x.",
+      "Stark ECDSA signatures are deterministic: same key + hash -> same (r, s).",
+      "Order signed expiry = ceil(expiryEpochMillis/1000 + 14 days) seconds; withdrawal/transfer = ceil(now + 15 days).",
+      "Order `id` defaults to the order hash (decimal) when no externalId is given.",
+      "Signed fee amount = (takerFee + builderFee) * collateral notional, rounded up; `fee` field = takerFee only.",
+      "Buy: collateral negated, amounts rounded up. Sell: synthetic negated, amounts rounded down. Fee always up."
+    ]
+  },
+  "domains": {
+    "mainnet": {
+      "signingDomain": "extended.exchange",
+      "starknet": {
+        "name": "Perpetuals",
+        "version": "v0",
+        "chain_id": "SN_MAIN",
+        "revision": "1"
+      }
+    },
+    "testnet": {
+      "signingDomain": "starknet.sepolia.extended.exchange",
+      "starknet": {
+        "name": "Perpetuals",
+        "version": "v0",
+        "chain_id": "SN_SEPOLIA",
+        "revision": "1"
+      }
+    }
+  },
+  "keyDerivation": [
+    {
+      "network": "mainnet",
+      "accountIndex": "0",
+      "typedData": {
+        "domain": {
+          "name": "extended.exchange"
+        },
+        "primaryType": "AccountCreation",
+        "types": {
+          "AccountCreation": [
+            {
+              "name": "accountIndex",
+              "type": "int8"
+            },
+            {
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "name": "tosAccepted",
+              "type": "bool"
+            }
+          ]
+        },
+        "message": {
+          "accountIndex": "0",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true
+        }
+      },
+      "walletSignature": "7cff6843af5b2e3836b28b4e01f0ec05d361736cd293f2f962bbd3ef5c30e1ca6faa828d8718351b2f474e7808b09f91c33f50dfb097d2c316f0fefe1b8936171b",
+      "starkPrivateKey": "0x30735edc29c5af469e31c26c08b5e29cafec08e1cb2d2d009bbfea4ca18d570",
+      "starkPublicKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94"
+    },
+    {
+      "network": "mainnet",
+      "accountIndex": "1",
+      "typedData": {
+        "domain": {
+          "name": "extended.exchange"
+        },
+        "primaryType": "AccountCreation",
+        "types": {
+          "AccountCreation": [
+            {
+              "name": "accountIndex",
+              "type": "int8"
+            },
+            {
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "name": "tosAccepted",
+              "type": "bool"
+            }
+          ]
+        },
+        "message": {
+          "accountIndex": "1",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true
+        }
+      },
+      "walletSignature": "a4cc3a225bd87843f424fbd23d1510ff512844dd26b176a2849f8cb411d32d0e7ef8d64dbf79e4268acc8180e2f936c7f18e9eae7a8e5b08fba4005eeecf2a611b",
+      "starkPrivateKey": "0x5fa85894f18c154be67a272ae3689e12243bfbad6577b0d6f79aa2458b907e5",
+      "starkPublicKey": "0x72fe8a719ecea3accb069102a90b6a55111a1149f22daa8e1d17ee95481e38d"
+    },
+    {
+      "network": "testnet",
+      "accountIndex": "0",
+      "typedData": {
+        "domain": {
+          "name": "starknet.sepolia.extended.exchange"
+        },
+        "primaryType": "AccountCreation",
+        "types": {
+          "AccountCreation": [
+            {
+              "name": "accountIndex",
+              "type": "int8"
+            },
+            {
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "name": "tosAccepted",
+              "type": "bool"
+            }
+          ]
+        },
+        "message": {
+          "accountIndex": "0",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true
+        }
+      },
+      "walletSignature": "420f843f8e8837a070c0193e7bfd731a617405041cf00196d582184662239d3a3b9a89eae84bda61375dec283576e5bd652aa9a33e0120ee100fb28268c3439d1c",
+      "starkPrivateKey": "0x5008bd07c11ff15826d4de16c78192a8f51bffffbed1d90067283ba58dc2859",
+      "starkPublicKey": "0x44caf8e8d4ba272181721d63f8ddb73b082c00e176706d1cb038a9723b6f9d4"
+    },
+    {
+      "network": "testnet",
+      "accountIndex": "1",
+      "typedData": {
+        "domain": {
+          "name": "starknet.sepolia.extended.exchange"
+        },
+        "primaryType": "AccountCreation",
+        "types": {
+          "AccountCreation": [
+            {
+              "name": "accountIndex",
+              "type": "int8"
+            },
+            {
+              "name": "wallet",
+              "type": "address"
+            },
+            {
+              "name": "tosAccepted",
+              "type": "bool"
+            }
+          ]
+        },
+        "message": {
+          "accountIndex": "1",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true
+        }
+      },
+      "walletSignature": "f3daa9ad79ae0f23128bef3addcf0a84442efc020723ac63aea69d67b051f24f3f25dad33fc1624b4b72396f0b966c8ae9b04663f9f35bacd88253770b14af291b",
+      "starkPrivateKey": "0x79ee519716d0bc79dd63d32e93beb6fca539a6005fdb2e6a46a9ed5f85b4023",
+      "starkPublicKey": "0x180d8e420bd8f9d0097df83b83576c621fd38315a90c55701527f3eb853aead"
+    }
+  ],
+  "onboarding": [
+    {
+      "kind": "onboard",
+      "referralCode": null,
+      "starkMessage": "0x4b52fbccdfb1ce0890f16c13f77b37e7400164e8155e97687aee5160eff9cbc",
+      "payload": {
+        "l1Signature": "485eddd834c79a019ada6bfb96cc504c94cc2e74bc0cce3822f1e166bfc41ab344aad87f97c8ff05c9720adfae5f0466dc786901f108328fea6fe53d474129f91c",
+        "l2Key": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+        "l2Signature": {
+          "r": "0x4a97f007a14bbffaa11ecdc3c44ee1bd7f746bb88ea383a4414682cbb195f9f",
+          "s": "0x531aed35e7c8a251e02d6211ec2bc5a4062c04978883c12aa43808404281f8a"
+        },
+        "accountCreation": {
+          "accountIndex": "0",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true,
+          "time": "2026-11-18T12:00:00Z",
+          "action": "REGISTER",
+          "host": "https://api.starknet.extended.exchange"
+        },
+        "referralCode": null
+      }
+    },
+    {
+      "kind": "onboard",
+      "referralCode": "LIFI",
+      "starkMessage": "0x4b52fbccdfb1ce0890f16c13f77b37e7400164e8155e97687aee5160eff9cbc",
+      "payload": {
+        "l1Signature": "485eddd834c79a019ada6bfb96cc504c94cc2e74bc0cce3822f1e166bfc41ab344aad87f97c8ff05c9720adfae5f0466dc786901f108328fea6fe53d474129f91c",
+        "l2Key": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+        "l2Signature": {
+          "r": "0x4a97f007a14bbffaa11ecdc3c44ee1bd7f746bb88ea383a4414682cbb195f9f",
+          "s": "0x531aed35e7c8a251e02d6211ec2bc5a4062c04978883c12aa43808404281f8a"
+        },
+        "accountCreation": {
+          "accountIndex": "0",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true,
+          "time": "2026-11-18T12:00:00Z",
+          "action": "REGISTER",
+          "host": "https://api.starknet.extended.exchange"
+        },
+        "referralCode": "LIFI"
+      }
+    },
+    {
+      "kind": "subaccount",
+      "payload": {
+        "l2Key": "0x72fe8a719ecea3accb069102a90b6a55111a1149f22daa8e1d17ee95481e38d",
+        "l2Signature": {
+          "r": "0x529163adddac931ae37e6b3d5cf3ac8da4d74f17184dec40e8a36cfccb40c6c",
+          "s": "0x7950154023215532f876d0a66e7a6fc2ac6dcfffb2a33a894c1320804075747"
+        },
+        "accountCreation": {
+          "accountIndex": "1",
+          "wallet": "0x2c12f074766f5eF9c5300ca8C85d06fBa605C59f",
+          "tosAccepted": true,
+          "time": "2026-11-18T12:00:00Z",
+          "action": "CREATE_SUB_ACCOUNT",
+          "host": "https://api.starknet.extended.exchange"
+        },
+        "description": "sub 1"
+      }
+    }
+  ],
+  "apiRequestSignature": [
+    {
+      "path": "/api/v1/user/account/api-key",
+      "message": "/api/v1/user/account/api-key@2026-11-18T12:00:00Z",
+      "time": "2026-11-18T12:00:00Z",
+      "signature": "6e1931b5dad53e70c4f7d137c7840d87743cdaf9c12eb2f6e0e2289c0f03da0116a5f953dd9a53d178cb0412891faa9dbbc391ba62f0f431ba3961aa4c3214c71b",
+      "check": "6e1931b5dad53e70c4f7d137c7840d87743cdaf9c12eb2f6e0e2289c0f03da0116a5f953dd9a53d178cb0412891faa9dbbc391ba62f0f431ba3961aa4c3214c71b"
+    },
+    {
+      "path": "/auth/onboard/subaccount",
+      "message": "/auth/onboard/subaccount@2026-11-18T12:00:00Z",
+      "time": "2026-11-18T12:00:00Z",
+      "signature": "4e686b2543eaea94c19610be209bf5eca84372dd5641eb7c2a5109cddb0afaa814671186d7dced44739535db7fc5f243d8891b4683425947d9264ce33c5548a91c",
+      "check": "4e686b2543eaea94c19610be209bf5eca84372dd5641eb7c2a5109cddb0afaa814671186d7dced44739535db7fc5f243d8891b4683425947d9264ce33c5548a91c"
+    }
+  ],
+  "orders": [
+    {
+      "name": "limit buy GTT nonce=1",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1802919074413810230028133407912464447540939052479071060148897909131759518371",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x54cd6299960567bdd885e8dfd2a486de6d638b56944533641b78b213033926e",
+            "s": "0x78e2cd82862527bdf681be9afed8a7344150e1d9edef84f5594c7ef484d2f9b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x3fc6a81333808f815ce38766cc97c24af4ff2c0dbc0fb6ba0b43636c96b02a3"
+        }
+      ]
+    },
+    {
+      "name": "limit buy GTT nonce=1473459052",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1610030580219800950855481141179985722327867465308344082935737692449498584478",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x56daa6a31acb5f981263802ce7c02de69840105ebb15871b9ce959ac97fe245",
+            "s": "0x708517396ee84c5d3cb038332c2d0c98329c86cb5b730aba9cb42f21b2e349b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x38f3eb94f38d9fb53d1e9af4360ff10491ff6bc2d289c6ee5fa2b4d3b55d59e"
+        }
+      ]
+    },
+    {
+      "name": "limit buy GTT nonce=2147483648",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "3588738929097426727430266404694995193154687997290258931645286430231105408820",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "2147483648",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1aada7954b20e88b056a00ecd4faee47178af3b25344388ec3bda4bf069e5cc",
+            "s": "0x2520cc4188a0b1d3448c342fe2443f6564a5244cc4816ac6b6e735500e58397"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "2147483648",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x7ef277d17170fe9520f8f2d541e7d2b1dc677bdc99a6145ae4163c0c2cc8f34"
+        }
+      ]
+    },
+    {
+      "name": "limit sell GTT",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2453582000956850334649532945831669020535426577824109299475569795220464302139",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "SELL",
+        "qty": "0.0013",
+        "price": "91234.5",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x46a33154e98a587c9bca3b5848c96ffbe82d548dbed2077b9e994bdc38163e9",
+            "s": "0x1fdc2d10580b4894d765985e4cff15b06e28c7068d9290936a8223db46fe9ce"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "118604850",
+          "feeAmount": "29652",
+          "syntheticAmount": "-1300"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-1300",
+            "quote_asset_id": "1",
+            "quote_amount": "118604850",
+            "fee_amount": "29652",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x56cad9e7ddcd7011b6f010e7e0684f7e263112ce86ef69549f4687516e9783b"
+        }
+      ]
+    },
+    {
+      "name": "limit buy post-only maker fee 0",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2939593686740105961325441358664748007190186832565067686403083625208612373583",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": true,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1b09354bd79b09123882d91c76bda71b0639c05e15e2f7f4f34a2f17f9012a9",
+            "s": "0x6ddced9f5c2a4316a3e1536cf8507ccc66b9617342b58234cb56dad90cfb59b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "0",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "0",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x67fc045d572cfd85ca4be4dad0b53e350484f9c5f354e3d3a4d004b63c7c44f"
+        }
+      ]
+    },
+    {
+      "name": "limit buy with externalId",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "jumper-useraction-0001",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x56daa6a31acb5f981263802ce7c02de69840105ebb15871b9ce959ac97fe245",
+            "s": "0x708517396ee84c5d3cb038332c2d0c98329c86cb5b730aba9cb42f21b2e349b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x38f3eb94f38d9fb53d1e9af4360ff10491ff6bc2d289c6ee5fa2b4d3b55d59e"
+        }
+      ]
+    },
+    {
+      "name": "limit buy builder fee 1bp",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "369730881975569102157869615997636206343640619568933556419824604223885148300",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x7381ccfc463beeec51e8245ef32dd3fb3d9225ef93e2982512ac2ec3548bbd7",
+            "s": "0x5d82d1ae0acfcbb08fb4d3ff4dfd0e59a08bca2019d77bfab5ac1e3c1376da2"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1796",
+          "syntheticAmount": "100"
+        },
+        "builderFee": "0.0001",
+        "builderId": "313401"
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1796",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0xd142a09d7fa01d58f46ac7ab7d36ccf6f8f5bd46792eda7fa693fdf622008c"
+        }
+      ]
+    },
+    {
+      "name": "limit sell builder fee 5bp",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "3062552391805422257908306498833861624360319952715354851047768059983909309610",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "SELL",
+        "qty": "0.0013",
+        "price": "91234.5",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1afd6216d61b6b7fdcb534f1a038ebe0b5656faa70f17d339831025537bb654",
+            "s": "0x6f51d1c92e0271ecde886d85795985ce173c4952ef28a741b21853c2c613d14"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "118604850",
+          "feeAmount": "88954",
+          "syntheticAmount": "-1300"
+        },
+        "builderFee": "0.0005",
+        "builderId": "313401"
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-1300",
+            "quote_asset_id": "1",
+            "quote_amount": "118604850",
+            "fee_amount": "88954",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x6c557ddaf53bc6448654254b7b411f463f0f2d246971d1089049c03ce574caa"
+        }
+      ]
+    },
+    {
+      "name": "market buy IOC",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1325826066685336432957055106617852685785386911966264259598986387305442536336",
+        "market": "BTC-USD",
+        "type": "MARKET",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "92000.1",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x726c33daae470cbda0ead49d85fe8f4d29c12560a87cdc2d161c239eba4e584",
+            "s": "0x6134a90407213913a3a088b9c7567b28c42ac270a08dcc5e8519a8c44b6b14"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-9200010",
+          "feeAmount": "2301",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-9200010",
+            "fee_amount": "2301",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x2ee6416034e0b59836f766ac8cf07716557e77883c3fc399efeb9ffaf536b90"
+        }
+      ]
+    },
+    {
+      "name": "market sell IOC reduce-only",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2023366850766872034132975257648198718802984870899634058269850726130739053623",
+        "market": "BTC-USD",
+        "type": "MARKET",
+        "side": "SELL",
+        "qty": "0.0001",
+        "price": "90000",
+        "reduceOnly": true,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x4c72223ec15142257dc9321d030fd584b7307c902fb42a795a54432904b02ae",
+            "s": "0x31d86338155386bc4d73135a976e07291499c6a2ff314850b154edd23b5e37b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "9000000",
+          "feeAmount": "2250",
+          "syntheticAmount": "-100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-100",
+            "quote_asset_id": "1",
+            "quote_amount": "9000000",
+            "fee_amount": "2250",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x4792f5fadfb42f1198db5e8513e6c949146af6fe3aebfe697b5528cde2c0437"
+        }
+      ]
+    },
+    {
+      "name": "modify (cancelId)",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "jumper-useraction-0002",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51300",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "cancelId": "jumper-useraction-0001",
+        "settlement": {
+          "signature": {
+            "r": "0x11781a9049d8ae4f3114929d6f957410337a79cc45513b9a958ab5d7c306ff3",
+            "s": "0x54306bdc08a424276de7aab86073dfcd859761613433a951e73702083b71148"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5130000",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5130000",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x56116e27b46e974bef97ab3c47456b5901ce9134d0279fb9045e12afbea3243"
+        }
+      ]
+    },
+    {
+      "name": "long expiry 90 days",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2293181489190354108165865576778447179395741559192622095321970246361667500045",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1802779200000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x2101efa40115260fc6069a65f2e3288cac203b5f1654779e32d342a8a69edf0",
+            "s": "0x12341d1a91dd775941779df7bfc5f1d1a188ff58ff862c4a8020989480a2f1b"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1803988800",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x511e50cd7ede9d1e201ceade11eef936297424798e11d8d348af84e5392780d"
+        }
+      ]
+    },
+    {
+      "name": "expiry with millis (ceil)",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1590077450243193273316932777221389655067092943902824276599516671282709918534",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800001",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x2a5cf38140fbc5f5e91d50c9917cae353f0bf992e351c8064f0b33e1fde06c0",
+            "s": "0xec643bd9b46304ea9f562a1783a15249cf7bb104c99660eaba4618609cbce9"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216401",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x383f3b295ca0c1c8bf9ce802d3e1510b0a2c30caf20f4ab9bda811d670df346"
+        }
+      ]
+    },
+    {
+      "name": "limit buy with position TP/SL",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1233333272502039676519430697729955625030150387045733063527824130977212006185",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "91000",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0xfcecf03573dae22deefa83e2fd3a847f0e5192e8bb108cde236f99c019a4cc",
+            "s": "0x5670bfe0f4dc59dcc5853ddd2a7b1a5f7aa368518dc9a4099d4c099274ad2b9"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "tpSlType": "POSITION",
+        "takeProfit": {
+          "triggerPrice": "100000",
+          "triggerPriceType": "MARK",
+          "price": "99900",
+          "priceType": "LIMIT",
+          "settlement": {
+            "signature": {
+              "r": "0x4cd0f49d7e1dd9eb47271dc72d7f86b493fb2945f624dc305819cefb8a94d45",
+              "s": "0x303cbafba90d45370d8c0364289a466c6331e27ecb00e168441b7ab4b3592c"
+            },
+            "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+            "collateralPosition": "430876"
+          },
+          "debuggingAmounts": {
+            "collateralAmount": "2999999999997000",
+            "feeAmount": "750000000000",
+            "syntheticAmount": "-30030030030"
+          }
+        },
+        "stopLoss": {
+          "triggerPrice": "85000",
+          "triggerPriceType": "MARK",
+          "price": "84900",
+          "priceType": "LIMIT",
+          "settlement": {
+            "signature": {
+              "r": "0x429c4557f37d063843ae469bb69c593d319207c91955e1c90ef5a9c5c303706",
+              "s": "0x1a274aca84507261843a74ad9ecb14ef8738fa404cdea66901b57497bed41cd"
+            },
+            "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+            "collateralPosition": "430876"
+          },
+          "debuggingAmounts": {
+            "collateralAmount": "2999999999496000",
+            "feeAmount": "749999999874",
+            "syntheticAmount": "-35335689040"
+          }
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-9100000",
+          "feeAmount": "2275",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-9100000",
+            "fee_amount": "2275",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x2ba0ab99a248b29fe8769e22783e7fe26f30a4469f70e5dcc9d14bec659ff29"
+        },
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-30030030030",
+            "quote_asset_id": "1",
+            "quote_amount": "2999999999997000",
+            "fee_amount": "750000000000",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x28f3d75ec970125d076e53b0f4fd52509829d22d77aaee4efc5564659b860a2"
+        },
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-35335689040",
+            "quote_asset_id": "1",
+            "quote_amount": "2999999999496000",
+            "fee_amount": "749999999874",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x5e7f12ca02ce0fa0b3f0c86d0c5e13f81642e1008c763a1ce12b39250f0e5ec"
+        }
+      ]
+    },
+    {
+      "name": "limit sell with order TP/SL",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1162027751501928627202090493771150960891412536718077483340050828417678191513",
+        "market": "BTC-USD",
+        "type": "LIMIT",
+        "side": "SELL",
+        "qty": "0.0002",
+        "price": "91000",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1411cfa2e7a12a0a1c4f32cc028b5d51225828e6dd9f3855e9a0f690b0aaf6b",
+            "s": "0x6111af2f4a02ee0b6b2ad749bf2c69b8ee52d99ede6bf8b0308e217a229a759"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "tpSlType": "ORDER",
+        "takeProfit": {
+          "triggerPrice": "85000",
+          "triggerPriceType": "LAST",
+          "price": "85100",
+          "priceType": "LIMIT",
+          "settlement": {
+            "signature": {
+              "r": "0x55239dcb149260cfde59ca438d791d13733a78d33e0c09d2d84e74252ad1e1c",
+              "s": "0x3d3486cbfa989e5390b66ac5d7d84f36417ab7dbbb9a9a4d0d563f64249d4d0"
+            },
+            "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+            "collateralPosition": "430876"
+          },
+          "debuggingAmounts": {
+            "collateralAmount": "-17020000",
+            "feeAmount": "4255",
+            "syntheticAmount": "200"
+          }
+        },
+        "stopLoss": {
+          "triggerPrice": "97000",
+          "triggerPriceType": "LAST",
+          "price": "97100",
+          "priceType": "LIMIT",
+          "settlement": {
+            "signature": {
+              "r": "0x367eb936e5d3bb3e981f10bdc13228d6f9aed5fba8c96ce8a5877761ba42123",
+              "s": "0x6ccb5f96c557fe620a8aa0c1dc171d6ed664d87ed85bce1fe97868c234be606"
+            },
+            "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+            "collateralPosition": "430876"
+          },
+          "debuggingAmounts": {
+            "collateralAmount": "-19420000",
+            "feeAmount": "4855",
+            "syntheticAmount": "200"
+          }
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "18200000",
+          "feeAmount": "4550",
+          "syntheticAmount": "-200"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-200",
+            "quote_asset_id": "1",
+            "quote_amount": "18200000",
+            "fee_amount": "4550",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x291af34d4d6e935daef78909fb3b20f1ffacde09d434e55960d80a4a9e42b99"
+        },
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "200",
+            "quote_asset_id": "1",
+            "quote_amount": "-17020000",
+            "fee_amount": "4255",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x4c624d5dd94aa38d4c7d194b98c0b5294f12fde921b31ad850e7caa4accc8d3"
+        },
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "200",
+            "quote_asset_id": "1",
+            "quote_amount": "-19420000",
+            "fee_amount": "4855",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x1e121beec9d4468ae18ea1b77141dfceb452d2098256a02c3f9447cd1ace32e"
+        }
+      ]
+    },
+    {
+      "name": "standalone position TPSL order",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2677315750340387014674028338506824102084953786882579252927678975227976592357",
+        "market": "BTC-USD",
+        "type": "TPSL",
+        "side": "SELL",
+        "qty": "0",
+        "price": "0",
+        "reduceOnly": true,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "tpSlType": "POSITION",
+        "takeProfit": {
+          "triggerPrice": "100000",
+          "triggerPriceType": "MARK",
+          "price": "99900",
+          "priceType": "LIMIT",
+          "settlement": {
+            "signature": {
+              "r": "0x4cd0f49d7e1dd9eb47271dc72d7f86b493fb2945f624dc305819cefb8a94d45",
+              "s": "0x303cbafba90d45370d8c0364289a466c6331e27ecb00e168441b7ab4b3592c"
+            },
+            "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+            "collateralPosition": "430876"
+          },
+          "debuggingAmounts": {
+            "collateralAmount": "2999999999997000",
+            "feeAmount": "750000000000",
+            "syntheticAmount": "-30030030030"
+          }
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "0",
+          "feeAmount": "0",
+          "syntheticAmount": "0"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "0",
+            "quote_asset_id": "1",
+            "quote_amount": "0",
+            "fee_amount": "0",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x5eb4e987c259975b6e6364b5e8023f12acf383a22ff9cee493350ae9671abe5"
+        },
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "-30030030030",
+            "quote_asset_id": "1",
+            "quote_amount": "2999999999997000",
+            "fee_amount": "750000000000",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x28f3d75ec970125d076e53b0f4fd52509829d22d77aaee4efc5564659b860a2"
+        }
+      ]
+    },
+    {
+      "name": "conditional stop buy",
+      "market": "BTC-USD",
+      "isRfq": false,
+      "request": {
+        "id": "1826636600031932320250187734373633937403610578542824607130019162883996155335",
+        "market": "BTC-USD",
+        "type": "CONDITIONAL",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "95500",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1f0158caf331123523ae5339383212af4fcc911273754a3fb22c080c7bdfaa9",
+            "s": "0x1a4debb039aaf1ffd529c92b793d6045d931c1fd3de3fb5704bba229c1b83de"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "trigger": {
+          "triggerPrice": "95000",
+          "triggerPriceType": "LAST",
+          "direction": "UP",
+          "executionPriceType": "LIMIT"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-9550000",
+          "feeAmount": "2388",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "344400637349001255728961162330505216",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-9550000",
+            "fee_amount": "2388",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x409d6f51e7cd0a5ce8e18d29f1f94ef840706f332bcc1a37be5ff2a639e7dc7"
+        }
+      ]
+    },
+    {
+      "name": "RFQ market buy",
+      "market": "RECALL-USD",
+      "isRfq": true,
+      "request": {
+        "id": "2966565514485655865319447636585134284933576667025259815353710382632122750148",
+        "market": "RECALL-USD",
+        "type": "MARKET",
+        "side": "BUY",
+        "qty": "100",
+        "price": "0.025359",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x37d388732791dd1d2f215b88f448ed27fab6d8b6868c462c6064dc8fd0d4694",
+            "s": "0x728fecfacd842a5f65d03d84d348e95d986b73604b5d44a61c168be26dc5574"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-2535900",
+          "feeAmount": "634",
+          "syntheticAmount": "100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "427173157158160020602459034954498048",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-2535900",
+            "fee_amount": "634",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x68f043e870887743120fa8e95d41092d8f33b430c441d71079a2568558c94c4"
+        }
+      ]
+    },
+    {
+      "name": "RFQ market buy with rfq params",
+      "market": "RECALL-USD",
+      "isRfq": true,
+      "request": {
+        "id": "2966565514485655865319447636585134284933576667025259815353710382632122750148",
+        "market": "RECALL-USD",
+        "type": "MARKET",
+        "side": "BUY",
+        "qty": "100",
+        "price": "0.025359",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x37d388732791dd1d2f215b88f448ed27fab6d8b6868c462c6064dc8fd0d4694",
+            "s": "0x728fecfacd842a5f65d03d84d348e95d986b73604b5d44a61c168be26dc5574"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-2535900",
+          "feeAmount": "634",
+          "syntheticAmount": "100"
+        },
+        "rfq": {
+          "startPrice": "0.0252"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "427173157158160020602459034954498048",
+            "base_amount": "100",
+            "quote_asset_id": "1",
+            "quote_amount": "-2535900",
+            "fee_amount": "634",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x68f043e870887743120fa8e95d41092d8f33b430c441d71079a2568558c94c4"
+        }
+      ]
+    },
+    {
+      "name": "RFQ market sell reduce-only",
+      "market": "RECALL-USD",
+      "isRfq": true,
+      "request": {
+        "id": "666070375352393244547873156686295642654482509771827695684072521146558763613",
+        "market": "RECALL-USD",
+        "type": "MARKET",
+        "side": "SELL",
+        "qty": "100",
+        "price": "0.024958",
+        "reduceOnly": true,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1afef09eb472d918fed53aca3cedad4f5133977221e9c0162364d03d91ab4f9",
+            "s": "0x7a97066711118bb55c174d063129e62f2e17a28f7de39f7d82bf0c237074a11"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "2495800",
+          "feeAmount": "624",
+          "syntheticAmount": "-100"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "427173157158160020602459034954498048",
+            "base_amount": "-100",
+            "quote_asset_id": "1",
+            "quote_amount": "2495800",
+            "fee_amount": "624",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x178fb83549a30d706955ed439663fc36934ad4fd6be4505f9330456f1e6d25d"
+        }
+      ]
+    },
+    {
+      "name": "multiplier market 1000BONK buy",
+      "market": "1000BONK-USD",
+      "isRfq": true,
+      "request": {
+        "id": "2035640021905097341504611726959613892834555287095846953951160913842258808506",
+        "market": "1000BONK-USD",
+        "type": "MARKET",
+        "side": "BUY",
+        "qty": "1000",
+        "price": "0.0123",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "IOC",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x63792baddcca82282c47ad603b7af336cc6360c17fc24e99070c3058bba4fe1",
+            "s": "0x4f798116cc00acb5ff1407e4b599c36b6b9e0199765536cfb2322988d2b16c9"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-12300000",
+          "feeAmount": "3075",
+          "syntheticAmount": "1000"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "255399919616426605400900257294843904",
+            "base_amount": "1000",
+            "quote_asset_id": "1",
+            "quote_amount": "-12300000",
+            "fee_amount": "3075",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x48021a4e5fad4fe0d984cc881fc41ba3bb5ab23a0647e99d3d21d95f3638eba"
+        }
+      ]
+    },
+    {
+      "name": "RWA market limit sell",
+      "market": "IREN_24_5-USD",
+      "isRfq": true,
+      "request": {
+        "id": "3042571391818774786665558659736879193715276053173681586747328619096625919054",
+        "market": "IREN_24_5-USD",
+        "type": "LIMIT",
+        "side": "SELL",
+        "qty": "1.5",
+        "price": "12.34",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.0001",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x1917b8145318743aa5431334186615716126fe2bc8068779300076c112bd10",
+            "s": "0x7fbd0654d990de40c6692f8d08931154969bc8a959d971b9e1ff3be570df607"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "18510000",
+          "feeAmount": "1851",
+          "syntheticAmount": "-1500"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "380706319258671141440363612893872128",
+            "base_amount": "-1500",
+            "quote_asset_id": "1",
+            "quote_amount": "18510000",
+            "fee_amount": "1851",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x6ba08cd34536b57f1962f0c8d0b14991095abac546ee6c97f2dec3e24d8344e"
+        }
+      ]
+    },
+    {
+      "name": "spot buy BTCSPOT",
+      "market": "BTCSPOT-USD",
+      "isRfq": false,
+      "request": {
+        "id": "2266512867378065933043631973210225222582211458689840292026560893136426708095",
+        "market": "BTCSPOT-USD",
+        "type": "LIMIT",
+        "side": "BUY",
+        "qty": "0.0001",
+        "price": "51295",
+        "reduceOnly": false,
+        "postOnly": false,
+        "timeInForce": "GTT",
+        "expiryEpochMillis": "1795006800000",
+        "fee": "0.00025",
+        "nonce": "1473459052",
+        "selfTradeProtectionLevel": "ACCOUNT",
+        "settlement": {
+          "signature": {
+            "r": "0x72400caa5f0f112a0f71002c3e20d67062bd8988131fdef3fbc205cfadef7cf",
+            "s": "0x156a439719a308bb4fb44fefa0dc41f225c3591e66ef8961eac16a978cba919"
+          },
+          "starkKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "collateralPosition": "430876"
+        },
+        "debuggingAmounts": {
+          "collateralAmount": "-5129500",
+          "feeAmount": "1283",
+          "syntheticAmount": "10000"
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_order_msg_hash",
+          "inputs": {
+            "position_id": "430876",
+            "base_asset_id": "1806018566677800621296032626439935115720767031724401394291089442012247156652",
+            "base_amount": "10000",
+            "quote_asset_id": "1",
+            "quote_amount": "-5129500",
+            "fee_amount": "1283",
+            "fee_asset_id": "1",
+            "expiration": "1796216400",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x502cd02aed320ccb212934118e6688db284eb1ea797a47d7648f8a018532c7f"
+        }
+      ]
+    }
+  ],
+  "withdrawals": [
+    {
+      "amount": "19.9",
+      "chainId": "ARB",
+      "request": {
+        "accountId": "330870",
+        "amount": "19.9",
+        "settlement": {
+          "recipient": "0x22bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+          "positionId": "430876",
+          "collateralId": "0x1",
+          "amount": "19900000",
+          "expiration": {
+            "seconds": "1796299200"
+          },
+          "salt": "1473459052",
+          "signature": {
+            "r": "0x251ab9b63255ad6830a369b0a2a77b452a63a8fe86cee9b261e43a8de09f6a5",
+            "s": "0x900ec917ba404cb9716428d7265a0d5050a8549dfba4d0c350974f0fc768b0"
+          }
+        },
+        "chainId": "ARB",
+        "quoteId": "6afd8157fc04af19fd7f2b66",
+        "asset": "USD"
+      },
+      "hashCalls": [
+        {
+          "fn": "get_withdrawal_msg_hash",
+          "inputs": {
+            "recipient_hex": "0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+            "position_id": "430876",
+            "collateral_id": "1",
+            "amount": "19900000",
+            "expiration": "1796299200",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x181856496c5b3606e7e89463b3bb5c920cd1307345e8e132d108c1a0fd7c1ae"
+        }
+      ]
+    },
+    {
+      "amount": "0.000001",
+      "chainId": "ARB",
+      "request": {
+        "accountId": "330870",
+        "amount": "0.000001",
+        "settlement": {
+          "recipient": "0x22bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+          "positionId": "430876",
+          "collateralId": "0x1",
+          "amount": "1",
+          "expiration": {
+            "seconds": "1796299200"
+          },
+          "salt": "1",
+          "signature": {
+            "r": "0x2c00a0b339c2d11246c03063d7ebc11c825177346fdaa2ed806ab289947ee53",
+            "s": "0xf344109a4afa7af8602c24c8a4a10af44869241ba0d5252e6be08702fce35f"
+          }
+        },
+        "chainId": "ARB",
+        "quoteId": "6afd8157fc04af19fd7f2b66",
+        "asset": "USD"
+      },
+      "hashCalls": [
+        {
+          "fn": "get_withdrawal_msg_hash",
+          "inputs": {
+            "recipient_hex": "0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+            "position_id": "430876",
+            "collateral_id": "1",
+            "amount": "1",
+            "expiration": "1796299200",
+            "salt": "1",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x39baf2ef15c93de71c556bdca8ec6297d27a3455acb066d7ae2ea7c1663133"
+        }
+      ]
+    },
+    {
+      "amount": "1234.567891",
+      "chainId": "STRK",
+      "request": {
+        "accountId": "330870",
+        "amount": "1234.567891",
+        "settlement": {
+          "recipient": "0x22bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+          "positionId": "430876",
+          "collateralId": "0x1",
+          "amount": "1234567891",
+          "expiration": {
+            "seconds": "1796299200"
+          },
+          "salt": "2147483648",
+          "signature": {
+            "r": "0x4cf6809b3394f03acc5588e0644fdff8fb0807803412cbd5b1cc0fd7d498895",
+            "s": "0x5b3e92ce42fb375007c9ef83f500844ef0a7b9276c85238cd6032c348911b14"
+          }
+        },
+        "chainId": "STRK",
+        "asset": "USD"
+      },
+      "hashCalls": [
+        {
+          "fn": "get_withdrawal_msg_hash",
+          "inputs": {
+            "recipient_hex": "0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd",
+            "position_id": "430876",
+            "collateral_id": "1",
+            "amount": "1234567891",
+            "expiration": "1796299200",
+            "salt": "2147483648",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x1043f7d8a2b1931296675f043285d96ff12126a45c9d07e6071105db5ba570f"
+        }
+      ]
+    }
+  ],
+  "transfers": [
+    {
+      "amount": "5",
+      "request": {
+        "fromVault": "430876",
+        "toVault": "430877",
+        "amount": "5",
+        "transferredAsset": "0x1",
+        "settlement": {
+          "amount": "5000000",
+          "assetId": "0x1",
+          "expirationTimestamp": "1796817600",
+          "nonce": "1473459052",
+          "receiverPositionId": "430877",
+          "receiverPublicKey": "0x72fe8a719ecea3accb069102a90b6a55111a1149f22daa8e1d17ee95481e38d",
+          "senderPositionId": "430876",
+          "senderPublicKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "signature": {
+            "r": "0x259459c6e97e179d99cadd970ed92d573e4e8f43b44346ba7c7818952804750",
+            "s": "0x59c702a96c7ebea455a0793307a784feda3c2c61a87f5493ff53b28021f5a16"
+          }
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_transfer_msg_hash",
+          "inputs": {
+            "recipient_position_id": "430877",
+            "sender_position_id": "430876",
+            "collateral_id": "1",
+            "amount": "5000000",
+            "expiration": "1796817600",
+            "salt": "1473459052",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x24baecae898e019c17eb94de132447627763f7b98d817fb7c84fddcd8795789"
+        }
+      ]
+    },
+    {
+      "amount": "0.123456",
+      "request": {
+        "fromVault": "430876",
+        "toVault": "430877",
+        "amount": "0.123456",
+        "transferredAsset": "0x1",
+        "settlement": {
+          "amount": "123456",
+          "assetId": "0x1",
+          "expirationTimestamp": "1796817600",
+          "nonce": "2147483648",
+          "receiverPositionId": "430877",
+          "receiverPublicKey": "0x72fe8a719ecea3accb069102a90b6a55111a1149f22daa8e1d17ee95481e38d",
+          "senderPositionId": "430876",
+          "senderPublicKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94",
+          "signature": {
+            "r": "0x12e46461ba01b69cc027fb5e9ef39e5c6e56919a803267a95235b5d5c233bb0",
+            "s": "0x4e22dcb2ac253cc6fdd1a0470e114c3196a9291ff6267519141fdacbed381fd"
+          }
+        }
+      },
+      "hashCalls": [
+        {
+          "fn": "get_transfer_msg_hash",
+          "inputs": {
+            "recipient_position_id": "430877",
+            "sender_position_id": "430876",
+            "collateral_id": "1",
+            "amount": "123456",
+            "expiration": "1796817600",
+            "salt": "2147483648",
+            "user_public_key": "3063774005368548400900468564897177146639024373303258005211724966418924502420",
+            "domain_name": "Perpetuals",
+            "domain_version": "v0",
+            "domain_chain_id": "SN_MAIN",
+            "domain_revision": "1"
+          },
+          "hash": "0x533dac532e24eb2412c27d0147767a32facbabae42b99ef75d058aa9faf5686"
+        }
+      ]
+    }
+  ],
+  "keyFromSignature": [
+    {
+      "label": "real",
+      "signature": "0x7cff6843af5b2e3836b28b4e01f0ec05d361736cd293f2f962bbd3ef5c30e1ca6faa828d8718351b2f474e7808b09f91c33f50dfb097d2c316f0fefe1b8936171b",
+      "starkPrivateKey": "0x30735edc29c5af469e31c26c08b5e29cafec08e1cb2d2d009bbfea4ca18d570",
+      "starkPublicKey": "0x6c608ddd9acc60775bf255d90be1a303d72637b4a93dc315fc2b4d05ca0fd94"
+    },
+    {
+      "label": "r with 1 leading zero byte",
+      "signature": "0x00ff6843af5b2e3836b28b4e01f0ec05d361736cd293f2f962bbd3ef5c30e1ca6faa828d8718351b2f474e7808b09f91c33f50dfb097d2c316f0fefe1b8936171b",
+      "starkPrivateKey": "0x339d83bc32e9522ed1f0fd00e1e0962fdc30e5ae6fd792b05a9d779a668aa87",
+      "starkPublicKey": "0x34bfc30f62029a571a5bef665bebf38ffe8e59db14616050db857104f87e1b"
+    },
+    {
+      "label": "r with 2 leading zero bytes",
+      "signature": "0x00006843af5b2e3836b28b4e01f0ec05d361736cd293f2f962bbd3ef5c30e1ca6faa828d8718351b2f474e7808b09f91c33f50dfb097d2c316f0fefe1b8936171b",
+      "starkPrivateKey": "0x3fd2af539d4daf7b1f5dfccd1d1001a3cf41bb7532a257a3fa2630f7c1a4db7",
+      "starkPublicKey": "0x66efed405437827063906478b89bfcfe0ac481cea076a28d2e970ab74ed953e"
+    },
+    {
+      "label": "r near max",
+      "signature": "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe6faa828d8718351b2f474e7808b09f91c33f50dfb097d2c316f0fefe1b8936171b",
+      "starkPrivateKey": "0x6928765c6c1ba1be4ed64f8150c53baed4a64b022ee1a2f6a8b46cf039dc45a",
+      "starkPublicKey": "0x37b3f96c9f0871e301fa08f7394ea7bb185841d43b3139b9c5e7d41e717100c"
+    }
+  ]
+}

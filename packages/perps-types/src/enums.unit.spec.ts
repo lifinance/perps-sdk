@@ -224,6 +224,10 @@ describe('SigningMethod credential members', () => {
     expect(SigningMethod.SESSION).toBe('session')
   })
 
+  it('STARK carries wire value "stark"', () => {
+    expect(SigningMethod.STARK).toBe('stark')
+  })
+
   it('does not collide with any existing SigningMethod value', () => {
     const values = Object.values(SigningMethod)
     expect(new Set(values).size).toBe(values.length)
