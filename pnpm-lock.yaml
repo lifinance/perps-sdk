@@ -98,6 +98,9 @@ importers:
       madge:
         specifier: ^8.0.0
         version: 8.0.0(typescript@5.9.3)
+      playwright:
+        specifier: 1.65.0
+        version: 1.65.0
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
