@@ -25,10 +25,10 @@ export const safeIsDecimalStringGreaterThan = createSafeFunction(
 )
 
 /**
- * Exact `a == b` on two decimal strings, so `'1'`, `'1.0'` and `'01.00'` are
+ * Exact `a == b` on two decimal strings, so `'1'`, `'1.0'` and `'1.00'` are
  * equal and `'1.0000000000000001'` is not `'1'`.
  *
- * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern.
+ * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern, for example `'01.00'`.
  * @public
  */
 export function isDecimalStringEqual(a: string, b: string): boolean {
