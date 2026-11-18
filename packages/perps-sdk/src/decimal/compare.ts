@@ -46,6 +46,27 @@ export const safeIsDecimalStringZero = createSafeFunction(
 )
 
 /**
+ * Exact `value` has no fractional part, so `'700.0'` is an integer and
+ * `'700.5'` is not.
+ *
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern.
+ * @public
+ */
+export function isDecimalStringInteger(value: string): boolean {
+  return decimalStringToBig(value).mod(1).eq(0)
+}
+
+/**
+ * {@link isDecimalStringInteger}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeIsDecimalStringInteger = createSafeFunction(
+  'isDecimalStringInteger',
+  isDecimalStringInteger
+)
+
+/**
  * Exact three-way compare for a sort: `-1` when `a < b`, `0` when equal, `1`
  * when `a > b`.
  *

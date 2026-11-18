@@ -333,6 +333,13 @@ export interface PlaceOrderParams {
   price?: DecimalString
   leverage?: number
   /**
+   * Integer initial margin fraction in basis points (`'700'` is 7.00%), the
+   * exact native source of `leverage` on a venue that stores one. Pass the
+   * reported `MarketSettings.initialMarginFractionBps` to keep that setting
+   * on an order at the current leverage. Omit it for a new leverage choice.
+   */
+  initialMarginFractionBps?: DecimalString
+  /**
    * Hyperliquid: requires `leverage`. Omitted leaves the market's current
    * margin mode unchanged.
    */
@@ -431,6 +438,13 @@ export interface ModifyOrderParams {
 export interface UpdateLeverageParams {
   market: MarketRef
   leverage: number
+  /**
+   * Integer initial margin fraction in basis points (`'700'` is 7.00%), the
+   * exact native source of `leverage` on a venue that stores one. Pass the
+   * reported `MarketSettings.initialMarginFractionBps` to keep that setting
+   * on a margin-mode change. Omit it for a new leverage choice.
+   */
+  initialMarginFractionBps?: DecimalString
   /** Hyperliquid: omitted is sent as isolated. */
   marginMode?: MarginMode
 }

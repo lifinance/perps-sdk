@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   compareDecimalStrings,
   isDecimalStringGreaterThan,
+  isDecimalStringInteger,
   isDecimalStringZero,
   safeCompareDecimalStrings,
   safeIsDecimalStringGreaterThan,
+  safeIsDecimalStringInteger,
   safeIsDecimalStringZero,
 } from './compare.js'
 
@@ -72,6 +74,47 @@ describe('isDecimalStringZero', () => {
     expect(() => isDecimalStringZero(value)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
+  })
+})
+
+describe('isDecimalStringInteger', () => {
+  it.each([
+    '700',
+    '700.0',
+    '-3',
+    '0',
+    '0.000',
+    '10000',
+  ])('gives true for %j', (value) => {
+    expect(isDecimalStringInteger(value)).toBe(true)
+  })
+
+  it.each([
+    '700.5',
+    '0.0000000000000000001',
+    '-0.1',
+    '6.67',
+  ])('gives false for %j', (value) => {
+    expect(isDecimalStringInteger(value)).toBe(false)
+  })
+
+  it.each([
+    'abc',
+    '1e3',
+    '',
+    '700bps',
+    'NaN',
+  ])('throws ValidationError for %j', (value) => {
+    expect(() => isDecimalStringInteger(value)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+
+  it('safe form gives the result, or undefined with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeIsDecimalStringInteger('667')).toBe(true)
+    expect(safeIsDecimalStringInteger('abc')).toBeUndefined()
+    expect(warn).toHaveBeenCalledOnce()
   })
 })
 

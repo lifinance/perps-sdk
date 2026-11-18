@@ -1,5 +1,6 @@
 import {
   ACTIVE_ORDER_STATUSES,
+  type ActionSignerContribution,
   calculateTransferable,
   compareDecimalStrings,
   type DepositFlow,
@@ -49,6 +50,7 @@ import {
   subtractDecimalString,
   toPerpsMarketDisplay,
   unknownToDecimalString,
+  validateInitialMarginFractionBps,
   type WithdrawalSourceTypes,
 } from '@lifi/perps-sdk'
 import type {
@@ -56,6 +58,7 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
+  ActionParamsMap,
   ActionStep,
   ActivitiesResponse,
   ActivityItem,
@@ -69,6 +72,7 @@ import type {
   MarketSettings,
   Order,
   OrdersResponse,
+  PerpsSigner,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
@@ -202,6 +206,37 @@ const tickToFeeString = (tick: number): string =>
 // UpdateLeverage stores a half-up integer initial margin fraction in basis points.
 const calculateLeverageImf = (leverage: string): string =>
   roundDecimalString(divideDecimalString('10000', leverage), 0, 'round')
+
+/**
+ * The IMF that a leverage request stores on the venue: the caller's native
+ * source unchanged when it is present, else the half-up encoding of the
+ * leverage multiple.
+ */
+const resolveRequestedImf = (
+  leverage: string | undefined,
+  initialMarginFractionBps: string | undefined
+): string => {
+  if (initialMarginFractionBps !== undefined) {
+    return validateInitialMarginFractionBps(
+      initialMarginFractionBps,
+      'requested initialMarginFractionBps'
+    )
+  }
+  if (leverage === undefined || !isDecimalStringGreaterThan(leverage, '0')) {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      'Leverage must be above zero'
+    )
+  }
+  const requestedImf = calculateLeverageImf(leverage)
+  if (requestedImf === '0') {
+    throw new PerpsError(
+      PerpsErrorCode.ValidationError,
+      `Lighter requested leverage '${leverage}' is too high to encode a positive IMF`
+    )
+  }
+  return requestedImf
+}
 
 const projectFeeTier = (
   limits: LtAccountLimits
@@ -2028,35 +2063,27 @@ export const createLighterProvider = (
 
     remarkPosition,
 
-    isLeverageEqual(requested, reported) {
-      if (!isDecimalStringGreaterThan(requested, '0')) {
-        throw new PerpsError(
-          PerpsErrorCode.ValidationError,
-          'Leverage must be above zero'
-        )
-      }
-      const requestedImf = calculateLeverageImf(requested)
-      if (requestedImf === '0') {
-        throw new PerpsError(
-          PerpsErrorCode.ValidationError,
-          `Lighter requested leverage '${requested}' is too high to encode a positive IMF`
-        )
-      }
+    isLeverageEqual(requested, reported, requestedInitialMarginFractionBps) {
+      const requestedImf = resolveRequestedImf(
+        requested,
+        requestedInitialMarginFractionBps
+      )
       const reportedImf = reported.initialMarginFractionBps
-      if (
-        reportedImf === undefined ||
-        !isDecimalStringGreaterThan(reportedImf, '0') ||
-        compareDecimalStrings(
-          reportedImf,
-          roundDecimalString(reportedImf, 0, 'truncate')
-        ) !== 0
-      ) {
+      if (reportedImf === undefined) {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
           'Lighter reported IMF must be a positive integer'
         )
       }
-      return compareDecimalStrings(requestedImf, reportedImf) === 0
+      return (
+        compareDecimalStrings(
+          requestedImf,
+          validateInitialMarginFractionBps(
+            reportedImf,
+            'reported initialMarginFractionBps'
+          )
+        ) === 0
+      )
     },
 
     // A Lighter modify keeps the order type: ModifyOrderTxReq has no Type.
@@ -2100,6 +2127,41 @@ export const createLighterProvider = (
         return {}
       }
       return { knownPublicKey: local.apiKeyPublicKey }
+    },
+
+    /**
+     * Attach the integer IMF that a leverage action stores, so the backend
+     * signs the caller's exact native source and never a lossy conversion of
+     * the leverage multiple. A placeOrder without leverage fields gets none.
+     */
+    async resolveActionRequest(
+      action: ActionType,
+      _address: Address,
+      _signer: PerpsSigner,
+      params?: ActionParamsMap[ActionType]
+    ): Promise<ActionSignerContribution> {
+      if (
+        (action !== ActionType.UPDATE_LEVERAGE &&
+          action !== ActionType.PLACE_ORDER) ||
+        params === undefined ||
+        !('leverage' in params || 'initialMarginFractionBps' in params)
+      ) {
+        return {}
+      }
+      const { leverage, initialMarginFractionBps } = params
+      if (leverage === undefined && initialMarginFractionBps === undefined) {
+        return {}
+      }
+      return {
+        params: {
+          initialMarginFractionBps: resolveRequestedImf(
+            leverage === undefined
+              ? undefined
+              : numberToDecimalString(leverage),
+            initialMarginFractionBps
+          ),
+        },
+      }
     },
 
     /**
