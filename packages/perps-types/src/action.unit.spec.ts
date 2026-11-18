@@ -523,18 +523,20 @@ describe('Stark steps', () => {
   }
   const placeOrder: StarkActionStep = {
     action: ActionType.PLACE_ORDER,
-    request: {
-      method: 'POST',
-      path: '/user/order',
-      body: { id: '1802919074413810230028133407912464447540939052479071' },
-    },
-    stark: [
-      {
-        type: 'order',
-        signaturePath: ['settlement', 'signature'],
-        fields: orderFields,
+    stark: {
+      request: {
+        method: 'POST',
+        path: '/user/order',
+        body: { id: '1802919074413810230028133407912464447540939052479071' },
       },
-    ],
+      messages: [
+        {
+          type: 'order',
+          signaturePath: ['settlement', 'signature'],
+          fields: orderFields,
+        },
+      ],
+    },
   }
 
   it('is a member of the ActionStep union', () => {
@@ -546,15 +548,17 @@ describe('Stark steps', () => {
   it('carries an empty message list for a request that the API key alone authorizes', () => {
     const updateLeverage: StarkActionStep = {
       action: ActionType.UPDATE_LEVERAGE,
-      request: {
-        method: 'PATCH',
-        path: '/user/leverage',
-        body: { market: 'BTC-USD', leverage: '10' },
+      stark: {
+        request: {
+          method: 'PATCH',
+          path: '/user/leverage',
+          body: { market: 'BTC-USD', leverage: '10' },
+        },
+        messages: [],
       },
-      stark: [],
     }
 
-    expect(updateLeverage.stark).toEqual([])
+    expect(updateLeverage.stark.messages).toEqual([])
   })
 
   it('binds the fields to the message type', () => {

@@ -15,7 +15,7 @@ import {
   EXTENDED_MAINNET_STARK_DOMAIN,
 } from './starkMessageHash.js'
 
-function calculateFixtureHash(hashCall: HashCallFixture): Hex {
+function calculateFixtureHash(hashCall: HashCallFixture): Promise<Hex> {
   const { message, domain, publicKey } = toStarkMessage(hashCall)
   switch (message.type) {
     case 'order':
@@ -28,9 +28,9 @@ function calculateFixtureHash(hashCall: HashCallFixture): Hex {
 }
 
 describe('Stark message hashes', () => {
-  it.each(starkCases)('match the Python SDK: $label', ({ hashCalls }) => {
+  it.each(starkCases)('match the Python SDK: $label', async ({ hashCalls }) => {
     for (const hashCall of hashCalls) {
-      expect(calculateFixtureHash(hashCall)).toBe(hashCall.hash)
+      expect(await calculateFixtureHash(hashCall)).toBe(hashCall.hash)
     }
   })
 

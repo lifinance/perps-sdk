@@ -10,6 +10,7 @@ import {
   ActionType,
   type Address,
   CHECK_ACCOUNT_BEFORE_RETRY_TEXT,
+  type Hex,
   PerpsErrorCode,
   SigningMethod,
   type StarkActionStep,
@@ -50,11 +51,11 @@ const spendingPositionOf = (message: StarkMessage): string => {
   }
 }
 
-function calculateMessageHash(
+async function calculateMessageHash(
   message: StarkMessage,
   domain: StarkDomain,
   credentials: ExtendedCredentials
-) {
+): Promise<Hex> {
   if (BigInt(spendingPositionOf(message)) !== BigInt(credentials.positionId)) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
@@ -111,27 +112,28 @@ function writeAtPath(
 }
 
 /** Sign the step's messages into a copy of its body. @internal */
-export function buildSignedBody(
+export async function buildSignedBody(
   step: StarkActionStep,
   domain: StarkDomain,
   credentials: ExtendedCredentials
-): Record<string, unknown> | undefined {
-  if (step.stark.length === 0) {
-    return step.request.body
+): Promise<Record<string, unknown> | undefined> {
+  const { request, messages } = step.stark
+  if (messages.length === 0) {
+    return request.body
   }
-  if (step.request.body === undefined) {
+  if (request.body === undefined) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       `Extended '${step.action}' step has Stark messages but no request body.`
     )
   }
-  const body = structuredClone(step.request.body)
-  for (const message of step.stark) {
-    const hash = calculateMessageHash(message, domain, credentials)
+  const body = structuredClone(request.body)
+  for (const message of messages) {
+    const hash = await calculateMessageHash(message, domain, credentials)
     writeAtPath(
       body,
       message.signaturePath,
-      signStarkHash(hash, credentials.starkPrivateKey)
+      await signStarkHash(hash, credentials.starkPrivateKey)
     )
   }
   return body
@@ -142,10 +144,11 @@ async function executeStarkStep(
   step: StarkActionStep,
   credentials: ExtendedCredentials
 ): Promise<ActionResult> {
-  const body = buildSignedBody(step, deps.starkDomain, credentials)
+  const body = await buildSignedBody(step, deps.starkDomain, credentials)
   let data: unknown
   try {
-    data = await deps.client.send(step.request.method, step.request.path, {
+    const { method, path } = step.stark.request
+    data = await deps.client.send(method, path, {
       body,
       apiKey: credentials.apiKey,
     })

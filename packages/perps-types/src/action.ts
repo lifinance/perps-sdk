@@ -205,25 +205,29 @@ export type StarkMessage = {
 
 /**
  * A venue request that the provider sends from the client with its
- * client-held API key. The provider first signs each `stark` message and
- * writes the signatures into `request.body`. An empty `stark` list marks a
- * request that the API key alone authorizes, e.g. a cancel.
+ * client-held API key. The provider first signs each of `stark.messages` and
+ * writes the signatures into `stark.request.body`. An empty `messages` list
+ * marks a request that the API key alone authorizes, e.g. a cancel.
  * @public
  */
 export interface StarkActionStep {
   action: ActionType
-  request: {
-    method: 'POST' | 'PATCH' | 'DELETE'
-    /** Venue-relative, e.g. `/api/v1/user/order`; base URL resolution is provider-side. */
-    path: string
-    /** Large integers are strings, so a JSON round trip keeps them exact. */
-    body?: Record<string, unknown>
+  stark: {
+    request: {
+      method: 'POST' | 'PATCH' | 'DELETE'
+      /** Venue-relative, e.g. `/api/v1/user/order`; base URL resolution is provider-side. */
+      path: string
+      /** Large integers are strings, so a JSON round trip keeps them exact. */
+      body?: Record<string, unknown>
+    }
+    messages: StarkMessage[]
   }
-  stark: StarkMessage[]
 }
 
 /**
  * Union of all unsigned action-step encodings produced by `createAction`.
+ * Each variant has its own top-level key besides `action`, because providers
+ * tell the variants apart by key.
  *
  * @public
  */
