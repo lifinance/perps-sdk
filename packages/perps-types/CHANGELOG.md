@@ -1,5 +1,17 @@
 # @lifi/perps-types
 
+## 30.1.0
+
+### Minor Changes
+
+- [#745](https://github.com/lifinance/perps-sdk/pull/745) [`8d1402c`](https://github.com/lifinance/perps-sdk/commit/8d1402c941dd9ca39a890ea3be59594bd57fa05e) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Require provider-owned `calculateRoe`, `remarkPosition`, and leverage comparison against complete market settings.
+
+  Replace the removed core SDK exports `isLeverageEqual`, `safeIsLeverageEqual`, and `remarkPosition` with bound-provider methods. The new `remarkPositionValues` export performs provider-independent mark arithmetic and clears stale ROE. `buildPosition` retains explicit `returnOnEquity` but no longer calculates it when absent; use `provider.calculateRoe(position)`.
+
+  Lighter `Position.leverage` changes from a two-decimal calculation/display value to a one-decimal display value. The exact IMF remains in `initialMarginFractionBps`, an integer `DecimalString` measured in basis points. Position ROE uses that IMF rather than rounded leverage. Market settings retain request-compatible `leverage` and add `displayLeverage` and `initialMarginFractionBps`. Hyperliquid and Ondo retain their existing financial results.
+
+  Lighter leverage comparison encodes the requested leverage as an integer IMF and compares it with `initialMarginFractionBps`. It does not impose order-submission precision limits or use rounded order and display leverage. Order-submission validation remains unchanged.
+
 ## 30.0.0
 
 ### Major Changes
