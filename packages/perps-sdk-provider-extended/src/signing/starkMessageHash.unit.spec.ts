@@ -5,6 +5,7 @@ import {
   registrationCases,
   starkCases,
   starkFixtures,
+  toStarkMessage,
 } from '../../test/fixtures/starkFixtures.js'
 import {
   calculateStarkOrderHash,
@@ -12,63 +13,17 @@ import {
   calculateStarkTransferHash,
   calculateStarkWithdrawalHash,
   EXTENDED_MAINNET_STARK_DOMAIN,
-  type StarkDomain,
 } from './starkMessageHash.js'
 
-const toPublicKey = (decimal: string): Hex =>
-  `0x${BigInt(decimal).toString(16)}`
-
-function calculateFixtureHash({ fn, inputs }: HashCallFixture): Hex {
-  const domain: StarkDomain = {
-    name: inputs.domain_name,
-    version: inputs.domain_version,
-    chainId: inputs.domain_chain_id,
-    revision: inputs.domain_revision,
-  }
-  const publicKey = toPublicKey(inputs.user_public_key)
-  switch (fn) {
-    case 'get_order_msg_hash':
-      return calculateStarkOrderHash(
-        {
-          positionId: inputs.position_id,
-          baseAssetId: inputs.base_asset_id,
-          baseAmount: inputs.base_amount,
-          quoteAssetId: inputs.quote_asset_id,
-          quoteAmount: inputs.quote_amount,
-          feeAssetId: inputs.fee_asset_id,
-          feeAmount: inputs.fee_amount,
-          expiration: inputs.expiration,
-          salt: inputs.salt,
-        },
-        domain,
-        publicKey
-      )
-    case 'get_transfer_msg_hash':
-      return calculateStarkTransferHash(
-        {
-          recipientPositionId: inputs.recipient_position_id,
-          senderPositionId: inputs.sender_position_id,
-          collateralId: inputs.collateral_id,
-          amount: inputs.amount,
-          expiration: inputs.expiration,
-          salt: inputs.salt,
-        },
-        domain,
-        publicKey
-      )
-    case 'get_withdrawal_msg_hash':
-      return calculateStarkWithdrawalHash(
-        {
-          recipient: inputs.recipient_hex,
-          positionId: inputs.position_id,
-          collateralId: inputs.collateral_id,
-          amount: inputs.amount,
-          expiration: inputs.expiration,
-          salt: inputs.salt,
-        },
-        domain,
-        publicKey
-      )
+function calculateFixtureHash(hashCall: HashCallFixture): Hex {
+  const { message, domain, publicKey } = toStarkMessage(hashCall)
+  switch (message.type) {
+    case 'order':
+      return calculateStarkOrderHash(message.fields, domain, publicKey)
+    case 'transfer':
+      return calculateStarkTransferHash(message.fields, domain, publicKey)
+    case 'withdrawal':
+      return calculateStarkWithdrawalHash(message.fields, domain, publicKey)
   }
 }
 

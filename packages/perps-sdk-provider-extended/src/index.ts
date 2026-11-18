@@ -10,6 +10,15 @@
  */
 
 export {
+  ExtendedCredentialStore,
+  type ExtendedCredentials,
+} from './auth/ExtendedCredentialStore.js'
+export { extendedSignActions } from './auth/signActions.js'
+export {
+  DEFAULT_EXTENDED_API_URL,
+  EXTENDED_PROVIDER_KEY,
+} from './constants.js'
+export {
   calculateStarkPrivateKey,
   calculateStarkPublicKey,
   type StarkSignature,
@@ -23,3 +32,4 @@ export {
   EXTENDED_MAINNET_STARK_DOMAIN,
   type StarkDomain,
 } from './signing/starkMessageHash.js'
+export { ExtendedApiClient, ExtendedApiError } from './utils/apiClient.js'
