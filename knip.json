@@ -2,6 +2,9 @@
   "workspaces": {
     "packages/perps-sdk-provider-lighter": {
       "entry": ["src/index.ts", "scripts/verify-consumer-bundlers.mjs"]
+    },
+    "packages/perps-sdk-provider-extended": {
+      "entry": ["src/index.ts", "scripts/verify-consumer-bundlers.mjs"]
     }
   },
   "ignore": [
