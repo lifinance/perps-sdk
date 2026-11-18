@@ -68,11 +68,13 @@ function buildOrderStep(name: string): StarkActionStep {
   }
   return {
     action: ActionType.PLACE_ORDER,
-    request: { method: 'POST', path: '/api/v1/user/order', body },
-    stark: order.hashCalls.map((hashCall, index) => ({
-      ...toStarkMessage(hashCall).message,
-      signaturePath: SIGNATURE_PATHS[index],
-    })),
+    stark: {
+      request: { method: 'POST', path: '/api/v1/user/order', body },
+      messages: order.hashCalls.map((hashCall, index) => ({
+        ...toStarkMessage(hashCall).message,
+        signaturePath: SIGNATURE_PATHS[index],
+      })),
+    },
   }
 }
 
@@ -136,12 +138,14 @@ describe('extendedSignActions STARK', () => {
     const { deps, requests } = await setup([okAnswer(null)])
     const updateLeverage: StarkActionStep = {
       action: ActionType.UPDATE_LEVERAGE,
-      request: {
-        method: 'PATCH',
-        path: '/api/v1/user/leverage',
-        body: { market: 'BTC-USD', leverage: '10' },
+      stark: {
+        request: {
+          method: 'PATCH',
+          path: '/api/v1/user/leverage',
+          body: { market: 'BTC-USD', leverage: '10' },
+        },
+        messages: [],
       },
-      stark: [],
     }
 
     const result = await extendedSignActions(
@@ -244,7 +248,10 @@ describe('extendedSignActions STARK', () => {
     const valid = buildOrderStep('limit buy GTT nonce=1')
     const noBody: StarkActionStep = {
       ...valid,
-      request: { method: 'POST', path: '/api/v1/user/order' },
+      stark: {
+        ...valid.stark,
+        request: { method: 'POST', path: '/api/v1/user/order' },
+      },
     }
 
     const error = extendedSignActions(

@@ -74,8 +74,9 @@ const requireUserWallet = (ctx: SignActionsContext | undefined) => {
   return userWallet
 }
 
-const hasRequest = (step: ActionStep): step is HmacActionStep =>
-  'request' in step && !('stark' in step)
+const hasRequest = (
+  step: ActionStep
+): step is Extract<ActionStep, { request: unknown }> => 'request' in step
 
 /**
  * Map the `POST /v1/api_keys` wire result to the stored domain record. The
