@@ -479,9 +479,11 @@ describe('compare gives booleans', () => {
     ).toEqual([
       'compareDecimalStrings',
       'isDecimalStringGreaterThan',
+      'isDecimalStringInteger',
       'isDecimalStringZero',
       'safeCompareDecimalStrings',
       'safeIsDecimalStringGreaterThan',
+      'safeIsDecimalStringInteger',
       'safeIsDecimalStringZero',
     ])
   })

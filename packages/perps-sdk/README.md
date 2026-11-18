@@ -360,7 +360,7 @@ console.log(availableToTrade.buy, availableToTrade.sell)
 
 ### Leverage confirmation
 
-`provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.
+`provider.isLeverageEqual(requested, reportedSettings, requestedInitialMarginFractionBps?)` compares a positive decimal request with the complete `MarketSettings` read.
 Lighter compares the half-up integer IMF of the request with `reportedSettings.initialMarginFractionBps`.
 It can reject different stored IMFs even when both display values are `15`.
 Hyperliquid and Ondo compare `reportedSettings.leverage` with exact decimal arithmetic.
@@ -368,10 +368,39 @@ Each provider implements this required method without I/O or a default compariso
 Invalid or non-positive comparison inputs throw `ValidationError`.
 Lighter compares the encoded integer IMF with `initialMarginFractionBps`, without a decimal-place limit on the request. It rejects invalid requested leverage, a zero requested IMF, and a missing or invalid reported IMF. Order and display leverage do not affect the comparison.
 
+Pass the native IMF that the write carried as `requestedInitialMarginFractionBps`.
+Lighter then compares that integer with the reported IMF and does not encode `requested`.
+A settings-preserving write at the two-decimal leverage `6.67` with IMF `'1500'` confirms a read-back of `'1500'`, while the encoded `6.67` would give `1499`.
+Hyperliquid and Ondo ignore the third argument.
+
 `MarketSettings.leverage` remains the request-compatible value for orders.
 Use `displayLeverage ?? leverage` for presentation; Lighter calculates `displayLeverage` directly from its native source at one decimal place.
 The comparison method does not change either value or confirm the margin mode.
 Call the bound provider directly and handle its errors at the operation boundary.
+
+### Native IMF on leverage actions
+
+`UpdateLeverageParams` and `PlaceOrderParams` accept an optional `initialMarginFractionBps`: the exact integer IMF in basis points (`'700'` is 7.00%).
+A new leverage choice omits it and sends the ordinary selection, for example `leverage: 15`.
+A settings-preserving action, such as a margin-mode change or an order at the current leverage, passes the reported `MarketSettings.initialMarginFractionBps`.
+
+Before `POST /createAction`, the Lighter provider attaches `params.initialMarginFractionBps` to an `updateLeverage` request and to a `placeOrder` request that carries `leverage` or the IMF:
+
+- A present IMF goes to the backend unchanged. The SDK does not re-encode the leverage multiple. Selection `14.29` with IMF `'700'` sends `'700'`, not `'699'`.
+- An absent IMF with a leverage sends the half-up `round(10000 ÷ leverage)`. Selection `15` sends `'667'`, and `14.9` sends `'671'`.
+- A `placeOrder` without either field sends no IMF.
+- An IMF that is not a positive integer, or a leverage that encodes no positive IMF, throws `ValidationError` before any request.
+
+The SDK keeps no leverage cache, so a new choice never carries an older IMF.
+Hyperliquid and Ondo never attach the field, and their requests do not change.
+The backend uses a present IMF as the signing fraction, so the field needs a backend that accepts it.
+
+### Exact leverage from a venue setting
+
+`resolveExactLeverage(source)` gives the leverage multiple for the TP/SL and liquidation formulas from a `MarketSettings` or a `Position`: `10000 ÷ initialMarginFractionBps` to 40 places when the native IMF is present, else `source.leverage` unchanged.
+It throws `ValidationError` when the IMF is present but not a positive integer, or when both fields are unusable. `safeResolveExactLeverage` gives `undefined` in place of the throw.
+A display leverage never feeds a formula.
+`validateInitialMarginFractionBps(value)` gives a positive integer IMF unchanged and throws `ValidationError` for any other value.
 
 ### Order amounts and venue grids
 
@@ -408,9 +437,13 @@ are display and comparison values. No quote grid applies to them.
 
 | held       | `size`                                     | `notional`     | `margin`              |
 | ---------- | ------------------------------------------ | -------------- | --------------------- |
-| `size`     | `snapOrderSize(amount)`                    | `size × price` | `notional ÷ leverage` |
-| `notional` | `snapOrderSize(amount ÷ price)`            | `size × price` | `notional ÷ leverage` |
-| `margin`   | `snapOrderSize(amount × leverage ÷ price)` | `size × price` | `amount`, unchanged   |
+| `size`     | `snapOrderSize(amount)`                    | `size × price` | `notional × rate`     |
+| `notional` | `snapOrderSize(amount ÷ price)`            | `size × price` | `notional × rate`     |
+| `margin`   | `snapOrderSize(amount ÷ rate ÷ price)`     | `size × price` | `amount`, unchanged   |
+
+`rate` is the margin rate: `initialMarginFractionBps ÷ 10000` when the input
+carries the native IMF, else `1 ÷ leverage`. Each amount divides one time, so a
+margin from an IMF is exact: `notional × initialMarginFractionBps ÷ 10000`.
 
 - A held margin comes back byte-identical to the input string.
 - `notional` is always the snapped size times the price, so it describes the
@@ -421,14 +454,18 @@ are display and comparison values. No quote grid applies to them.
   its size: `size × price ≤ margin × leverage`.
 
 The call throws `PerpsError(ValidationError)` that names `amount` or `price`
-when it is not a positive decimal, or `leverage` when it is not a finite number
-above zero. It also throws, with the lot size in the message, when the snapped
-size is zero (below one lot). `safeCalculateOrderAmounts` gives `undefined` in
-place of the throw. A sub-cent margin is a valid order when the lot grid takes
-the size.
+when it is not a positive decimal, `initialMarginFractionBps` when it is
+present and not a positive integer, or `leverage` when no IMF is present and
+it is not a finite number above zero. It also throws, with the lot size in
+the message, when the snapped size is zero (below one lot).
+`safeCalculateOrderAmounts` gives `undefined` in place of the throw. A
+sub-cent margin is a valid order when the lot grid takes the size.
 
-`OrderAmountsInput.leverage` is a `number`. `Position.leverage` is a
-`DecimalString`, so a caller converts it with `safeDecimalStringToNumber`.
+`OrderAmountsInput.leverage` is a `number`, and the SDK does not read it when
+`initialMarginFractionBps` is present. Pass the reported
+`MarketSettings.initialMarginFractionBps` for a venue that stores one.
+`Position.leverage` is a `DecimalString`, so a caller converts it with
+`safeDecimalStringToNumber`.
 
 ```ts
 import { calculateOrderAmounts } from '@lifi/perps-sdk'
@@ -606,7 +643,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Group      | Functions                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
-| Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
+| Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringInteger`, `isDecimalStringZero`                                        |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
 | Formulas   | every `calculate*`, `estimate*`, `annualizeFundingRate`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`         |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |

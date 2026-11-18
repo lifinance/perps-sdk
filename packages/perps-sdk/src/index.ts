@@ -36,9 +36,11 @@ export {
 export {
   compareDecimalStrings,
   isDecimalStringGreaterThan,
+  isDecimalStringInteger,
   isDecimalStringZero,
   safeCompareDecimalStrings,
   safeIsDecimalStringGreaterThan,
+  safeIsDecimalStringInteger,
   safeIsDecimalStringZero,
 } from './decimal/compare.js'
 export type { DecimalRounding } from './decimal/convert.js'
@@ -89,6 +91,12 @@ export {
   annualizeFundingRate,
   safeAnnualizeFundingRate,
 } from './math/funding.js'
+export type { LeverageSource } from './math/leverage.js'
+export {
+  resolveExactLeverage,
+  safeResolveExactLeverage,
+  validateInitialMarginFractionBps,
+} from './math/leverage.js'
 export type { ExpectedPnl } from './math/order.js'
 export {
   buildQuote,

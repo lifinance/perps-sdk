@@ -9,6 +9,10 @@ import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 import { invalidInput } from '../errors/invalidInput.js'
 import { PerpsError } from '../errors/PerpsError.js'
+import {
+  BASIS_POINTS_PER_UNIT,
+  validateInitialMarginFractionBps,
+} from '../math/leverage.js'
 import type { PerpsSDKClient } from '../types/provider.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
 import { snapOrderSize } from './snap.js'
@@ -20,7 +24,14 @@ export interface OrderAmountsInput {
   /** The field the user typed; the other two are calculated from it. */
   held: 'margin' | 'size' | 'notional'
   amount: DecimalString
-  leverage: number
+  /** The leverage multiple. Not read when `initialMarginFractionBps` is present. */
+  leverage?: number
+  /**
+   * The venue's native integer IMF in basis points (`'700'` is 7.00%), the
+   * exact margin rate of a venue that stores one. Pass the reported
+   * `MarketSettings.initialMarginFractionBps`; `leverage` then stays unread.
+   */
+  initialMarginFractionBps?: DecimalString
   price: DecimalString
 }
 
@@ -28,8 +39,8 @@ export interface OrderAmountsInput {
 export interface OrderAmounts {
   /**
    * The held `amount`, byte-identical, when the user holds the margin;
-   * otherwise `notional ÷ leverage`, a display and comparison value that
-   * never reaches a venue.
+   * otherwise `notional ÷ leverage` or `notional × IMF ÷ 10000`, a display
+   * and comparison value that never reaches a venue.
    */
   margin: DecimalString
   /** Snapped onto the venue lot grid; the one amount an order sends. */
@@ -53,36 +64,67 @@ const lotSize = (market: Market): DecimalString =>
   market.sizeIncrement ?? new TruncBig(`1e-${market.szDecimals}`).toFixed()
 
 /**
- * The three order-entry amounts, derived from whichever one the user typed.
- * Only `size` snaps, onto the market's venue lot grid, because an order sends
- * size alone; no quote amount has a grid. A held margin returns byte-identical,
- * `notional` is the snapped size × price, and a derived margin is
- * `notional ÷ leverage` in `DivBig` (40 places, half-up).
+ * The margin rate as `[numerator, denominator]`, so each amount divides one
+ * time: the native IMF over its scale, else one over the leverage.
  *
- * @throws {PerpsError} `ValidationError` that names `amount` or `price` when
- *   it is not a positive decimal, or `leverage` when it is not a finite number
- *   above zero. `ValidationError` with the lot size when the snapped size is
- *   zero (below one lot). `SDKError` when `market.providerId` names no
- *   registered provider plugin.
- * @public
+ * @throws {PerpsError} `ValidationError` as {@link calculateOrderAmounts}.
  */
-export function calculateOrderAmounts(input: OrderAmountsInput): OrderAmounts {
-  const { sdk, market, held, leverage } = input
-  const amount = requirePositiveDecimal(input.amount, 'amount')
-  const price = requirePositiveDecimal(input.price, 'price')
-  if (!Number.isFinite(leverage) || leverage <= 0) {
+function resolveMarginRate(
+  input: OrderAmountsInput
+): [Big | number, Big | number] {
+  if (input.initialMarginFractionBps !== undefined) {
+    return [
+      new TruncBig(
+        validateInitialMarginFractionBps(input.initialMarginFractionBps)
+      ),
+      new TruncBig(BASIS_POINTS_PER_UNIT),
+    ]
+  }
+  const { leverage } = input
+  if (
+    typeof leverage !== 'number' ||
+    !Number.isFinite(leverage) ||
+    leverage <= 0
+  ) {
     throw invalidInput(
       'leverage',
       `must be a finite number above zero, got ${leverage}`
     )
   }
+  return [1, leverage]
+}
+
+/**
+ * The three order-entry amounts, derived from whichever one the user typed.
+ * Only `size` snaps, onto the market's venue lot grid, because an order sends
+ * size alone; no quote amount has a grid. A held margin returns byte-identical,
+ * `notional` is the snapped size × price, and a derived margin is
+ * `notional ÷ leverage`, or `notional × initialMarginFractionBps ÷ 10000`
+ * from a native IMF, in `DivBig` (40 places, half-up).
+ *
+ * @throws {PerpsError} `ValidationError` that names `amount` or `price` when
+ *   it is not a positive decimal, `initialMarginFractionBps` when it is
+ *   present and not a positive integer, or `leverage` when no IMF is present
+ *   and it is not a finite number above zero. `ValidationError` with the lot
+ *   size when the snapped size is zero (below one lot). `SDKError` when
+ *   `market.providerId` names no registered provider plugin.
+ * @public
+ */
+export function calculateOrderAmounts(input: OrderAmountsInput): OrderAmounts {
+  const { sdk, market, held } = input
+  const amount = requirePositiveDecimal(input.amount, 'amount')
+  const price = requirePositiveDecimal(input.price, 'price')
+  const [rateNumerator, rateDenominator] = resolveMarginRate(input)
 
   const requested =
     held === 'size'
       ? input.amount
       : held === 'notional'
         ? amount.div(price).toFixed()
-        : amount.times(leverage).div(price).toFixed()
+        : amount
+            .times(rateDenominator)
+            .div(price.times(rateNumerator))
+            .toFixed()
   const size = snapOrderSize(sdk, market, requested)
   if (isDecimalStringZero(size)) {
     throw new PerpsError(
@@ -96,7 +138,10 @@ export function calculateOrderAmounts(input: OrderAmountsInput): OrderAmounts {
     margin:
       held === 'margin'
         ? input.amount
-        : new DivBig(notional).div(leverage).toFixed(),
+        : new DivBig(notional)
+            .times(rateNumerator)
+            .div(rateDenominator)
+            .toFixed(),
     size,
     notional: notional.toFixed(),
   }

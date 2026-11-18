@@ -1870,6 +1870,22 @@ describe('OndoProvider — resolveActionRequest', () => {
     ).resolves.toEqual({})
   })
 
+  it.each([
+    ActionType.UPDATE_LEVERAGE,
+    ActionType.PLACE_ORDER,
+  ])('contributes no IMF to the leverage params of %s', async (action) => {
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.resolveActionRequest!(action, ADDRESS, PerpsSigner.USER, {
+        market: { marketId: 'BTC', categoryId: 'ondo' },
+        leverage: 15,
+        side: OrderSide.BUY,
+        size: '1',
+      })
+    ).resolves.toEqual({})
+  })
+
   describe('through PerpsClient', () => {
     const BACKEND_URL = 'https://backend.test/v1/perps'
     const withdrawal = {

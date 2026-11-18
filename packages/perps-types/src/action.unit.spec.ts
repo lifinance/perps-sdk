@@ -70,6 +70,25 @@ describe('PlaceOrderParams', () => {
 
     expect(params.marginMode).toBe(MarginMode.CROSS)
   })
+
+  it('accepts the native IMF source with or without a leverage multiple', () => {
+    const preserving: PlaceOrderParams = {
+      market: { marketId: 'BTC', categoryId: 'lighter' },
+      side: OrderSide.BUY,
+      size: '0.1',
+      leverage: 14.29,
+      initialMarginFractionBps: '700',
+    }
+    const nativeOnly: PlaceOrderParams = {
+      market: { marketId: 'BTC', categoryId: 'lighter' },
+      side: OrderSide.BUY,
+      size: '0.1',
+      initialMarginFractionBps: '700',
+    }
+
+    expect(preserving.initialMarginFractionBps).toBe('700')
+    expect(nativeOnly.leverage).toBeUndefined()
+  })
 })
 
 describe('UpdateLeverageParams', () => {
@@ -100,6 +119,16 @@ describe('UpdateLeverageParams', () => {
     }
 
     expect(params.marginMode).toBe(MarginMode.CROSS)
+  })
+
+  it('accepts the native IMF source next to the required leverage', () => {
+    const params: UpdateLeverageParams = {
+      market: { marketId: 'ETH', categoryId: 'lighter' },
+      leverage: 14.29,
+      initialMarginFractionBps: '700',
+    }
+
+    expect(params.initialMarginFractionBps).toBe('700')
   })
 })
 

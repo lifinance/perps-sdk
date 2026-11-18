@@ -365,6 +365,106 @@ describe('calculateOrderAmounts', () => {
     )
   })
 
+  it.each([
+    '',
+    'abc',
+    '0',
+    '-1',
+    '6.67',
+    '1e1',
+  ])('throws a ValidationError that names the IMF %j', (initialMarginFractionBps) => {
+    expect(() =>
+      calculateOrderAmounts({
+        sdk,
+        market: market(),
+        held: 'margin',
+        amount: '7',
+        leverage: 2,
+        initialMarginFractionBps,
+        price: '0.07',
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message: `\`initialMarginFractionBps\` must be a positive integer, got '${initialMarginFractionBps}'.`,
+      })
+    )
+  })
+
+  it('throws a ValidationError that names the leverage when both are absent', () => {
+    expect(() =>
+      calculateOrderAmounts({
+        sdk,
+        market: market(),
+        held: 'margin',
+        amount: '7',
+        price: '0.07',
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: PerpsErrorCode.ValidationError,
+        message:
+          '`leverage` must be a finite number above zero, got undefined.',
+      })
+    )
+  })
+
+  it('derives an exact margin of a held size from the native IMF', () => {
+    // IMF 700 is 7.00%: 3000 × 700 ÷ 10000, with no leverage division.
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 2 }),
+      held: 'size',
+      amount: '3',
+      initialMarginFractionBps: '700',
+      price: '1000',
+    })
+
+    expect(amounts).toEqual({ margin: '210', size: '3', notional: '3000' })
+  })
+
+  it('derives an exact margin of a held notional from the native IMF', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 2 }),
+      held: 'notional',
+      amount: '1000',
+      initialMarginFractionBps: '667',
+      price: '100',
+    })
+
+    // 1000 × 667 ÷ 10000 = 66.7; the two-decimal 14.99x gives 66.7111….
+    expect(amounts).toEqual({ margin: '66.7', size: '10', notional: '1000' })
+  })
+
+  it('sizes a held margin from the native IMF, not the rounded 14.29x', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 4 }),
+      held: 'margin',
+      amount: '70',
+      initialMarginFractionBps: '700',
+      price: '100',
+    })
+
+    // 70 × 10000 ÷ (100 × 700) = 10; 14.29x gives 10.003.
+    expect(amounts).toEqual({ margin: '70', size: '10', notional: '1000' })
+  })
+
+  it('does not read the leverage when the native IMF is present', () => {
+    const amounts = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 2 }),
+      held: 'size',
+      amount: '1',
+      leverage: 0,
+      initialMarginFractionBps: '1500',
+      price: '100',
+    })
+
+    expect(amounts).toEqual({ margin: '15', size: '1', notional: '100' })
+  })
+
   it('names the sizeIncrement as the lot size when the market carries one', () => {
     expect(() =>
       calculateOrderAmounts({

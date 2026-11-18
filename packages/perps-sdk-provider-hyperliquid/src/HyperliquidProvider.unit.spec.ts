@@ -15,6 +15,7 @@ import type {
 import {
   ActionType,
   MarginMode,
+  OrderSide,
   PerpsErrorCode,
   PerpsSigner,
   PositionMarginAdjustment,
@@ -421,13 +422,32 @@ describe('hyperliquidProvider', () => {
       expect(await provider.getAgentAddress(ADDRESS)).toBe(agentAddress)
       expect(await provider.hasAgent(ADDRESS)).toBe(true)
 
-      // An agent-signed action carries the same agent as signerAddress.
+      // An agent-signed action carries the same agent as signerAddress, and
+      // the leverage params of the caller gain no venue IMF.
       const place = await provider.resolveActionRequest!(
         ActionType.PLACE_ORDER,
         ADDRESS,
-        PerpsSigner.SDK
+        PerpsSigner.SDK,
+        {
+          market: { marketId: 'ETH', categoryId: 'hyperliquid' },
+          side: OrderSide.BUY,
+          size: '1',
+          leverage: 15,
+        }
       )
-      expect(place.signerAddress).toBe(agentAddress)
+      expect(place).toEqual({ signerAddress: agentAddress })
+      await expect(
+        provider.resolveActionRequest!(
+          ActionType.UPDATE_LEVERAGE,
+          ADDRESS,
+          PerpsSigner.SDK,
+          {
+            market: { marketId: 'ETH', categoryId: 'hyperliquid' },
+            leverage: 15,
+            marginMode: MarginMode.CROSS,
+          }
+        )
+      ).resolves.toEqual({ signerAddress: agentAddress })
     })
 
     it('resolveActionRequest throws for an agent-signed action when no agent exists', async () => {
