@@ -1,0 +1,294 @@
+import { createMemoryStorage } from '@lifi/perps-sdk'
+import {
+  ActionType,
+  type EvmTxActionStep,
+  PerpsErrorCode,
+  SigningMethod,
+  type StarkActionStep,
+  UserActionStatus,
+} from '@lifi/perps-types'
+import {
+  type Address,
+  createWalletClient,
+  custom,
+  decodeFunctionData,
+  type Hex,
+  parseAbi,
+} from 'viem'
+import { arbitrum } from 'viem/chains'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  signingKey,
+  starkFixtures,
+  toStarkMessage,
+} from '../../test/fixtures/starkFixtures.js'
+import {
+  DEFAULT_EXTENDED_API_URL,
+  EXTENDED_DEPOSIT_COLLATERAL,
+  EXTENDED_SIGNING_DOMAIN,
+} from '../constants.js'
+import { EXTENDED_MAINNET_STARK_DOMAIN } from '../signing/starkMessageHash.js'
+import { ExtendedApiClient } from '../utils/apiClient.js'
+import {
+  ExtendedCredentialStore,
+  type ExtendedCredentials,
+} from './ExtendedCredentialStore.js'
+import { extendedSignActions } from './signActions.js'
+
+const ADDRESS = starkFixtures.meta.ethAddress
+const ARB_BRIDGE: Address = '0x10417734001162Ea139e8b044DFe28DbB8B28ad0'
+const CREDENTIALS: ExtendedCredentials = {
+  starkPrivateKey: signingKey.starkPrivateKey,
+  starkPublicKey: signingKey.starkPublicKey,
+  accountId: '330870',
+  positionId: '430876',
+  apiKey: 'test-api-key',
+}
+const ok = (data: unknown) =>
+  new Response(JSON.stringify({ status: 'OK', data }))
+
+/** Extended answers by path; `calls` records each method, path and body. */
+function venue(routes: Record<string, unknown>) {
+  const calls: { method: string; path: string; body: unknown }[] = []
+  const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+    const path = String(input).slice(DEFAULT_EXTENDED_API_URL.length)
+    const method = init?.method ?? 'GET'
+    calls.push({
+      method,
+      path,
+      body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+    })
+    const route = routes[`${method} ${path.split('?')[0]}`]
+    return route === undefined
+      ? new Response('{"status":"ERROR"}', { status: 404 })
+      : ok(route)
+  })
+  return { fetchImpl, calls }
+}
+
+async function deps(fetchImpl: typeof fetch) {
+  const credentialStore = new ExtendedCredentialStore(
+    createMemoryStorage(),
+    DEFAULT_EXTENDED_API_URL
+  )
+  await credentialStore.set(ADDRESS, CREDENTIALS)
+  return {
+    client: new ExtendedApiClient(DEFAULT_EXTENDED_API_URL, { fetchImpl }),
+    credentialStore,
+    baseUrl: DEFAULT_EXTENDED_API_URL,
+    signingDomain: EXTENDED_SIGNING_DOMAIN,
+    starkDomain: EXTENDED_MAINNET_STARK_DOMAIN,
+  }
+}
+
+describe('Extended withdrawal', () => {
+  const [fixture] = starkFixtures.withdrawals
+
+  /** The fixture withdrawal as the backend builds it: no recipient, quote or signature. */
+  function withdrawalStep(): StarkActionStep {
+    const { quoteId: _quoteId, settlement, ...rest } = fixture.request
+    const {
+      recipient: _recipient,
+      signature: _signature,
+      ...settlementFields
+    } = settlement
+    const { message } = toStarkMessage(fixture.hashCalls[0])
+    if (message.type !== 'withdrawal') {
+      throw new Error('The withdrawal fixture has no withdrawal message.')
+    }
+    return {
+      action: ActionType.WITHDRAWAL,
+      stark: {
+        request: {
+          method: 'POST',
+          path: '/api/v1/user/withdrawal',
+          body: { ...rest, settlement: settlementFields },
+        },
+        messages: [
+          {
+            type: 'withdrawal',
+            fields: { ...message.fields, recipient: '0x0' },
+            signaturePath: ['settlement', 'signature'],
+          },
+        ],
+      },
+    }
+  }
+
+  it('fills the account bridge address and a committed quote, then sends the Python SDK body', async () => {
+    const { fetchImpl, calls } = venue({
+      'GET /api/v1/user/account/info': {
+        bridgeStarknetAddress:
+          '0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd',
+      },
+      'GET /api/v1/user/bridge/quote': {
+        id: '6afd8157fc04af19fd7f2b66',
+        fee: '0.011',
+      },
+      'POST /api/v1/user/bridge/quote': null,
+      'POST /api/v1/user/withdrawal': 1234,
+    })
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.STARK,
+      [withdrawalStep()],
+      ADDRESS
+    )
+
+    expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      'GET /api/v1/user/account/info',
+      'GET /api/v1/user/bridge/quote?chainIn=ARC&chainOut=ARB&amount=19.9',
+      'POST /api/v1/user/bridge/quote?id=6afd8157fc04af19fd7f2b66',
+      'POST /api/v1/user/withdrawal',
+    ])
+    expect(calls[3].body).toEqual(fixture.request)
+    expect(result.executed).toEqual([
+      { action: ActionType.WITHDRAWAL, status: UserActionStatus.Submitted },
+    ])
+  })
+})
+
+describe('Extended deposit', () => {
+  const QUOTE_ID = '6afd8157fc04af19fd7f2b66'
+  const AMOUNT = '20000000'
+  const DEPOSIT_ABI = [
+    'function depositWithId(address token, uint256 amount, uint256 commitmentId)',
+  ]
+  const APPROVE_ABI = [
+    'function approve(address spender, uint256 amount) returns (bool)',
+  ]
+
+  const legs = (spender: Address = ARB_BRIDGE): EvmTxActionStep[] => [
+    {
+      action: ActionType.DEPOSIT,
+      txParams: {
+        chainId: EXTENDED_DEPOSIT_COLLATERAL.chainId,
+        to: EXTENDED_DEPOSIT_COLLATERAL.address,
+        functionName: 'approve',
+        args: [spender, AMOUNT],
+        abi: APPROVE_ABI,
+      },
+    },
+    {
+      action: ActionType.DEPOSIT,
+      txParams: {
+        chainId: EXTENDED_DEPOSIT_COLLATERAL.chainId,
+        to: ARB_BRIDGE,
+        functionName: 'depositWithId',
+        args: [EXTENDED_DEPOSIT_COLLATERAL.address, AMOUNT, '0'],
+        abi: DEPOSIT_ABI,
+      },
+    },
+  ]
+
+  /** A wallet on Arbitrum whose node accepts and mines every transaction. */
+  function wallet() {
+    const sent: { to: string; data: Hex }[] = []
+    const request = async ({
+      method,
+      params,
+    }: {
+      method: string
+      params?: unknown
+    }) => {
+      switch (method) {
+        case 'eth_chainId':
+          return `0x${arbitrum.id.toString(16)}`
+        case 'eth_sendTransaction': {
+          const [tx] = params as [{ to: string; data: Hex }]
+          sent.push(tx)
+          return `0x${sent.length.toString(16).padStart(64, '0')}`
+        }
+        case 'eth_getTransactionReceipt': {
+          const [hash] = params as [Hex]
+          return {
+            transactionHash: hash,
+            status: '0x1',
+            blockNumber: '0x10',
+            blockHash: `0x${'ab'.repeat(32)}`,
+            logs: [],
+            cumulativeGasUsed: '0x0',
+            gasUsed: '0x0',
+            effectiveGasPrice: '0x0',
+            transactionIndex: '0x0',
+            type: '0x2',
+            from: ADDRESS,
+            to: ARB_BRIDGE,
+            contractAddress: null,
+            logsBloom: `0x${'00'.repeat(256)}`,
+          }
+        }
+        case 'eth_blockNumber':
+          return '0x10'
+        default:
+          throw new Error(`Unexpected RPC method ${method}`)
+      }
+    }
+    return {
+      sent,
+      client: createWalletClient({
+        account: ADDRESS,
+        chain: arbitrum,
+        transport: custom({ request }),
+      }),
+    }
+  }
+
+  const bridgeRoutes = {
+    'GET /api/v1/user/bridge/config': {
+      chains: [{ chain: 'ARB', contractAddress: ARB_BRIDGE }],
+    },
+    'GET /api/v1/user/bridge/quote': { id: QUOTE_ID, fee: '0.01' },
+    'POST /api/v1/user/bridge/quote': null,
+  }
+
+  it('approves, commits a quote, and deposits with the quote id as the commitment', async () => {
+    const { fetchImpl, calls } = venue(bridgeRoutes)
+    const { client, sent } = wallet()
+    const onProgress = vi.fn()
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client, onProgress }
+    )
+
+    expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      'GET /api/v1/user/bridge/config',
+      'GET /api/v1/user/bridge/quote?chainIn=ARB&chainOut=ARC&amount=20',
+      `POST /api/v1/user/bridge/quote?id=${QUOTE_ID}`,
+    ])
+    expect(
+      decodeFunctionData({ abi: parseAbi(DEPOSIT_ABI), data: sent[1].data })
+        .args
+    ).toEqual([
+      EXTENDED_DEPOSIT_COLLATERAL.address,
+      20_000_000n,
+      BigInt(`0x${QUOTE_ID}`),
+    ])
+    expect(result.executed.map(({ status }) => status)).toEqual([
+      UserActionStatus.Accepted,
+      UserActionStatus.Submitted,
+    ])
+    expect(onProgress).toHaveBeenCalledTimes(4)
+  })
+
+  it('refuses an approval to another spender before the wallet signs', async () => {
+    const { fetchImpl } = venue(bridgeRoutes)
+    const { client, sent } = wallet()
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.EVM_TX,
+        legs('0x000000000000000000000000000000000000dEaD'),
+        ADDRESS,
+        { userWallet: client }
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(sent).toEqual([])
+  })
+})

@@ -401,6 +401,59 @@ describe('extendedProvider', () => {
     })
   })
 
+  describe('transfer flows', () => {
+    it('ask for the setup when this device holds no credentials', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      expect(await provider.getDepositFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'setupRequired',
+        setup: [ActionType.REGISTER_API_KEY],
+      })
+      expect(await provider.getWithdrawFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'setupRequired',
+        setup: [ActionType.REGISTER_API_KEY],
+      })
+    })
+
+    it('deposit through the Arbitrum bridge and withdraw to the user address', async () => {
+      stubFetch({})
+      const { provider } = await setup()
+
+      expect(await provider.getDepositFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'venueDepositPipeline',
+        chainId: 42161,
+        gasAsset: expect.objectContaining({ chainId: 42161, decimals: 18 }),
+        collateral: {
+          chainId: 42161,
+          address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+          decimals: 6,
+        },
+        bridgeAction: ActionType.DEPOSIT,
+      })
+      expect(await provider.getWithdrawFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'ready',
+        destination: ADDRESS,
+      })
+    })
+
+    it('report the recorded withdrawable balance', async () => {
+      stubFetch({ '/api/v1/user/balance': { body: recordedBody('balance') } })
+      const { provider } = await setup()
+
+      expect(
+        await provider.getWithdrawableBalances?.({ address: ADDRESS })
+      ).toEqual([
+        {
+          assetId: 'USDC',
+          categoryId: 'extended',
+          available: '0.065740',
+          max: '0.065740',
+        },
+      ])
+    })
+  })
+
   it('removes the credentials after Extended refuses the API key on an action', async () => {
     stubFetch({})
     const { provider, store } = await setup()

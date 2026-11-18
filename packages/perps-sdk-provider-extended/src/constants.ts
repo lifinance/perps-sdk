@@ -33,3 +33,28 @@ export const EXTENDED_BASE_FEE_TIER = {
  */
 export const DEFAULT_EXTENDED_WS_URL =
   'wss://api.starknet.extended.exchange/stream.extended.exchange/v2/rpc'
+
+/** Chain that Extended deposits run on: Arbitrum One. @public */
+export const EXTENDED_DEPOSIT_CHAIN_ID = 42161
+
+/** Native USDC on Arbitrum One, the collateral that the deposit bridges. @public */
+export const EXTENDED_DEPOSIT_COLLATERAL = {
+  chainId: EXTENDED_DEPOSIT_CHAIN_ID,
+  address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  decimals: 6,
+} as const
+
+/** Arbitrum One ETH, the gas for the deposit transactions. @public */
+export const EXTENDED_DEPOSIT_GAS = {
+  chainId: EXTENDED_DEPOSIT_CHAIN_ID,
+  address: '0x0000000000000000000000000000000000000000',
+  decimals: 18,
+} as const
+
+/** Extended's Rhino.fi chain code for each supported deposit and withdrawal chain. @internal */
+export const EXTENDED_BRIDGE_CHAINS: Readonly<Record<number, string>> = {
+  [EXTENDED_DEPOSIT_CHAIN_ID]: 'ARB',
+}
+
+/** Rhino.fi chain code of Extended's own side of the bridge. @internal */
+export const EXTENDED_VENUE_BRIDGE_CHAIN = 'ARC'

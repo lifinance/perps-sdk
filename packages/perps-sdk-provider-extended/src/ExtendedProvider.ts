@@ -4,6 +4,7 @@ import {
   calculateTransferable,
   compareDecimalStrings,
   createWarnOnce,
+  type DepositFlow,
   estimateLiquidationPriceAtMarketRate,
   getMarketRegistry,
   getProviders,
@@ -15,12 +16,16 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderGetWithdrawFlowParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -30,6 +35,7 @@ import {
   toMarketDisplay,
   toPerpsMarketDisplay,
   unknownToDecimalString,
+  type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
@@ -58,6 +64,7 @@ import {
   type SigningMethod,
   UserActionStatus,
 } from '@lifi/perps-types'
+import { getAddress } from 'viem'
 import { projectExtendedConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
@@ -68,6 +75,8 @@ import { extendedSignActions } from './auth/signActions.js'
 import {
   DEFAULT_EXTENDED_API_URL,
   EXTENDED_BASE_FEE_TIER,
+  EXTENDED_DEPOSIT_COLLATERAL,
+  EXTENDED_DEPOSIT_GAS,
   EXTENDED_PROVIDER_KEY,
   EXTENDED_SIGNING_DOMAIN,
 } from './constants.js'
@@ -359,6 +368,70 @@ export const extendedProvider = (
               },
             },
           }
+        }
+      )
+    },
+
+    /**
+     * A deposit always runs Extended's Rhino.fi bridge from Arbitrum, because
+     * the bridge needs a quote committed with the account's API key.
+     */
+    async getDepositFlow(
+      params: ProviderGetDepositFlowParams
+    ): Promise<DepositFlow> {
+      if ((await credentialStore.get(params.address)) === null) {
+        return { kind: 'setupRequired', setup: [ActionType.REGISTER_API_KEY] }
+      }
+      return {
+        kind: 'venueDepositPipeline',
+        chainId: EXTENDED_DEPOSIT_COLLATERAL.chainId,
+        gasAsset: EXTENDED_DEPOSIT_GAS,
+        collateral: EXTENDED_DEPOSIT_COLLATERAL,
+        bridgeAction: ActionType.DEPOSIT,
+      }
+    },
+
+    /** A withdrawal goes to the user's own address on the destination chain. */
+    async getWithdrawFlow(
+      params: ProviderGetWithdrawFlowParams
+    ): Promise<WithdrawFlow> {
+      if ((await credentialStore.get(params.address)) === null) {
+        return { kind: 'setupRequired', setup: [ActionType.REGISTER_API_KEY] }
+      }
+      return { kind: 'ready', destination: getAddress(params.address) }
+    },
+
+    getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      return withCredentials(
+        params.address,
+        dataRead('withdrawable balance read'),
+        async ({ apiKey }) => {
+          const [{ providers }, balance] = await Promise.all([
+            getProviders(requireClient(), opts),
+            readBalance(apiClient(opts), apiKey),
+          ])
+          const available =
+            balance === null
+              ? '0'
+              : unknownToDecimalString(
+                  balance.availableForWithdrawal,
+                  'balance.availableForWithdrawal',
+                  EXTENDED_PROVIDER_KEY
+                )
+          if (!isDecimalStringGreaterThan(available, '0')) {
+            return []
+          }
+          return [
+            {
+              assetId: requireExtendedCollateralAsset(providers).id,
+              categoryId: EXTENDED_PROVIDER_KEY,
+              available,
+              max: available,
+            },
+          ]
         }
       )
     },
