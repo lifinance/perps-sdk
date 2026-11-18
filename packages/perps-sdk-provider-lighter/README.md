@@ -167,16 +167,10 @@ For example, a 15x request stores IMF `'667'`. The account percent is `'6.67'`, 
 - `displayLeverage`: the one-decimal value calculated directly from the IMF.
 - `initialMarginFractionBps`: the exact integer IMF.
 
-Call `provider.isLeverageEqual(requested, reportedSettings, requestedInitialMarginFractionBps?)` to compare the request with the native setting.
+Call `provider.isLeverageEqual(requested, reportedSettings)` to compare the request with the native setting.
 The comparison does not impose a decimal-place limit on the requested leverage.
 It rejects invalid requested leverage, a zero requested IMF, and a missing or invalid reported IMF.
 It compares the encoded integer IMF with `initialMarginFractionBps`. It does not use order or display leverage as proof of the stored setting.
-When the write carried a native IMF, pass it as the third argument. The provider then compares that integer and does not encode `requested`.
-
-An `updateLeverage` or `placeOrder` request can carry `initialMarginFractionBps`.
-The provider attaches the exact IMF to the `createAction` params: a present value unchanged, else the half-up `round(10000 ÷ leverage)` of a leverage choice.
-A new choice of 15 sends `'667'`. A margin-mode change with the reported `'700'` sends `'700'`.
-Pass the reported `initialMarginFractionBps` to `calculateOrderAmounts` for an exact order margin.
 
 Our API accepts leverage changes with up to two decimal places. The backend rejects higher precision.
 This submission policy does not apply to reading existing settings or comparing their IMF.
