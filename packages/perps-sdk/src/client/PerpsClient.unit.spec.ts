@@ -2854,6 +2854,8 @@ describe('PerpsClient', () => {
         snapOrderPrice: vi.fn(),
         snapOrderSize: vi.fn(),
         isLeverageEqual: vi.fn(),
+        calculateRoe: vi.fn(),
+        remarkPosition: vi.fn(),
         estimateLiquidationPrice: vi.fn(),
         positionRemovableMargin: vi.fn(),
         getMarketSettings: vi.fn(),

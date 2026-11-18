@@ -50,6 +50,8 @@ const makePlugin = () => {
     snapOrderPrice: vi.fn((_market, price: string) => price),
     snapOrderSize: vi.fn((_market, size: string) => size),
     isLeverageEqual: vi.fn(),
+    calculateRoe: vi.fn(),
+    remarkPosition: vi.fn(),
     estimateLiquidationPrice: vi.fn(() => undefined),
     positionRemovableMargin: vi.fn(() => undefined),
     getMarketSettings: vi.fn(
@@ -76,6 +78,8 @@ const makePlugin = () => {
     snapOrderPrice: calls.snapOrderPrice,
     snapOrderSize: calls.snapOrderSize,
     isLeverageEqual: calls.isLeverageEqual,
+    calculateRoe: calls.calculateRoe,
+    remarkPosition: calls.remarkPosition,
     estimateLiquidationPrice: calls.estimateLiquidationPrice,
     positionRemovableMargin: calls.positionRemovableMargin,
     getMarketSettings: calls.getMarketSettings,

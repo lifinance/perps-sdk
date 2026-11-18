@@ -25,6 +25,12 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     getAccount: () => stub() as unknown as Promise<AccountResponse>,
     accountExists: () => stub() as unknown as Promise<boolean>,
     getPositions: () => stub() as unknown as Promise<PositionsResponse>,
+    calculateRoe: () => {
+      throw new Error('unexpected position calculation')
+    },
+    remarkPosition: () => {
+      throw new Error('unexpected position remark')
+    },
     getOrders: () => stub() as unknown as Promise<OrdersResponse>,
     getOrder: () => stub() as unknown as Promise<Order>,
     getFills: () => stub() as unknown as Promise<FillsResponse>,
@@ -34,7 +40,7 @@ function makeStubProvider(type: string): PerpsProviderPlugin {
     snapOrderPrice: (_market, price) => price,
     snapOrderSize: (_market, size) => size,
     isLeverageEqual: (requested, reported) =>
-      compareDecimalStrings(requested, reported) === 0,
+      compareDecimalStrings(requested, reported.leverage) === 0,
     estimateLiquidationPrice: () => undefined,
     positionRemovableMargin: () => undefined,
     getMarketSettings: () => stub(),

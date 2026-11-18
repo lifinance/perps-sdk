@@ -1,11 +1,13 @@
 import {
   absDecimalString,
   buildPosition,
+  calculateInitialMarginRoe,
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
   isDecimalStringZero,
   multiplyDecimalString,
+  remarkPositionValues,
   safeAbsDecimalString,
   safeDivideDecimalString,
   safeIsDecimalStringZero,
@@ -17,6 +19,39 @@ import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlAssetPosition } from '../types/index.js'
+
+/** ROE percentage from entry notional and the venue leverage. */
+export const calculateRoe = (position: Position): string | undefined => {
+  const { unrealizedPnl, size, entryPrice, leverage } = position
+  if (
+    !isDecimalString(unrealizedPnl) ||
+    !isDecimalString(size) ||
+    !isDecimalStringGreaterThan(size, '0') ||
+    !isDecimalString(entryPrice) ||
+    !isDecimalStringGreaterThan(entryPrice, '0') ||
+    !isDecimalString(leverage) ||
+    !isDecimalStringGreaterThan(leverage, '0')
+  ) {
+    return undefined
+  }
+  return calculateInitialMarginRoe(unrealizedPnl, size, entryPrice, leverage)
+}
+
+/** Recalculate mark fields and ROE without changing the input or snapshot margin. */
+export const remarkPosition = (
+  position: Position,
+  markPrice: string
+): Position => {
+  const remarked = remarkPositionValues(position, markPrice)
+  if (remarked === position) {
+    return position
+  }
+  const roe = calculateRoe(remarked)
+  if (roe !== undefined) {
+    remarked.returnOnEquity = roe
+  }
+  return remarked
+}
 
 const warnNonPositiveLeverageOnce = createWarnOnce()
 const warnInvalidReturnOnEquityOnce = createWarnOnce()
@@ -92,7 +127,7 @@ export const mapPosition = (
   const marginMode =
     pos.leverage.type === 'cross' ? MarginMode.CROSS : MarginMode.ISOLATED
 
-  return buildPosition({
+  const mapped = buildPosition({
     market,
     side: isDecimalStringGreaterThan('0', pos.szi)
       ? PositionSide.SHORT
@@ -114,4 +149,11 @@ export const mapPosition = (
       : { initialMarginRequirement }),
     marginMode,
   })
+  if (mapped.returnOnEquity === undefined) {
+    const roe = calculateRoe(mapped)
+    if (roe !== undefined) {
+      mapped.returnOnEquity = roe
+    }
+  }
+  return mapped
 }

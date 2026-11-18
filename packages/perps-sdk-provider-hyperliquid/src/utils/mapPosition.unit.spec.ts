@@ -1,4 +1,3 @@
-import { remarkPosition } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -6,8 +5,11 @@ import {
   PositionSide,
 } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { hyperliquidProvider } from '../HyperliquidProvider.js'
 import type { HlAssetPosition } from '../types/index.js'
 import { isOpenAssetPosition, mapPosition } from './mapPosition.js'
+
+const { calculateRoe, remarkPosition } = hyperliquidProvider()
 
 const BTC_MARKET: PerpsMarketDisplay = {
   providerId: 'hyperliquid',
@@ -70,6 +72,38 @@ afterEach(() => {
 })
 
 describe('mapPosition (Hyperliquid)', () => {
+  it('calculates ROE directly from position inputs', () => {
+    const position = map(
+      makeAp({
+        szi: '1',
+        entryPx: '100',
+        positionValue: '107',
+        unrealizedPnl: '7',
+        leverage: { type: 'cross', value: 5 },
+      })
+    )
+
+    expect(calculateRoe(position)).toBe('35')
+  })
+
+  it.each<Partial<Position>>([
+    { unrealizedPnl: 'invalid' },
+    { unrealizedPnl: '' },
+    { size: 'invalid' },
+    { size: '0' },
+    { size: '-1' },
+    { entryPrice: 'invalid' },
+    { entryPrice: '0' },
+    { entryPrice: '-1' },
+    { leverage: 'invalid' },
+    { leverage: '0' },
+    { leverage: '-1' },
+    { leverage: undefined },
+  ])('omits calculated ROE for unusable position inputs %j', (overrides) => {
+    const position = map(makeAp({}))
+    expect(calculateRoe({ ...position, ...overrides })).toBeUndefined()
+  })
+
   it('maps a long cross position with derived mark price', () => {
     const result = map(makeAp({ szi: '0.1', positionValue: '9500' }))
 
@@ -80,6 +114,7 @@ describe('mapPosition (Hyperliquid)', () => {
     expect(result.markPrice).toBe('95000')
     expect(result.liquidationPrice).toBe('85000')
     expect(result.leverage).toBe('10')
+    expect(result).not.toHaveProperty('initialMarginFractionBps')
     expect(result.initialMarginRequirement).toBe('950')
     expect(result.marginMode).toBe(MarginMode.CROSS)
     expect(result.market).toBe(BTC_MARKET)

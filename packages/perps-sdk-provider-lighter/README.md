@@ -158,26 +158,35 @@ WebSocket order updates contain `{ orders, terminated }`, including terminal ord
 
 ## Position leverage and return on equity
 
-`Position.leverage` shows `100 ÷ initial_margin_fraction`, rounded half-up to two decimal places.
-Lighter stores `round(10000 / leverage)` as an integer IMF, so the reported leverage can differ from the requested leverage.
-For example, `15` stores IMF `667` and reads as `14.99`.
-Use `isLeverageEqual(sdk, provider, requested, reported)` from `@lifi/perps-sdk` to compare both leverages through the stored IMF.
-The helper accepts decimal strings and preserves the reported leverage.
-The requested leverage must use at most two decimal places. Trailing zeros do not increase the precision.
-The comparison throws `ValidationError` for unsupported requested precision or a zero IMF.
-It does not normalize unsupported requests.
-`initialMarginRequirement` and the cross `marginUsed` use the unrounded `initial_margin_fraction`.
+`Position.leverage` shows `100 ÷ initial_margin_fraction`, rounded half-up directly to one decimal place.
+`Position.initialMarginFractionBps` retains the exact integer basis-point IMF as a decimal string.
+For example, a 15x request stores IMF `'667'`. The account percent is `'6.67'`, and the position display leverage is `'15'`.
 
-`returnOnEquity` uses the rounded `leverage`: `unrealizedPnl × leverage ÷ (|size| × entryPrice) × 100`.
-`remarkPosition` uses the same `leverage` at each mark.
-When `100 ÷ initial_margin_fraction` has more than two decimal places, `returnOnEquity` is different from the value of the unrounded fraction.
-For an `initial_margin_fraction` of `7`, the normalized `leverage` is `14.29`.
-For a position with `size` `1` and `entryPrice` `100`, the results differ:
+`getMarketSettings` returns three distinct values:
+- `leverage`: the existing two-decimal, request-compatible value for orders.
+- `displayLeverage`: the one-decimal value calculated directly from the IMF.
+- `initialMarginFractionBps`: the exact integer IMF.
 
-| Mark price | Unrealized PnL | SDK ROE (%) | ROE from the unrounded fraction (%) |
-| --- | --- | --- | --- |
-| 107 | 7 | 100.03 | 100 |
-| 114 | 14 | 200.06 | 200 |
+Call `provider.isLeverageEqual(requested, reportedSettings)` to compare the request with the native setting.
+The comparison does not impose a decimal-place limit on the requested leverage.
+It rejects invalid requested leverage, a zero requested IMF, and a missing or invalid reported IMF.
+It compares the encoded integer IMF with `initialMarginFractionBps`. It does not use order or display leverage as proof of the stored setting.
+
+Our API accepts leverage changes with up to two decimal places. The backend rejects higher precision.
+This submission policy does not apply to reading existing settings or comparing their IMF.
+Display rounding does not change the stored setting.
+
+`provider.calculateRoe(position)` uses `unrealizedPnl ÷ (|size| × entryPrice × initialMarginFractionBps ÷ 10000) × 100`.
+`provider.remarkPosition(position, markPrice)` retains the IMF and display leverage at each mark.
+Without a usable IMF, the provider leaves ROE absent rather than substituting display leverage.
+`initialMarginRequirement` and cross `marginUsed` continue to use the original IMF.
+
+For IMF `'700'`, display leverage is `'14.3'`. A position with size `'1'` and entry price `'100'` has these results:
+
+| Mark price | Unrealized PnL | SDK ROE (%) |
+| --- | --- | --- |
+| 107 | 7 | 100 |
+| 114 | 14 | 200 |
 
 ## Fill and trade prices
 

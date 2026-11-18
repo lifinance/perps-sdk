@@ -27,7 +27,7 @@ import {
   estimateUnrealizedPnl,
   isPositionMarginAdjustable,
   isPositionMarginRemovable,
-  remarkPosition,
+  remarkPositionValues,
   safeCalculateEffectiveLeverage,
   safeCalculateInitialMarginRoe,
   safeCalculateLiquidationDistance,
@@ -1484,11 +1484,10 @@ const isolatedPosition = (overrides: Partial<Position> = {}): Position => ({
 })
 
 describe('buildPosition', () => {
-  it('calculates every field from the mapped position', () => {
+  it('calculates provider-independent fields from the mapped position', () => {
     expect(buildPosition(isolatedPosition({ unrealizedPnl: '500' }))).toEqual({
       ...isolatedPosition({ unrealizedPnl: '500' }),
       positionValue: '100000',
-      returnOnEquity: '5',
       effectiveLeverage: '10',
       liquidationDistance: '10',
     })
@@ -1523,16 +1522,19 @@ describe('buildPosition', () => {
     expect(built).not.toHaveProperty('positionValue')
     expect(built).not.toHaveProperty('effectiveLeverage')
     expect(built).not.toHaveProperty('liquidationDistance')
-    expect(built.returnOnEquity).toBe('0')
   })
 
   it.each([
     '0',
     '-1',
     'none',
-  ])('leaves effectiveLeverage absent and keeps returnOnEquity when marginUsed is %j', (marginUsed) => {
+  ])('leaves effectiveLeverage absent and retains provider ROE when marginUsed is %j', (marginUsed) => {
     const built = buildPosition(
-      isolatedPosition({ marginUsed, unrealizedPnl: '500' })
+      isolatedPosition({
+        marginUsed,
+        unrealizedPnl: '500',
+        returnOnEquity: '5',
+      })
     )
 
     expect(built).not.toHaveProperty('effectiveLeverage')
@@ -1540,25 +1542,18 @@ describe('buildPosition', () => {
     expect(built.positionValue).toBe('100000')
   })
 
-  it('calculates returnOnEquity on the entry notional ÷ leverage, not on marginUsed', () => {
-    // Hyperliquid isolated marginUsed: 10000 posted + 100 added + 500 unrealized PnL
+  it('leaves ROE calculation to the provider even with a native source', () => {
     const built = buildPosition(
-      isolatedPosition({ marginUsed: '10600', unrealizedPnl: '500' })
+      isolatedPosition({
+        size: '1',
+        entryPrice: '100',
+        leverage: '14.3',
+        initialMarginFractionBps: '700',
+        unrealizedPnl: '7',
+      })
     )
 
-    expect(built.returnOnEquity).toBe('5')
-  })
-
-  it.each([
-    ['size', { size: '0' }],
-    ['entryPrice', { entryPrice: '0' }],
-    ['leverage', { leverage: '0' }],
-    ['leverage', { leverage: '-1' }],
-    ['leverage', { leverage: undefined }],
-  ] as const)('leaves returnOnEquity absent when %s is not above zero', (_, overrides) => {
-    expect(buildPosition(isolatedPosition(overrides))).not.toHaveProperty(
-      'returnOnEquity'
-    )
+    expect(built).not.toHaveProperty('returnOnEquity')
   })
 
   it('leaves liquidationDistance absent without a liquidationPrice', () => {
@@ -1587,7 +1582,6 @@ describe('buildPosition', () => {
 
     expect(rebuilt).not.toHaveProperty('effectiveLeverage')
     expect(rebuilt.positionValue).toBe('100000')
-    expect(rebuilt.returnOnEquity).toBe('0')
   })
 
   it('drops a stale liquidationDistance of a built position without a markPrice', () => {
@@ -1637,21 +1631,20 @@ describe('buildPosition', () => {
   })
 })
 
-describe('remarkPosition', () => {
+describe('remarkPositionValues', () => {
   it('calculates the position value for the mark price', () => {
     expect(
-      remarkPosition(isolatedPosition({ size: '2317.64901' }), '72880.0')
+      remarkPositionValues(isolatedPosition({ size: '2317.64901' }), '72880.0')
         .positionValue
     ).toBe('168910259.8488')
   })
 
   it('calculates every mark-dependent field again for a long', () => {
-    expect(remarkPosition(isolatedPosition(), '110000')).toEqual({
+    expect(remarkPositionValues(isolatedPosition(), '110000')).toEqual({
       ...isolatedPosition(),
       markPrice: '110000',
       unrealizedPnl: '10000',
       positionValue: '110000',
-      returnOnEquity: '100',
       effectiveLeverage: '11',
       liquidationDistance: '18.18',
     })
@@ -1669,19 +1662,18 @@ describe('remarkPosition', () => {
       marginUsed: '50',
     })
 
-    expect(remarkPosition(short, '100')).toEqual({
+    expect(remarkPositionValues(short, '100')).toEqual({
       ...short,
       markPrice: '100',
       unrealizedPnl: '-20',
       positionValue: '200',
-      returnOnEquity: '-100',
       effectiveLeverage: '4',
       liquidationDistance: '25',
     })
   })
 
-  it('replaces the venue positionValue and returnOnEquity of the input', () => {
-    const remarked = remarkPosition(
+  it('replaces the venue positionValue and clears stale ROE', () => {
+    const remarked = remarkPositionValues(
       buildPosition(
         isolatedPosition({ positionValue: '99999', returnOnEquity: '3.86' })
       ),
@@ -1689,7 +1681,7 @@ describe('remarkPosition', () => {
     )
 
     expect(remarked.positionValue).toBe('110000')
-    expect(remarked.returnOnEquity).toBe('100')
+    expect(remarked).not.toHaveProperty('returnOnEquity')
   })
 
   it('keeps the snapshot marginUsed of a Lighter cross position', () => {
@@ -1703,14 +1695,13 @@ describe('remarkPosition', () => {
       initialMarginRequirement: '5',
     })
 
-    expect(remarkPosition(snapshot, '200')).toEqual({
+    expect(remarkPositionValues(snapshot, '200')).toEqual({
       ...snapshot,
       markPrice: '200',
       unrealizedPnl: '100',
       marginUsed: '5',
       initialMarginRequirement: '5',
       positionValue: '200',
-      returnOnEquity: '2000',
       effectiveLeverage: '40',
       liquidationDistance: '75',
     })
@@ -1728,14 +1719,13 @@ describe('remarkPosition', () => {
       })
     )
 
-    expect(remarkPosition(snapshot, '120')).toEqual({
+    expect(remarkPositionValues(snapshot, '120')).toEqual({
       ...snapshot,
       markPrice: '120',
       unrealizedPnl: '20',
       marginUsed: '20',
       initialMarginRequirement: '11',
       positionValue: '120',
-      returnOnEquity: '200',
       effectiveLeverage: '6',
       liquidationDistance: '20',
     })
@@ -1746,9 +1736,9 @@ describe('remarkPosition', () => {
       liquidationDistance: '10',
     })
 
-    expect(remarkPosition(withoutLiquidation, '110000')).not.toHaveProperty(
-      'liquidationDistance'
-    )
+    expect(
+      remarkPositionValues(withoutLiquidation, '110000')
+    ).not.toHaveProperty('liquidationDistance')
   })
 
   it.each([
@@ -1756,7 +1746,7 @@ describe('remarkPosition', () => {
     '-1',
     'n/a',
   ])('keeps the input unrealizedPnl when entryPrice is %j', (entryPrice) => {
-    const remarked = remarkPosition(
+    const remarked = remarkPositionValues(
       isolatedPosition({ entryPrice, unrealizedPnl: '7' }),
       '110000'
     )
@@ -1766,7 +1756,7 @@ describe('remarkPosition', () => {
   })
 
   it('keeps the input unrealizedPnl when size is not a decimal', () => {
-    const remarked = remarkPosition(
+    const remarked = remarkPositionValues(
       isolatedPosition({ size: 'n/a', unrealizedPnl: '7' }),
       '110000'
     )
@@ -1781,7 +1771,7 @@ describe('remarkPosition', () => {
     const input = Object.freeze(buildPosition(isolatedPosition()))
     const snapshot = { ...input }
 
-    const remarked = remarkPosition(input, '110000')
+    const remarked = remarkPositionValues(input, '110000')
 
     expect(remarked).not.toBe(input)
     expect(input).toEqual(snapshot)
@@ -1796,6 +1786,6 @@ describe('remarkPosition', () => {
   ])('gives the position unchanged when markPrice is %j', (markPrice) => {
     const input = buildPosition(isolatedPosition())
 
-    expect(remarkPosition(input, markPrice)).toBe(input)
+    expect(remarkPositionValues(input, markPrice)).toBe(input)
   })
 })

@@ -1,4 +1,4 @@
-import { decimalStringToNumber, remarkPosition } from '@lifi/perps-sdk'
+import { decimalStringToNumber } from '@lifi/perps-sdk'
 import type { PerpsMarketDisplay } from '@lifi/perps-types'
 import {
   MarginMode,
@@ -7,6 +7,7 @@ import {
 } from '@lifi/perps-types'
 import { describe, expect, it, vi } from 'vitest'
 import { LIGHTER_LEVERAGE_PRECISION } from '../constants.js'
+import { lighterProvider, lighterRhProvider } from '../LighterProvider.js'
 import type { LtAccountPosition } from '../types/index.js'
 import {
   LT_MARGIN_MODE_CROSS,
@@ -188,7 +189,7 @@ describe('mapPosition (Lighter)', () => {
       // calculations consume the exact IMF separately.
       expect(
         map(basePosition({ initial_margin_fraction: '45.00' }), MARKET).leverage
-      ).toBe('2.22')
+      ).toBe('2.2')
       expect(
         map(basePosition({ initial_margin_fraction: '33.33' }), MARKET).leverage
       ).toBe('3')
@@ -428,7 +429,8 @@ describe('mapPosition (Lighter)', () => {
       expect(result).not.toHaveProperty('liquidationDistance')
     })
 
-    it('calculates returnOnEquity on the two-decimal display leverage at each mark', () => {
+    it('calculates returnOnEquity from the source IMF at each mark', () => {
+      const provider = lighterProvider()
       const mapped = map(
         basePosition({
           position: '1',
@@ -440,19 +442,97 @@ describe('mapPosition (Lighter)', () => {
         MARKET
       )
 
-      // 100 ÷ 7 = 14.2857… displays as 14.29, so ROE is 7 × 14.29 = 100.03, not 100
       expect(mapped).toMatchObject({
-        leverage: '14.29',
+        leverage: '14.3',
+        initialMarginFractionBps: '700',
         markPrice: '107',
-        returnOnEquity: '100.03',
+        returnOnEquity: '100',
       })
-      expect(remarkPosition(mapped, '107').returnOnEquity).toBe('100.03')
-      expect(remarkPosition(mapped, '114')).toMatchObject({
-        leverage: '14.29',
+      expect(provider.calculateRoe(mapped)).toBe('100')
+      expect(provider.remarkPosition(mapped, '107').returnOnEquity).toBe('100')
+      expect(provider.remarkPosition(mapped, '114')).toMatchObject({
+        leverage: '14.3',
+        initialMarginFractionBps: '700',
         unrealizedPnl: '14',
-        returnOnEquity: '200.06',
+        returnOnEquity: '200',
       })
+      expect(mapped.unrealizedPnl).toBe('7')
     })
+  })
+})
+
+describe.each([
+  { name: 'Lighter', createProvider: lighterProvider },
+  { name: 'Lighter RH', createProvider: lighterRhProvider },
+])('$name provider position calculations', ({ createProvider }) => {
+  const provider = createProvider()
+
+  it.each([
+    ['6.67', '667', '15'],
+    ['3.13', '313', '31.9'],
+    ['6.90', '690', '14.5'],
+  ])('maps IMF percent %s to source %s and display leverage %s', (imf, initialMarginFractionBps, leverage) => {
+    expect(
+      map(basePosition({ initial_margin_fraction: imf }), MARKET)
+    ).toMatchObject({
+      leverage,
+      initialMarginFractionBps,
+    })
+  })
+
+  it('calculates ROE independently of the display leverage', () => {
+    const mapped = map(
+      basePosition({
+        position: '1',
+        avg_entry_price: '100',
+        position_value: '106.67',
+        unrealized_pnl: '6.67',
+        initial_margin_fraction: '6.67',
+      }),
+      MARKET
+    )
+
+    expect(provider.calculateRoe({ ...mapped, leverage: '15' })).toBe('100')
+    expect(provider.calculateRoe({ ...mapped, leverage: '1' })).toBe('100')
+    const remarked = provider.remarkPosition(mapped, '113.34')
+    expect(remarked).toMatchObject({
+      leverage: '15',
+      initialMarginFractionBps: '667',
+      unrealizedPnl: '13.34',
+      returnOnEquity: '200',
+      marginUsed: mapped.marginUsed,
+    })
+    expect(remarked).not.toBe(mapped)
+    expect(mapped.unrealizedPnl).toBe('6.67')
+  })
+
+  it.each([
+    '0',
+    '-1',
+    '6.67',
+    'invalid',
+  ])('omits ROE for an unusable native source %s', (initialMarginFractionBps) => {
+    const mapped = map(basePosition(), MARKET)
+    expect(
+      provider.calculateRoe({ ...mapped, initialMarginFractionBps })
+    ).toBeUndefined()
+  })
+
+  it('does not substitute rounded leverage for a missing source', () => {
+    const { initialMarginFractionBps: _imf, ...withoutSource } = map(
+      basePosition(),
+      MARKET
+    )
+    expect(provider.calculateRoe(withoutSource)).toBeUndefined()
+  })
+
+  it.each([
+    '0',
+    '-1',
+    'invalid',
+  ])('retains the input for an invalid mark %s', (markPrice) => {
+    const mapped = map(basePosition(), MARKET)
+    expect(provider.remarkPosition(mapped, markPrice)).toBe(mapped)
   })
 })
 

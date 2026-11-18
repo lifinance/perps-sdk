@@ -3,6 +3,7 @@ import {
   compareDecimalStrings,
   type DepositFlow,
   HYPERLIQUID_USDC,
+  isDecimalStringGreaterThan,
   isSpotCategory,
   isSubmittedOrAccepted,
   type LiquidationEstimateParams,
@@ -83,6 +84,7 @@ import { hyperliquidSignActions } from './signers/signActions.js'
 import type { HlExtraAgents } from './types/index.js'
 import { hlInfoOptions, infoRequest } from './utils/infoClient.js'
 import { calculateLiquidationPrice } from './utils/liquidation.js'
+import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
 import { snapOrderPrice, snapOrderSize } from './utils/orderFormatting.js'
 import { positionRemovableMargin } from './utils/transferMargin.js'
 
@@ -488,8 +490,22 @@ export function hyperliquidProvider(
     snapOrderSize: (market: Market, size: DecimalString): DecimalString =>
       snapOrderSize(size, market.szDecimals),
 
-    isLeverageEqual: (requested, reported) =>
-      compareDecimalStrings(requested, reported) === 0,
+    calculateRoe,
+
+    remarkPosition,
+
+    isLeverageEqual: (requested, reported) => {
+      if (
+        !isDecimalStringGreaterThan(requested, '0') ||
+        !isDecimalStringGreaterThan(reported.leverage, '0')
+      ) {
+        throw new PerpsError(
+          PerpsErrorCode.ValidationError,
+          'Leverage must be above zero'
+        )
+      }
+      return compareDecimalStrings(requested, reported.leverage) === 0
+    },
 
     triggerOrders: { modifyCanChangeType: true },
 

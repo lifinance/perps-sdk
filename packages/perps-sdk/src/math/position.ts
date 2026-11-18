@@ -599,9 +599,8 @@ export function isPositionMarginRemovable(position: Position): boolean {
 export const isPositiveDecimalString = (value: unknown): value is string =>
   isDecimalString(value) && isDecimalStringGreaterThan(value, '0')
 
-/** Complete a position, retaining explicit venue value and ROE.
- * Calculated ROE uses the entry notional ÷ the current leverage: `|size| × entryPrice ÷ leverage`.
- * Rebuild leverage and liquidation distance with half-up rounding to two decimals.
+/** Complete position value, effective leverage, and liquidation distance.
+ * Retain explicit ROE; provider plugins calculate it.
  * Unusable inputs omit calculated fields. Never throws or warns.
  * @public
  */
@@ -612,15 +611,7 @@ export function buildPosition(position: Position): Position {
     ...fields
   } = position
   const built: Position = fields
-  const {
-    size,
-    entryPrice,
-    leverage,
-    markPrice,
-    liquidationPrice,
-    unrealizedPnl,
-    marginUsed,
-  } = position
+  const { size, markPrice, liquidationPrice, marginUsed } = position
   const hasMarkPrice = isPositiveDecimalString(markPrice)
   const hasMargin = isPositiveDecimalString(marginUsed)
   if (
@@ -629,20 +620,6 @@ export function buildPosition(position: Position): Position {
     isDecimalString(size)
   ) {
     built.positionValue = calculateNotionalValue(size, markPrice)
-  }
-  if (
-    built.returnOnEquity === undefined &&
-    isDecimalString(unrealizedPnl) &&
-    isPositiveDecimalString(size) &&
-    isPositiveDecimalString(entryPrice) &&
-    isPositiveDecimalString(leverage)
-  ) {
-    built.returnOnEquity = calculateInitialMarginRoe(
-      unrealizedPnl,
-      size,
-      entryPrice,
-      leverage
-    )
   }
   if (hasMargin && isDecimalString(built.positionValue)) {
     built.effectiveLeverage = roundDecimalString(
@@ -667,13 +644,13 @@ export function buildPosition(position: Position): Position {
   return built
 }
 
-/** Recalculate mark-dependent fields. ROE uses the entry notional ÷ the leverage, and
- * effective leverage uses the input snapshot's margin.
+/** Recalculate provider-independent mark fields and clear stale ROE.
+ * Effective leverage uses the input snapshot's margin.
  * Invalid marks return the input. Invalid entry prices or sizes retain its PnL.
  * The input is unchanged, and valid marks return a new position.
  * @public
  */
-export function remarkPosition(
+export function remarkPositionValues(
   position: Position,
   markPrice: string
 ): Position {
