@@ -144,7 +144,7 @@ describe.each([
   })
 
   it('never carries an older IMF into a new leverage choice', async () => {
-    await updateLeverage({ leverage: 14.29, initialMarginFractionBps: '700' })
+    await updateLeverage({ leverage: 6.67, initialMarginFractionBps: '1500' })
     await updateLeverage({ leverage: 15 })
 
     expect(
@@ -152,7 +152,7 @@ describe.each([
         ({ params }) =>
           (params as Record<string, unknown>).initialMarginFractionBps
       )
-    ).toEqual(['700', '667'])
+    ).toEqual(['1500', '667'])
   })
 
   it('encodes the leverage of an order that sets a new leverage', async () => {
@@ -165,20 +165,60 @@ describe.each([
   })
 
   it('forwards the reported IMF of an order at the current leverage', async () => {
-    await placeOrder({ leverage: 14.29, initialMarginFractionBps: '700' })
+    // 6.67x encodes to 1499, so the body proves forwarding, not re-encoding.
+    await placeOrder({ leverage: 6.67, initialMarginFractionBps: '1500' })
 
     expect(createActionBodies[0]).toMatchObject({
-      params: { leverage: 14.29, initialMarginFractionBps: '700' },
+      params: { leverage: 6.67, initialMarginFractionBps: '1500' },
     })
   })
 
-  it('forwards a native-only order source without a leverage multiple', async () => {
-    await placeOrder({ initialMarginFractionBps: '700' })
+  it('forwards a native-only order source as the hook contribution', async () => {
+    // The hook itself contributes the IMF, canonicalized, with no leverage.
+    await expect(
+      factory().resolveActionRequest!(
+        ActionType.PLACE_ORDER,
+        ADDRESS,
+        PerpsSigner.SDK,
+        {
+          market: MARKET,
+          side: OrderSide.BUY,
+          size: '1',
+          initialMarginFractionBps: '700.0',
+        }
+      )
+    ).resolves.toEqual({ params: { initialMarginFractionBps: '700' } })
+
+    await placeOrder({ initialMarginFractionBps: '700.0' })
 
     expect(createActionBodies[0]).toMatchObject({
       params: { initialMarginFractionBps: '700' },
     })
     expect(createActionBodies[0]).not.toHaveProperty('params.leverage')
+  })
+
+  it('contributes the encoded IMF for an order with a leverage choice', async () => {
+    await expect(
+      factory().resolveActionRequest!(
+        ActionType.PLACE_ORDER,
+        ADDRESS,
+        PerpsSigner.SDK,
+        { market: MARKET, side: OrderSide.BUY, size: '1', leverage: 14.9 }
+      )
+    ).resolves.toEqual({ params: { initialMarginFractionBps: '671' } })
+  })
+
+  it.each([
+    '0',
+    '-1',
+    '6.67',
+    '',
+    'abc',
+  ])('rejects the unusable native-only order IMF %j before any request', async (initialMarginFractionBps) => {
+    await expect(
+      placeOrder({ initialMarginFractionBps })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+    expect(createActionBodies).toEqual([])
   })
 
   it('sends no IMF on an order without leverage fields', async () => {

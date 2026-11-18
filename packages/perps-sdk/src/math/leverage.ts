@@ -4,6 +4,7 @@ import {
   isDecimalStringGreaterThan,
   isDecimalStringInteger,
 } from '../decimal/compare.js'
+import { roundDecimalString } from '../decimal/convert.js'
 import { isDecimalString } from '../decimal/parse.js'
 import { invalidInput } from '../errors/invalidInput.js'
 import { createSafeFunction } from '../utils/createSafeFunction.js'
@@ -24,8 +25,9 @@ export interface LeverageSource {
 }
 
 /**
- * The native IMF unchanged, so a formula can read it as an exact margin
- * rate. `parameter` names the input in the error.
+ * The native IMF as a canonical integer string (`'700.0'` gives `'700'`), so
+ * a formula reads it as an exact margin rate and a venue request carries
+ * plain digits. `parameter` names the input in the error.
  *
  * @throws {PerpsError} `ValidationError` when `value` is not a positive
  *   integer decimal string.
@@ -42,7 +44,7 @@ export function validateInitialMarginFractionBps(
   ) {
     throw invalidInput(parameter, `must be a positive integer, got '${value}'`)
   }
-  return value
+  return roundDecimalString(value, 0, 'truncate')
 }
 
 /**

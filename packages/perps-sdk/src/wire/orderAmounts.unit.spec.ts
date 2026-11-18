@@ -391,24 +391,6 @@ describe('calculateOrderAmounts', () => {
     )
   })
 
-  it('throws a ValidationError that names the leverage when both are absent', () => {
-    expect(() =>
-      calculateOrderAmounts({
-        sdk,
-        market: market(),
-        held: 'margin',
-        amount: '7',
-        price: '0.07',
-      })
-    ).toThrow(
-      expect.objectContaining({
-        code: PerpsErrorCode.ValidationError,
-        message:
-          '`leverage` must be a finite number above zero, got undefined.',
-      })
-    )
-  })
-
   it('derives an exact margin of a held size from the native IMF', () => {
     // IMF 700 is 7.00%: 3000 × 700 ÷ 10000, with no leverage division.
     const amounts = calculateOrderAmounts({

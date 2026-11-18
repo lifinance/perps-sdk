@@ -386,7 +386,7 @@ A settings-preserving action, such as a margin-mode change or an order at the cu
 
 Before `POST /createAction`, the Lighter provider attaches `params.initialMarginFractionBps` to an `updateLeverage` request and to a `placeOrder` request that carries `leverage` or the IMF:
 
-- A present IMF goes to the backend unchanged. The SDK does not re-encode the leverage multiple. Selection `14.29` with IMF `'700'` sends `'700'`, not `'699'`.
+- A present IMF goes to the backend unchanged, as plain digits (`'700.0'` is sent as `'700'`). The SDK does not re-encode the leverage multiple. The two-decimal leverage `6.67` with the reported IMF `'1500'` sends `'1500'`, while an encoding of `6.67` would give `1499`. When both fields are present, the IMF wins, so a new leverage choice must omit it.
 - An absent IMF with a leverage sends the half-up `round(10000 ÷ leverage)`. Selection `15` sends `'667'`, and `14.9` sends `'671'`.
 - A `placeOrder` without either field sends no IMF.
 - An IMF that is not a positive integer, or a leverage that encodes no positive IMF, throws `ValidationError` before any request.
@@ -400,7 +400,7 @@ The backend uses a present IMF as the signing fraction, so the field needs a bac
 `resolveExactLeverage(source)` gives the leverage multiple for the TP/SL and liquidation formulas from a `MarketSettings` or a `Position`: `10000 ÷ initialMarginFractionBps` to 40 places when the native IMF is present, else `source.leverage` unchanged.
 It throws `ValidationError` when the IMF is present but not a positive integer, or when both fields are unusable. `safeResolveExactLeverage` gives `undefined` in place of the throw.
 A display leverage never feeds a formula.
-`validateInitialMarginFractionBps(value)` gives a positive integer IMF unchanged and throws `ValidationError` for any other value.
+`validateInitialMarginFractionBps(value)` gives a positive integer IMF as plain digits and throws `ValidationError` for any other value.
 
 ### Order amounts and venue grids
 
@@ -461,9 +461,10 @@ the message, when the snapped size is zero (below one lot).
 `safeCalculateOrderAmounts` gives `undefined` in place of the throw. A
 sub-cent margin is a valid order when the lot grid takes the size.
 
-`OrderAmountsInput.leverage` is a `number`, and the SDK does not read it when
-`initialMarginFractionBps` is present. Pass the reported
-`MarketSettings.initialMarginFractionBps` for a venue that stores one.
+`OrderAmountsInput` requires `leverage` (a `number`) or
+`initialMarginFractionBps`, and the SDK does not read `leverage` when the IMF
+is present. Pass the reported `MarketSettings.initialMarginFractionBps` for a
+venue that stores one.
 `Position.leverage` is a `DecimalString`, so a caller converts it with
 `safeDecimalStringToNumber`.
 

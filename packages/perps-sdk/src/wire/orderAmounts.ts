@@ -18,7 +18,7 @@ import { createSafeFunction } from '../utils/createSafeFunction.js'
 import { snapOrderSize } from './snap.js'
 
 /** @public */
-export interface OrderAmountsInput {
+export interface OrderAmountsInputBase {
   sdk: PerpsSDKClient
   market: Market
   /** The field the user typed; the other two are calculated from it. */
@@ -34,6 +34,15 @@ export interface OrderAmountsInput {
   initialMarginFractionBps?: DecimalString
   price: DecimalString
 }
+
+/**
+ * The order-entry input with at least one margin-rate source: the leverage
+ * multiple, the native IMF, or both.
+ *
+ * @public
+ */
+export type OrderAmountsInput = OrderAmountsInputBase &
+  ({ leverage: number } | { initialMarginFractionBps: DecimalString })
 
 /** @public */
 export interface OrderAmounts {

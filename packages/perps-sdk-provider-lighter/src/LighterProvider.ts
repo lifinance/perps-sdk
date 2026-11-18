@@ -2144,7 +2144,7 @@ export const createLighterProvider = (
         (action !== ActionType.UPDATE_LEVERAGE &&
           action !== ActionType.PLACE_ORDER) ||
         params === undefined ||
-        !('leverage' in params)
+        !('leverage' in params || 'initialMarginFractionBps' in params)
       ) {
         return {}
       }

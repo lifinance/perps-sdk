@@ -21,9 +21,13 @@ describe('validateInitialMarginFractionBps', () => {
     '667',
     '1',
     '10000',
-    '700.0',
   ])('gives the positive integer %s unchanged', (value) => {
     expect(validateInitialMarginFractionBps(value)).toBe(value)
+  })
+
+  it('canonicalizes an integer-valued fraction to plain digits', () => {
+    expect(validateInitialMarginFractionBps('700.0')).toBe('700')
+    expect(validateInitialMarginFractionBps('1500.000')).toBe('1500')
   })
 
   it.each([
