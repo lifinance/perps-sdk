@@ -12,21 +12,23 @@ import {
 } from './starkKey.js'
 
 describe('calculateStarkPrivateKey', () => {
-  it.each(starkFixtures.keyFromSignature)('matches Extended for r: $label', ({
+  it.each(
+    starkFixtures.keyFromSignature
+  )('matches Extended for r: $label', async ({
     signature,
     starkPrivateKey,
   }) => {
-    expect(calculateStarkPrivateKey(signature)).toBe(starkPrivateKey)
+    expect(await calculateStarkPrivateKey(signature)).toBe(starkPrivateKey)
   })
 
   it.each(
     starkFixtures.keyDerivation
-  )('matches the Python SDK for $network account $accountIndex', ({
+  )('matches the Python SDK for $network account $accountIndex', async ({
     walletSignature,
     starkPrivateKey,
     starkPublicKey,
   }) => {
-    const privateKey = calculateStarkPrivateKey(walletSignature)
+    const privateKey = await calculateStarkPrivateKey(walletSignature)
     expect(privateKey).toBe(starkPrivateKey)
     expect(calculateStarkPublicKey(privateKey)).toBe(starkPublicKey)
   })
@@ -35,12 +37,14 @@ describe('calculateStarkPrivateKey', () => {
 describe('signStarkHash', () => {
   it.each(
     starkCases.filter(({ signatures }) => signatures.length > 0)
-  )('matches the Python SDK signatures: $label', ({
+  )('matches the Python SDK signatures: $label', async ({
     hashCalls,
     signatures,
   }) => {
-    const signed = hashCalls.map(({ hash }) =>
-      signStarkHash(hash, signingKey.starkPrivateKey)
+    const signed = await Promise.all(
+      hashCalls.map(({ hash }) =>
+        signStarkHash(hash, signingKey.starkPrivateKey)
+      )
     )
     for (const signature of signatures) {
       expect(signed).toContainEqual(signature)
@@ -49,12 +53,12 @@ describe('signStarkHash', () => {
 
   it.each(
     registrationCases
-  )('matches the registration signature of the Python SDK', ({
+  )('matches the registration signature of the Python SDK', async ({
     starkMessage,
     payload,
   }) => {
-    expect(signStarkHash(starkMessage, signingKey.starkPrivateKey)).toEqual(
-      payload.l2Signature
-    )
+    expect(
+      await signStarkHash(starkMessage, signingKey.starkPrivateKey)
+    ).toEqual(payload.l2Signature)
   })
 })

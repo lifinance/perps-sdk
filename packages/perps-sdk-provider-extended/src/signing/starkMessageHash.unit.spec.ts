@@ -18,7 +18,7 @@ import {
 const toPublicKey = (decimal: string): Hex =>
   `0x${BigInt(decimal).toString(16)}`
 
-function calculateFixtureHash({ fn, inputs }: HashCallFixture): Hex {
+function calculateFixtureHash({ fn, inputs }: HashCallFixture): Promise<Hex> {
   const domain: StarkDomain = {
     name: inputs.domain_name,
     version: inputs.domain_version,
@@ -73,9 +73,9 @@ function calculateFixtureHash({ fn, inputs }: HashCallFixture): Hex {
 }
 
 describe('Stark message hashes', () => {
-  it.each(starkCases)('match the Python SDK: $label', ({ hashCalls }) => {
+  it.each(starkCases)('match the Python SDK: $label', async ({ hashCalls }) => {
     for (const hashCall of hashCalls) {
-      expect(calculateFixtureHash(hashCall)).toBe(hashCall.hash)
+      expect(await calculateFixtureHash(hashCall)).toBe(hashCall.hash)
     }
   })
 

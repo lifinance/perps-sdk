@@ -88,6 +88,9 @@ importers:
       '@scure/starknet':
         specifier: 1.1.2
         version: 1.1.2
+      '@x10xchange/stark-crypto-wrapper-wasm':
+        specifier: 0.4.0
+        version: 0.4.0
     devDependencies:
       '@vitest/coverage-v8':
         specifier: ^5.1.0
@@ -1122,6 +1125,9 @@ packages:
 
   '@vue/shared@3.5.38':
     resolution: {integrity: sha512-FTW0AFZNaK5/mOqvGBwVfUlNLU38TiQn4+DQgIFUnrBBJQ1crMJ82yeGQLV5jyKFsO8yRukpbuP7x+nRbH6aug==}
+
+  '@x10xchange/stark-crypto-wrapper-wasm@0.4.0':
+    resolution: {integrity: sha512-R8X91D3lboiC477FO9X83s+bBKD29gB6NbtBCN7hxB/4z1wwfwldeB3g6OBU98eO27TJABrBNY7u/LXPMAQiRA==}
 
   abitype@1.2.3:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
@@ -3285,6 +3291,8 @@ snapshots:
       '@vue/shared': 3.5.38
 
   '@vue/shared@3.5.38': {}
+
+  '@x10xchange/stark-crypto-wrapper-wasm@0.4.0': {}
 
   abitype@1.2.3(typescript@5.9.3)(zod@4.5.4):
     optionalDependencies:
