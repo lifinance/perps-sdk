@@ -23,6 +23,8 @@ export interface Asset {
   tags?: string[]
   /** Other venues' display symbols for the same real-world asset (e.g. Hyperliquid `SILVER` carries `['XAG']`). */
   aliases?: string[]
+  /** Opaque product-and-contract-unit key. For grouping, use it instead of `displaySymbol` and `aliases` when present. */
+  groupingKey?: string
   /**
    * Precision the venue holds this asset at — the exponent an amount is
    * scaled by to reach the venue's integer wire value. Absent when the

@@ -31,6 +31,35 @@ describe('getMarkets', () => {
     expect(result).toEqual(mockMarkets)
   })
 
+  it('returns a grouping key without replacing the market ticker', async () => {
+    const market = mockMarkets.markets[0]
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, () =>
+        HttpResponse.json({
+          markets: [
+            {
+              ...market,
+              id: 'xyz:QNT',
+              baseAsset: {
+                ...market.baseAsset,
+                id: 'xyz:QNT',
+                displaySymbol: 'QNT',
+                displayName: 'Quantinuum',
+                groupingKey: 'quantinuum-share',
+              },
+            },
+          ],
+        })
+      )
+    )
+
+    const { markets } = await getMarkets(client, { provider: 'hyperliquid' })
+
+    expect(markets[0]?.id).toBe('xyz:QNT')
+    expect(markets[0]?.baseAsset.displaySymbol).toBe('QNT')
+    expect(markets[0]?.baseAsset.groupingKey).toBe('quantinuum-share')
+  })
+
   it('excludes delisted markets from public selection', async () => {
     const delisted = {
       ...mockMarkets.markets[0],
