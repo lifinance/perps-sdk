@@ -221,8 +221,23 @@ describe.each([
     expect(createActionBodies).toEqual([])
   })
 
-  it('sends no IMF on an order without leverage fields', async () => {
-    await placeOrder({})
+  it.each([
+    ['absent', {}],
+    [
+      'explicitly undefined',
+      { leverage: undefined, initialMarginFractionBps: undefined },
+    ],
+  ])('sends no IMF on an order with %s leverage fields', async (_label, fields) => {
+    await expect(
+      factory().resolveActionRequest!(
+        ActionType.PLACE_ORDER,
+        ADDRESS,
+        PerpsSigner.SDK,
+        { market: MARKET, side: OrderSide.BUY, size: '1', ...fields }
+      )
+    ).resolves.toEqual({})
+
+    await placeOrder(fields)
 
     expect(createActionBodies[0]).not.toHaveProperty(
       'params.initialMarginFractionBps'
