@@ -115,7 +115,7 @@ export async function registerExtendedAccount(
     account: wallet.account,
     ...buildAccountCreationTypedData(walletAddress, deps.signingDomain),
   })
-  const starkPrivateKey = calculateStarkPrivateKey(keySeed)
+  const starkPrivateKey = await calculateStarkPrivateKey(keySeed)
   const starkPublicKey = calculateStarkPublicKey(starkPrivateKey)
 
   const registrationTime = formatSignatureTime(new Date())
@@ -136,7 +136,7 @@ export async function registerExtendedAccount(
       body: {
         l1Signature: withoutHexPrefix(l1Signature),
         l2Key: starkPublicKey,
-        l2Signature: signStarkHash(
+        l2Signature: await signStarkHash(
           calculateStarkRegistrationHash(walletAddress, starkPublicKey),
           starkPrivateKey
         ),
