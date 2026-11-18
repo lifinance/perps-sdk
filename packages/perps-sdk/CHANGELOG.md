@@ -1,5 +1,16 @@
 # @lifi/perps-sdk
 
+## 36.1.0
+
+### Minor Changes
+
+- [#747](https://github.com/lifinance/perps-sdk/pull/747) [`a113ae9`](https://github.com/lifinance/perps-sdk/commit/a113ae94d35627995a4d49211e81034cea56844c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Send the exact native Lighter IMF on leverage actions and use it for order margin. `UpdateLeverageParams` and `PlaceOrderParams` accept an optional `initialMarginFractionBps`, the Lighter provider attaches the IMF to each `createAction` leverage request (a present value unchanged, else the half-up encoding of the leverage), `isLeverageEqual` compares a requested native IMF, `calculateOrderAmounts` takes the IMF as its exact margin rate, and `resolveExactLeverage` gives the formula leverage of a `MarketSettings` or `Position`. `resolveActionRequest` receives the caller's params.
+
+### Patch Changes
+
+- Updated dependencies [[`a113ae9`](https://github.com/lifinance/perps-sdk/commit/a113ae94d35627995a4d49211e81034cea56844c)]:
+  - @lifi/perps-types@30.2.0
+
 ## 36.0.0
 
 ### Major Changes
