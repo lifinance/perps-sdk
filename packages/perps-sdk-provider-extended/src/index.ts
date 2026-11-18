@@ -16,6 +16,7 @@ export {
 export { extendedSignActions } from './auth/signActions.js'
 export {
   DEFAULT_EXTENDED_API_URL,
+  DEFAULT_EXTENDED_WS_URL,
   EXTENDED_BASE_FEE_TIER,
   EXTENDED_PROVIDER_KEY,
 } from './constants.js'
@@ -40,3 +41,8 @@ export {
 } from './signing/starkMessageHash.js'
 export type * from './types/wire.js'
 export { ExtendedApiClient, ExtendedApiError } from './utils/apiClient.js'
+export {
+  ExtendedWsProvider,
+  type ExtendedWsProviderOptions,
+  extendedWsProvider,
+} from './websocket/ExtendedWsProvider.js'
