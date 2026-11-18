@@ -478,10 +478,12 @@ describe('compare gives booleans', () => {
       functionExportsFrom((from) => from === './decimal/compare.js')
     ).toEqual([
       'compareDecimalStrings',
+      'isDecimalStringEqual',
       'isDecimalStringGreaterThan',
       'isDecimalStringInteger',
       'isDecimalStringZero',
       'safeCompareDecimalStrings',
+      'safeIsDecimalStringEqual',
       'safeIsDecimalStringGreaterThan',
       'safeIsDecimalStringInteger',
       'safeIsDecimalStringZero',
@@ -491,6 +493,7 @@ describe('compare gives booleans', () => {
   it('gives a boolean, never a Big', () => {
     expect(sdk.isDecimalStringGreaterThan('1.0000000000000001', '1')).toBe(true)
     expect(sdk.isDecimalStringZero('0.0')).toBe(true)
+    expect(sdk.isDecimalStringEqual('1.0', '1')).toBe(true)
   })
 })
 

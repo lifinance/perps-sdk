@@ -583,6 +583,9 @@ signature carries a `Big` or does float math on an amount.
   throws.
 - `isDecimalString(value)` tests a value against `DECIMAL_PATTERN`. It never
   throws.
+- `isDecimalStringEqual(a, b)` tests two decimal strings for exact equality,
+  so `'1'`, `'1.0'` and `'1.00'` are equal. Use it for an equality test. Use
+  `compareDecimalStrings(a, b)` (`-1`, `0` or `1`) to order or sort values.
 - `decimalStringToNumber` is for chart and pixel values only. A `number` holds
   about 15 significant digits.
 
@@ -606,7 +609,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Group      | Functions                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
-| Compare    | `compareDecimalStrings`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                                                  |
+| Compare    | `compareDecimalStrings`, `isDecimalStringEqual`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                          |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
 | Formulas   | every `calculate*`, `estimate*`, `annualizeFundingRate`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`         |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |
@@ -639,7 +642,7 @@ One verb names one kind of transformation.
 | `estimate<X>`               | values → approximation or forward-looking value    | throws; `safe` form               | `estimateLiquidationPrice`, `estimateAverageEntryPrice`    |
 | `resolve<X>`                | candidates and rules → the one to use              | throws; `safe` form               | `resolveCloseSize`, `resolveQuote`                         |
 | `is<X>`                     | value → `boolean`, a pattern test                  | no                                | `isDecimalString`                                          |
-| `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringZero`, `isDecimalStringGreaterThan`        |
+| `is<X>` compare predicates  | decimal strings → `boolean`                        | throws; `safe` form               | `isDecimalStringEqual`, `isDecimalStringZero`, `isDecimalStringGreaterThan` |
 | `would<X>` `has<X>`         | → `boolean`                                        | throws; `safe` form               | `wouldImmediatelyLiquidate`                                |
 | `build<X>`                  | inputs → payload struct                            | —                                 | `buildQuote`, `buildPosition`                              |
 | `aggregate<X>`              | collection → total                                 | throws; `safe` form               | —                                                          |

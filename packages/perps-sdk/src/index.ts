@@ -35,10 +35,12 @@ export {
 } from './decimal/arithmetic.js'
 export {
   compareDecimalStrings,
+  isDecimalStringEqual,
   isDecimalStringGreaterThan,
   isDecimalStringInteger,
   isDecimalStringZero,
   safeCompareDecimalStrings,
+  safeIsDecimalStringEqual,
   safeIsDecimalStringGreaterThan,
   safeIsDecimalStringInteger,
   safeIsDecimalStringZero,

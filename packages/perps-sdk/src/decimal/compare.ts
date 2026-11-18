@@ -25,6 +25,27 @@ export const safeIsDecimalStringGreaterThan = createSafeFunction(
 )
 
 /**
+ * Exact `a == b` on two decimal strings, so `'1'`, `'1.0'` and `'01.00'` are
+ * equal and `'1.0000000000000001'` is not `'1'`.
+ *
+ * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern.
+ * @public
+ */
+export function isDecimalStringEqual(a: string, b: string): boolean {
+  return decimalStringToBig(a).eq(decimalStringToBig(b))
+}
+
+/**
+ * {@link isDecimalStringEqual}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeIsDecimalStringEqual = createSafeFunction(
+  'isDecimalStringEqual',
+  isDecimalStringEqual
+)
+
+/**
  * Exact `value == 0`, so a flat-position check never reads `'0.0'` as
  * non-zero.
  *
