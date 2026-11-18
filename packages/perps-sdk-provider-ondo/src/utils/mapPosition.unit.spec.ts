@@ -1,4 +1,4 @@
-import type { PerpsMarketDisplay } from '@lifi/perps-types'
+import type { PerpsMarketDisplay, Position } from '@lifi/perps-types'
 import {
   MarginMode,
   PositionMarginAdjustment,
@@ -9,7 +9,7 @@ import { ondoProvider } from '../OndoProvider.js'
 import type { OndoPosition } from '../types/wire.js'
 import { isOpenPosition, mapOpenPositions, mapPosition } from './mapPosition.js'
 
-const { remarkPosition } = ondoProvider()
+const { calculateRoe, remarkPosition } = ondoProvider()
 
 const MARKET: PerpsMarketDisplay = {
   providerId: 'ondo',
@@ -49,6 +49,48 @@ const positionFixture = (overrides?: Partial<OndoPosition>): OndoPosition => ({
 })
 
 describe('mapPosition', () => {
+  it('calculates ROE directly from position inputs', () => {
+    const position = mapPosition(
+      positionFixture({
+        netQuantity: '1',
+        averageEntryPrice: '100',
+        markPrice: '107',
+        notionalValue: '107',
+        unrealizedPnl: '7',
+        leverage: '5',
+      }),
+      MARKET
+    )
+    if (position === undefined) {
+      throw new Error('expected a valid position fixture')
+    }
+
+    expect(calculateRoe(position)).toBe('35')
+    expect(position).not.toHaveProperty('initialMarginFractionBps')
+  })
+
+  it.each<Partial<Position>>([
+    { unrealizedPnl: 'invalid' },
+    { unrealizedPnl: '' },
+    { size: 'invalid' },
+    { size: '0' },
+    { size: '-1' },
+    { entryPrice: 'invalid' },
+    { entryPrice: '0' },
+    { entryPrice: '-1' },
+    { leverage: 'invalid' },
+    { leverage: '0' },
+    { leverage: '-1' },
+    { leverage: undefined },
+  ])('omits calculated ROE for unusable position inputs %j', (overrides) => {
+    const position = mapPosition(positionFixture(), MARKET)
+    if (position === undefined) {
+      throw new Error('expected a valid position fixture')
+    }
+
+    expect(calculateRoe({ ...position, ...overrides })).toBeUndefined()
+  })
+
   it('maps a long Ondo position to the generic Position shape', () => {
     expect(mapPosition(positionFixture(), MARKET)).toEqual({
       market: MARKET,

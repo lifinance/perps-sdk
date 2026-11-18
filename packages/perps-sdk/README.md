@@ -361,12 +361,12 @@ console.log(availableToTrade.buy, availableToTrade.sell)
 ### Leverage confirmation
 
 `provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.
-Lighter compares the half-up integer IMF of the request with `reportedSettings.leverageSource`.
+Lighter compares the half-up integer IMF of the request with `reportedSettings.initialMarginFractionBps`.
 It can reject different stored IMFs even when both display values are `15`.
 Hyperliquid and Ondo compare `reportedSettings.leverage` with exact decimal arithmetic.
 Each provider implements this required method without I/O or a default comparison.
-Invalid or non-positive leverage throws `ValidationError`.
-Lighter also rejects requested precision above two decimal places, a zero requested IMF, and a missing or invalid reported IMF.
+Invalid or non-positive comparison inputs throw `ValidationError`.
+Lighter compares the encoded integer IMF with `initialMarginFractionBps`, without a decimal-place limit on the request. It rejects invalid requested leverage, a zero requested IMF, and a missing or invalid reported IMF. Order and display leverage do not affect the comparison.
 
 `MarketSettings.leverage` remains the request-compatible value for orders.
 Use `displayLeverage ?? leverage` for presentation; Lighter calculates `displayLeverage` directly from its native source at one decimal place.
@@ -502,9 +502,9 @@ and on the `positions` stream:
   display.
 
 `Position.leverage` is a display multiple. Lighter rounds it directly from the
-IMF to one decimal place and retains the integer IMF in `leverageSource`.
+IMF to one decimal place and retains the integer IMF in `initialMarginFractionBps`.
 For example, IMF `'667'` gives display leverage `'15'`. Hyperliquid and Ondo
-leave `leverageSource` absent.
+leave `initialMarginFractionBps` absent.
 
 A field is absent when one of its inputs is absent or is not usable. A
 `liquidationPrice` that is not above zero gives no `liquidationDistance`.
@@ -519,7 +519,7 @@ live mark price. It recalculates `markPrice`, `positionValue`, `unrealizedPnl`,
 `returnOnEquity`, `effectiveLeverage`, and `liquidationDistance`.
 It does not change its input. An invalid mark returns the input unchanged.
 
-Provider remarking retains `leverage`, `leverageSource`, `marginUsed`, and
+Provider remarking retains `leverage`, `initialMarginFractionBps`, `marginUsed`, and
 `initialMarginRequirement` from the input snapshot. Effective leverage uses
 the snapshot margin. Read positions again for updated venue margin figures.
 Lighter ROE uses the retained IMF, never its rounded display leverage.

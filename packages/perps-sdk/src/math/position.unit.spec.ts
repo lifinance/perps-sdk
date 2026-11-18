@@ -1548,7 +1548,7 @@ describe('buildPosition', () => {
         size: '1',
         entryPrice: '100',
         leverage: '14.3',
-        leverageSource: '700',
+        initialMarginFractionBps: '700',
         unrealizedPnl: '7',
       })
     )

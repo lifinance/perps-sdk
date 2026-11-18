@@ -159,20 +159,24 @@ WebSocket order updates contain `{ orders, terminated }`, including terminal ord
 ## Position leverage and return on equity
 
 `Position.leverage` shows `100 ÷ initial_margin_fraction`, rounded half-up directly to one decimal place.
-`Position.leverageSource` retains the exact integer basis-point IMF as a decimal string.
+`Position.initialMarginFractionBps` retains the exact integer basis-point IMF as a decimal string.
 For example, a 15x request stores IMF `'667'`. The account percent is `'6.67'`, and the position display leverage is `'15'`.
 
 `getMarketSettings` returns three distinct values:
 - `leverage`: the existing two-decimal, request-compatible value for orders.
 - `displayLeverage`: the one-decimal value calculated directly from the IMF.
-- `leverageSource`: the exact integer IMF.
+- `initialMarginFractionBps`: the exact integer IMF.
 
 Call `provider.isLeverageEqual(requested, reportedSettings)` to compare the request with the native setting.
-The requested leverage must use at most two decimal places. Trailing zeros do not increase its precision.
-The method rejects invalid leverage, a zero requested IMF, and a missing or invalid reported IMF.
-It does not normalize unsupported requests or use display leverage as proof of the stored setting.
+The comparison does not impose a decimal-place limit on the requested leverage.
+It rejects invalid requested leverage, a zero requested IMF, and a missing or invalid reported IMF.
+It compares the encoded integer IMF with `initialMarginFractionBps`. It does not use order or display leverage as proof of the stored setting.
 
-`provider.calculateRoe(position)` uses `unrealizedPnl ÷ (|size| × entryPrice × leverageSource ÷ 10000) × 100`.
+Our API accepts leverage changes with up to two decimal places. The backend rejects higher precision.
+This submission policy does not apply to reading existing settings or comparing their IMF.
+Display rounding does not change the stored setting.
+
+`provider.calculateRoe(position)` uses `unrealizedPnl ÷ (|size| × entryPrice × initialMarginFractionBps ÷ 10000) × 100`.
 `provider.remarkPosition(position, markPrice)` retains the IMF and display leverage at each mark.
 Without a usable IMF, the provider leaves ROE absent rather than substituting display leverage.
 `initialMarginRequirement` and cross `marginUsed` continue to use the original IMF.

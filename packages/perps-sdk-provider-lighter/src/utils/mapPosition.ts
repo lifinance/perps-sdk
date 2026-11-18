@@ -65,19 +65,20 @@ export const leverageFromScaledImf = (imf: number): string | undefined => {
   return percent === undefined ? undefined : leverageFromImf(percent)
 }
 
+/** ROE percentage from entry notional and the exact basis-point initial margin fraction. */
 export const calculateRoe = (position: Position): string | undefined => {
-  const { unrealizedPnl, size, entryPrice, leverageSource } = position
+  const { unrealizedPnl, size, entryPrice, initialMarginFractionBps } = position
   if (
     !isDecimalString(unrealizedPnl) ||
     !isDecimalString(size) ||
     !isDecimalStringGreaterThan(size, '0') ||
     !isDecimalString(entryPrice) ||
     !isDecimalStringGreaterThan(entryPrice, '0') ||
-    !isDecimalString(leverageSource) ||
-    !isDecimalStringGreaterThan(leverageSource, '0') ||
+    !isDecimalString(initialMarginFractionBps) ||
+    !isDecimalStringGreaterThan(initialMarginFractionBps, '0') ||
     compareDecimalStrings(
-      leverageSource,
-      roundDecimalString(leverageSource, 0, 'truncate')
+      initialMarginFractionBps,
+      roundDecimalString(initialMarginFractionBps, 0, 'truncate')
     ) !== 0
   ) {
     return undefined
@@ -85,13 +86,14 @@ export const calculateRoe = (position: Position): string | undefined => {
   const margin = divideDecimalString(
     multiplyDecimalString(
       calculateNotionalValue(size, entryPrice),
-      leverageSource
+      initialMarginFractionBps
     ),
     '10000'
   )
   return calculateMarginRoe(unrealizedPnl, margin)
 }
 
+/** Recalculate mark fields and ROE from the retained IMF without changing the input or snapshot margin. */
 export const remarkPosition = (
   position: Position,
   markPrice: string
@@ -190,7 +192,7 @@ export const mapPosition = (
       ? {}
       : {
           leverage,
-          leverageSource: multiplyDecimalString(
+          initialMarginFractionBps: multiplyDecimalString(
             imf,
             String(LIGHTER_IMF_PERCENT_SCALE)
           ),

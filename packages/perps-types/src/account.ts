@@ -62,8 +62,8 @@ export interface Position {
   accruedFunding?: DecimalString
   /** Display leverage multiple; Lighter rounds half-up to one decimal place. */
   leverage?: DecimalString
-  /** Provider-native leverage source. Lighter uses integer basis-point IMF strings; '667' means 6.67%. */
-  leverageSource?: DecimalString
+  /** Initial margin fraction in basis points as an integer decimal string; '667' means 6.67%. */
+  initialMarginFractionBps?: DecimalString
   /**
    * Margin reserved by this position as a decimal string: the venue figure of
    * each provider, unchanged. Its unrealized-PnL treatment differs by venue.
@@ -267,8 +267,8 @@ export interface MarketSettings {
   leverage: DecimalString
   /** Provider-calculated display multiple when presentation precision differs from the order value. */
   displayLeverage?: DecimalString
-  /** Provider-native setting. Lighter uses integer basis-point IMF strings; other providers omit it. */
-  leverageSource?: DecimalString
+  /** Initial margin fraction in basis points as an integer decimal string. Lighter supplies it; other providers omit it. */
+  initialMarginFractionBps?: DecimalString
 }
 
 /**

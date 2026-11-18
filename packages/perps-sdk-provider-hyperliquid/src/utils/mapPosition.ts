@@ -20,6 +20,7 @@ import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { PROVIDER_KEY } from '../constants.js'
 import type { HlAssetPosition } from '../types/index.js'
 
+/** ROE percentage from entry notional and the venue leverage. */
 export const calculateRoe = (position: Position): string | undefined => {
   const { unrealizedPnl, size, entryPrice, leverage } = position
   if (
@@ -36,6 +37,7 @@ export const calculateRoe = (position: Position): string | undefined => {
   return calculateInitialMarginRoe(unrealizedPnl, size, entryPrice, leverage)
 }
 
+/** Recalculate mark fields and ROE without changing the input or snapshot margin. */
 export const remarkPosition = (
   position: Position,
   markPrice: string

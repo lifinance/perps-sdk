@@ -444,7 +444,7 @@ describe('mapPosition (Lighter)', () => {
 
       expect(mapped).toMatchObject({
         leverage: '14.3',
-        leverageSource: '700',
+        initialMarginFractionBps: '700',
         markPrice: '107',
         returnOnEquity: '100',
       })
@@ -452,7 +452,7 @@ describe('mapPosition (Lighter)', () => {
       expect(provider.remarkPosition(mapped, '107').returnOnEquity).toBe('100')
       expect(provider.remarkPosition(mapped, '114')).toMatchObject({
         leverage: '14.3',
-        leverageSource: '700',
+        initialMarginFractionBps: '700',
         unrealizedPnl: '14',
         returnOnEquity: '200',
       })
@@ -471,12 +471,12 @@ describe.each([
     ['6.67', '667', '15'],
     ['3.13', '313', '31.9'],
     ['6.90', '690', '14.5'],
-  ])('maps IMF percent %s to source %s and display leverage %s', (imf, leverageSource, leverage) => {
+  ])('maps IMF percent %s to source %s and display leverage %s', (imf, initialMarginFractionBps, leverage) => {
     expect(
       map(basePosition({ initial_margin_fraction: imf }), MARKET)
     ).toMatchObject({
       leverage,
-      leverageSource,
+      initialMarginFractionBps,
     })
   })
 
@@ -497,7 +497,7 @@ describe.each([
     const remarked = provider.remarkPosition(mapped, '113.34')
     expect(remarked).toMatchObject({
       leverage: '15',
-      leverageSource: '667',
+      initialMarginFractionBps: '667',
       unrealizedPnl: '13.34',
       returnOnEquity: '200',
       marginUsed: mapped.marginUsed,
@@ -511,13 +511,15 @@ describe.each([
     '-1',
     '6.67',
     'invalid',
-  ])('omits ROE for an unusable native source %s', (leverageSource) => {
+  ])('omits ROE for an unusable native source %s', (initialMarginFractionBps) => {
     const mapped = map(basePosition(), MARKET)
-    expect(provider.calculateRoe({ ...mapped, leverageSource })).toBeUndefined()
+    expect(
+      provider.calculateRoe({ ...mapped, initialMarginFractionBps })
+    ).toBeUndefined()
   })
 
   it('does not substitute rounded leverage for a missing source', () => {
-    const { leverageSource: _source, ...withoutSource } = map(
+    const { initialMarginFractionBps: _imf, ...withoutSource } = map(
       basePosition(),
       MARKET
     )

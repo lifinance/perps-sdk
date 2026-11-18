@@ -1861,7 +1861,9 @@ describe('LighterWsProvider', () => {
         JSON.stringify({
           type: 'subscribed/account_all_positions',
           channel: `account_all_positions:${ACCOUNT_IDX}`,
-          positions: { '0': RAW_POSITION },
+          positions: {
+            '0': { ...RAW_POSITION, initial_margin_fraction: '6.67' },
+          },
         })
       )
 
@@ -1870,7 +1872,8 @@ describe('LighterWsProvider', () => {
       expect(event.channel).toBe('positions')
       expect(event.data).toHaveLength(1)
       expect(event.data[0].entryPrice).toBe('50000')
-      expect(event.data[0].leverage).toBe('20')
+      expect(event.data[0].leverage).toBe('15')
+      expect(event.data[0].initialMarginFractionBps).toBe('667')
       p.close()
     })
 

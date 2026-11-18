@@ -15,6 +15,7 @@ import { MarginMode, PositionSide } from '@lifi/perps-types'
 import { ONDO_PROVIDER_KEY } from '../constants.js'
 import type { OndoPosition } from '../types/wire.js'
 
+/** ROE percentage from entry notional and the venue leverage. */
 export const calculateRoe = (position: Position): string | undefined => {
   const { unrealizedPnl, size, entryPrice, leverage } = position
   if (
@@ -31,6 +32,7 @@ export const calculateRoe = (position: Position): string | undefined => {
   return calculateInitialMarginRoe(unrealizedPnl, size, entryPrice, leverage)
 }
 
+/** Recalculate mark fields and ROE without changing the input or snapshot margin. */
 export const remarkPosition = (
   position: Position,
   markPrice: string

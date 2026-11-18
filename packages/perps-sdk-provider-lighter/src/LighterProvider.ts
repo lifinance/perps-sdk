@@ -951,16 +951,16 @@ export const createLighterProvider = (
       )
     }
     const orderLeverage = numberToDecimalString(leverage)
-    const leverageSource = calculateLeverageImf(orderLeverage)
+    const initialMarginFractionBps = calculateLeverageImf(orderLeverage)
     return {
       marginMode: MarginMode.CROSS,
       leverage: orderLeverage,
       displayLeverage: roundDecimalString(
-        divideDecimalString('10000', leverageSource),
+        divideDecimalString('10000', initialMarginFractionBps),
         LIGHTER_LEVERAGE_DISPLAY_PRECISION,
         'round'
       ),
-      leverageSource,
+      initialMarginFractionBps,
     }
   }
 
@@ -1510,7 +1510,7 @@ export const createLighterProvider = (
           LIGHTER_LEVERAGE_DISPLAY_PRECISION,
           'round'
         ),
-        leverageSource: multiplyDecimalString(
+        initialMarginFractionBps: multiplyDecimalString(
           imf,
           String(LIGHTER_IMF_PERCENT_SCALE)
         ),
@@ -2029,30 +2029,21 @@ export const createLighterProvider = (
     remarkPosition,
 
     isLeverageEqual(requested, reported) {
-      if (
-        !isDecimalStringGreaterThan(requested, '0') ||
-        !isDecimalStringGreaterThan(reported.leverage, '0')
-      ) {
+      if (!isDecimalStringGreaterThan(requested, '0')) {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
           'Leverage must be above zero'
         )
       }
-      if (
-        compareDecimalStrings(
-          requested,
-          roundDecimalString(requested, LIGHTER_LEVERAGE_PRECISION, 'truncate')
-        ) !== 0
-      ) {
+      const requestedImf = calculateLeverageImf(requested)
+      if (requestedImf === '0') {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
-          `Lighter requested leverage must use at most ${LIGHTER_LEVERAGE_PRECISION} decimal places`
+          `Lighter requested leverage '${requested}' is too high to encode a positive IMF`
         )
       }
-      const requestedImf = calculateLeverageImf(requested)
-      const reportedImf = reported.leverageSource
+      const reportedImf = reported.initialMarginFractionBps
       if (
-        requestedImf === '0' ||
         reportedImf === undefined ||
         !isDecimalStringGreaterThan(reportedImf, '0') ||
         compareDecimalStrings(
@@ -2062,7 +2053,7 @@ export const createLighterProvider = (
       ) {
         throw new PerpsError(
           PerpsErrorCode.ValidationError,
-          'Lighter leverage must carry a positive integer IMF'
+          'Lighter reported IMF must be a positive integer'
         )
       }
       return compareDecimalStrings(requestedImf, reportedImf) === 0
