@@ -61,7 +61,8 @@
   },
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
-    "@scure/starknet": "1.1.2"
+    "@scure/starknet": "1.1.2",
+    "big.js": "^7.0.1"
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:^",
@@ -69,6 +70,7 @@
   },
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:^",
+    "@types/big.js": "^7.0.0",
     "@vitest/coverage-v8": "^5.1.0",
     "madge": "^8.0.0",
     "typescript": "^5.9.2",

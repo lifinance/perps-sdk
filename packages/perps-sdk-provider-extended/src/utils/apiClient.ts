@@ -74,6 +74,14 @@ interface ExtendedEnvelope {
   status?: unknown
   data?: unknown
   error?: { code?: unknown; message?: unknown }
+  pagination?: { cursor?: unknown }
+}
+
+/** One page of a paginated Extended response. @internal */
+export interface ExtendedPage<T> {
+  data: T[]
+  /** Id after which the next page starts; absent on the last page. */
+  cursor: string | undefined
 }
 
 const bodyPreview = (text: string): string =>
@@ -117,6 +125,40 @@ export class ExtendedApiClient {
     path: string,
     options?: ExtendedRequestOptions
   ): Promise<T> {
+    const envelope = await this.request(method, path, options)
+    return envelope.data as T
+  }
+
+  /** GET a paginated route; a page shorter than `limit` is the last one. */
+  async getPage<T>(
+    path: string,
+    apiKey: string,
+    params: Record<string, string | number | undefined>
+  ): Promise<ExtendedPage<T>> {
+    const query = Object.entries(params)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+      .join('&')
+    const envelope = await this.request(
+      'GET',
+      query === '' ? path : `${path}?${query}`,
+      { apiKey }
+    )
+    const data = Array.isArray(envelope.data) ? (envelope.data as T[]) : []
+    const cursor = envelope.pagination?.cursor
+    const limit = params.limit
+    const isLastPage =
+      cursor === undefined ||
+      cursor === null ||
+      (typeof limit === 'number' && data.length < limit)
+    return { data, cursor: isLastPage ? undefined : String(cursor) }
+  }
+
+  private async request(
+    method: ExtendedHttpMethod,
+    path: string,
+    options?: ExtendedRequestOptions
+  ): Promise<ExtendedEnvelope> {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'User-Agent': EXTENDED_USER_AGENT,
@@ -136,18 +178,18 @@ export class ExtendedApiClient {
       signal: this.signal,
     })
     const text = await response.text()
-    return unwrap<T>(path, response.status, parseBody(text), text)
+    return unwrap(path, response.status, parseBody(text), text)
   }
 }
 
-function unwrap<T>(
+function unwrap(
   path: string,
   httpStatus: number,
   envelope: ExtendedEnvelope | undefined,
   text: string
-): T {
+): ExtendedEnvelope {
   if (httpStatus >= 200 && httpStatus < 300 && envelope?.status === 'OK') {
-    return envelope.data as T
+    return envelope
   }
   const venueCode =
     typeof envelope?.error?.code === 'number' ? envelope.error.code : undefined

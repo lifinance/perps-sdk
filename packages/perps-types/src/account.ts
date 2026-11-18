@@ -853,6 +853,38 @@ export interface OndoAccountConfig {
 }
 
 /**
+ * Extended balance figures, copied from the venue `/user/balance` response.
+ * Every member is a decimal string in collateral (USD) units.
+ *
+ * @public
+ */
+export interface ExtendedAccountBalance {
+  /** Collateral only: unrealized PnL excluded. */
+  balance: DecimalString
+  /** Total equity: `balance` plus unrealized PnL. */
+  equity: DecimalString
+  /** Venue buying power. */
+  availableForTrade: DecimalString
+  availableForWithdrawal: DecimalString
+  unrealizedPnl: DecimalString
+  initialMargin: DecimalString
+}
+
+/**
+ * Extended account configuration returned in {@link AccountResponse.config}.
+ * The credentials themselves never appear here.
+ *
+ * @public
+ */
+export interface ExtendedAccountConfig {
+  provider: 'extended'
+  /** This device holds the account's Stark key and API key. */
+  apiKeyRegistered: boolean
+  /** Venue balance figures. Absent without credentials, which read no balance. */
+  balance?: ExtendedAccountBalance
+}
+
+/**
  * Provider-specific account configuration discriminated by its `provider` key.
  *
  * @public
@@ -861,6 +893,7 @@ export type AccountConfig =
   | HyperliquidAccountConfig
   | LighterAccountConfig
   | OndoAccountConfig
+  | ExtendedAccountConfig
 
 /**
  * Named account-configuration value exposed to clients.

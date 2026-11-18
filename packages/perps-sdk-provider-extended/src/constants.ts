@@ -12,3 +12,14 @@ export const EXTENDED_API_KEY_DESCRIPTION = 'LI.FI perps SDK'
 
 /** Extended refuses requests without a `User-Agent`. @internal */
 export const EXTENDED_USER_AGENT = 'lifi-perps-sdk'
+
+/**
+ * Extended's flat fee schedule (0 bps maker / 2.5 bps taker), the same for
+ * every account and market.
+ *
+ * @public
+ */
+export const EXTENDED_BASE_FEE_TIER = {
+  maker: '0',
+  taker: '0.00025',
+}
