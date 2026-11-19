@@ -65,7 +65,6 @@ const holdings = (settlement: string, collateralBalance: string) => [
   asset(2, 'LIT', '8.00004674', '0'),
   asset(3, settlement, collateralBalance, '13.89182545205'),
 ]
-// Backend registry names; the venue account payload carries symbols only.
 const REGISTRY_NAMES: Readonly<Record<string, string>> = {
   ETH: 'Ethereum',
   LIT: 'Lighter',
