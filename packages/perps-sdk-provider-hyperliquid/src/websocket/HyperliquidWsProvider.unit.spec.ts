@@ -6,7 +6,7 @@ import {
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   wsLog,
 } from '@lifi/perps-sdk'
-import type { Fill, Market, Subscription } from '@lifi/perps-types'
+import type { Balance, Fill, Market, Subscription } from '@lifi/perps-types'
 import {
   LiquidationMethod,
   OrderSide,
@@ -5633,6 +5633,103 @@ describe('accountSummary channel', () => {
           logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
         },
       ])
+    } finally {
+      provider.close()
+      assetsFetchMock.mockReset()
+    }
+  })
+
+  it('keeps registry display names on spot balance assets by token id across frames', async () => {
+    assetsFetchMock.mockResolvedValue({
+      assets: [
+        {
+          providerId: 'hyperliquid',
+          id: '197',
+          displaySymbol: 'UBTC',
+          logoURI: '',
+          displayName: 'Unit Bitcoin',
+          decimals: 10,
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '999',
+          displaySymbol: 'PURR',
+          logoURI: '',
+          displayName: 'Another Token',
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '150',
+          displaySymbol: 'HYPE',
+          logoURI: '',
+          displayName: 'Hyperliquid',
+          decimals: 8,
+        },
+        { ...USDC_ASSET, displayName: 'USD Coin', decimals: 8 },
+      ],
+    })
+    const provider = createEnrichingProvider()
+    try {
+      const frames: Balance[][] = []
+      await provider.subscribe(
+        { channel: 'spotBalances', dex: 'hyperliquid', address: '0xabc' },
+        (event) => {
+          if (event.channel === 'spotBalances') {
+            frames.push(event.data)
+          }
+        }
+      )
+      const frame = (hypeTotal: string) =>
+        spotFrame('0xabc', [
+          { coin: 'USDC', token: 0, total: '1000', hold: '0' },
+          { coin: 'PURR', token: 1, total: '2', hold: '0' },
+          { coin: 'HYPE', token: 150, total: hypeTotal, hold: '1' },
+          { coin: 'UBTC', token: 197, total: '0.01', hold: '0' },
+        ])
+      const expectedAssets = [
+        {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+          decimals: 8,
+          displayName: 'USD Coin',
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '1',
+          displaySymbol: 'PURR',
+          logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '150',
+          displaySymbol: 'HYPE',
+          logoURI:
+            'https://static.debank.com/image/hyper_token/logo_url/hyper/0b3e288cfe418e9ce69eef4c96374583.png',
+          decimals: 8,
+          displayName: 'Hyperliquid',
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '197',
+          displaySymbol: 'UBTC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/UBTC_spot.svg',
+          decimals: 10,
+          displayName: 'Unit Bitcoin',
+        },
+      ]
+
+      getMockRwsInstance().simulateMessage(frame('3'))
+      expect(frames.at(-1)?.map((row) => row.asset)).toStrictEqual(
+        expectedAssets
+      )
+
+      getMockRwsInstance().simulateMessage(frame('4'))
+      expect(frames.at(-1)?.map((row) => row.asset)).toStrictEqual(
+        expectedAssets
+      )
+      expect(frames.at(-1)?.[2].units).toBe('4')
     } finally {
       provider.close()
       assetsFetchMock.mockReset()
