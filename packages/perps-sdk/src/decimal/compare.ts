@@ -32,7 +32,7 @@ export const safeIsDecimalStringGreaterThan = createSafeFunction(
  * @public
  */
 export function isDecimalStringEqual(a: string, b: string): boolean {
-  return decimalStringToBig(a).eq(decimalStringToBig(b))
+  return compareDecimalStrings(a, b) === 0
 }
 
 /**
