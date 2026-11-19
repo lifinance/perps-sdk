@@ -7,6 +7,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider, lighterRhProvider } from './LighterProvider.js'
 import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
+import {
+  LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_ACCOUNT_TRADING_MODE_UNIFIED,
+} from './types/index.js'
 import { LighterWsProvider } from './websocket/LighterWsProvider.js'
 
 const { Socket } = vi.hoisted(() => {
@@ -61,6 +65,13 @@ const holdings = (settlement: string, collateralBalance: string) => [
   asset(2, 'LIT', '8.00004674', '0'),
   asset(3, settlement, collateralBalance, '13.89182545205'),
 ]
+// Backend registry names; the venue account payload carries symbols only.
+const REGISTRY_NAMES: Readonly<Record<string, string>> = {
+  ETH: 'Ethereum',
+  LIT: 'Lighter',
+  USDC: 'USD Coin',
+  USDG: 'Global Dollar',
+}
 const respond = (body: unknown) =>
   new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
@@ -68,7 +79,8 @@ const respond = (body: unknown) =>
 
 async function setup(
   providerId: 'lighter' | 'lighter-rh' = 'lighter',
-  collateralBalance = '0'
+  collateralBalance = '0',
+  accountTradingMode = LT_ACCOUNT_TRADING_MODE_UNIFIED
 ) {
   const settlement = providerId === 'lighter' ? 'USDC' : 'USDG'
   const descriptor = (id: string, displaySymbol: string) => ({
@@ -76,6 +88,7 @@ async function setup(
     id,
     displaySymbol,
     logoURI: '',
+    displayName: REGISTRY_NAMES[displaySymbol],
   })
   const assets = holdings(settlement, collateralBalance)
   const quoteAsset = descriptor(settlement, settlement)
@@ -144,7 +157,7 @@ async function setup(
               status: 1,
               collateral: EQUITY,
               transaction_time: 0,
-              account_trading_mode: 1,
+              account_trading_mode: accountTradingMode,
               account_index: 12,
               name: '',
               description: '',
@@ -221,7 +234,7 @@ async function setup(
     apiUrl: 'https://backend.test/v1/perps',
     providers: [provider],
   })
-  return { provider, client, assets }
+  return { provider, client, assets, descriptor }
 }
 
 const streams: LighterWsProvider[] = []
@@ -382,5 +395,31 @@ describe('Lighter non-settlement margin holdings', () => {
     const { summaries, sendAssets, assets } = await subscribe(false, '2')
     sendAssets(assets, true)
     expect(summaries.at(-1)?.portfolioValue).toBe('38.07369174')
+  })
+})
+
+describe('Lighter account asset names', () => {
+  it.each([
+    ['lighter', 'USDC', 'USD Coin'],
+    ['lighter-rh', 'USDG', 'Global Dollar'],
+  ] as const)('keeps registry and category display names on %s balances', async (providerId, settlement, settlementName) => {
+    const { provider, descriptor } = await setup(
+      providerId,
+      '0',
+      LT_ACCOUNT_TRADING_MODE_SIMPLE
+    )
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.collateralBalances.map((b) => b.asset)).toStrictEqual([
+      descriptor('1', 'ETH'),
+      descriptor(settlement, settlement),
+    ])
+    expect(account.balances.map((b) => b.asset)).toStrictEqual([
+      descriptor('2', 'LIT'),
+    ])
+    expect(
+      [...account.collateralBalances, ...account.balances].map(
+        (b) => b.asset.displayName
+      )
+    ).toEqual(['Ethereum', settlementName, 'Lighter'])
   })
 })
