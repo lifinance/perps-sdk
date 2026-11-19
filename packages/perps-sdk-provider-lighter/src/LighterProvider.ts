@@ -2,7 +2,6 @@ import {
   ACTIVE_ORDER_STATUSES,
   type ActionSignerContribution,
   calculateTransferable,
-  compareDecimalStrings,
   type DepositFlow,
   divideDecimalString,
   estimateLiquidationPriceAtMarketRate,
@@ -13,6 +12,7 @@ import {
   getMarketsContext,
   getProviders,
   isActiveOrderStatus,
+  isDecimalStringEqual,
   isDecimalStringGreaterThan,
   isSpotCategory,
   localStorageAdapter,
@@ -2075,14 +2075,12 @@ export const createLighterProvider = (
           'Lighter reported IMF must be a positive integer'
         )
       }
-      return (
-        compareDecimalStrings(
-          requestedImf,
-          validateInitialMarginFractionBps(
-            reportedImf,
-            'reported initialMarginFractionBps'
-          )
-        ) === 0
+      return isDecimalStringEqual(
+        requestedImf,
+        validateInitialMarginFractionBps(
+          reportedImf,
+          'reported initialMarginFractionBps'
+        )
       )
     },
 

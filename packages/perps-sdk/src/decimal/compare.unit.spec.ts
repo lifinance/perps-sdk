@@ -2,10 +2,12 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   compareDecimalStrings,
+  isDecimalStringEqual,
   isDecimalStringGreaterThan,
   isDecimalStringInteger,
   isDecimalStringZero,
   safeCompareDecimalStrings,
+  safeIsDecimalStringEqual,
   safeIsDecimalStringGreaterThan,
   safeIsDecimalStringInteger,
   safeIsDecimalStringZero,
@@ -41,6 +43,47 @@ describe('isDecimalStringGreaterThan', () => {
     ['$1,000', '999.5'],
   ])('throws ValidationError for %j vs %j', (a, b) => {
     expect(() => isDecimalStringGreaterThan(a, b)).toThrow(
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
+  })
+})
+
+describe('isDecimalStringEqual', () => {
+  it.each([
+    ['1', '1'],
+    ['1', '1.0'],
+    ['1.00', '1'],
+    ['-2.5', '-2.50'],
+    ['0', '0.000'],
+    ['0', '-0'],
+    [
+      '123456789012345678901234567890.000000000000000001',
+      '123456789012345678901234567890.0000000000000000010',
+    ],
+  ])('gives true for %j and %j', (a, b) => {
+    expect(isDecimalStringEqual(a, b)).toBe(true)
+    expect(isDecimalStringEqual(b, a)).toBe(true)
+  })
+
+  it.each([
+    ['1', '2'],
+    ['1.0000000000000001', '1'],
+    ['9007199254740993', '9007199254740992'],
+    ['-1', '1'],
+    ['0', '0.0000000000000000001'],
+  ])('gives false for %j and %j', (a, b) => {
+    expect(isDecimalStringEqual(a, b)).toBe(false)
+    expect(isDecimalStringEqual(b, a)).toBe(false)
+  })
+
+  it.each([
+    ['01.00', '1'],
+    ['1', '1e0'],
+    ['', '0'],
+    ['abc', '1'],
+    ['$1', '1'],
+  ])('throws ValidationError for %j vs %j', (a, b) => {
+    expect(() => isDecimalStringEqual(a, b)).toThrow(
       expect.objectContaining({ code: PerpsErrorCode.ValidationError })
     )
   })
@@ -136,6 +179,8 @@ describe('compareDecimalStrings', () => {
 
 describe('safe compare functions', () => {
   it('give the result for valid operands', () => {
+    expect(safeIsDecimalStringEqual('1', '1.0')).toBe(true)
+    expect(safeIsDecimalStringEqual('1', '2')).toBe(false)
     expect(safeIsDecimalStringGreaterThan('2', '1')).toBe(true)
     expect(safeIsDecimalStringZero('0.0')).toBe(true)
     expect(safeCompareDecimalStrings('1', '2')).toBe(-1)
@@ -143,9 +188,14 @@ describe('safe compare functions', () => {
 
   it('give undefined and warn for a bad operand', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(safeIsDecimalStringEqual('abc', '1')).toBeUndefined()
     expect(safeIsDecimalStringGreaterThan('abc', '1')).toBeUndefined()
     expect(safeIsDecimalStringZero('abc')).toBeUndefined()
     expect(safeCompareDecimalStrings('1', 'abc')).toBeUndefined()
-    expect(warn).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalledTimes(4)
+    expect(warn).toHaveBeenCalledWith(
+      '[perps-sdk] isDecimalStringEqual failed',
+      expect.objectContaining({ code: PerpsErrorCode.ValidationError })
+    )
   })
 })
