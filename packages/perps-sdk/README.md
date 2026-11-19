@@ -577,10 +577,11 @@ signature carries a `Big` or does float math on an amount.
 - Display shows the venue string unchanged. The SDK tests a string only where
   it sorts or calculates with it.
 - To read a string for a calculation, the SDK tests `DECIMAL_PATTERN` (an
-  optional `-`, digits, and an optional `.` with digits), then reads it with
-  `big.js`. The SDK does not clean the string. A display form such as `'$4'`
-  or `'0.05%'`, or an exponent form such as `'1e-7'`, fails the test and
-  throws.
+  optional `-`, an integer part, and an optional `.` with digits), then reads
+  it with `big.js`. The integer part is `0` or digits that start with `1` to
+  `9`. The SDK does not clean the string. A display form such as `'$4'` or
+  `'0.05%'`, an exponent form such as `'1e-7'`, or a leading zero such as
+  `'01'` or `'01.00'` fails the test and throws.
 - `isDecimalString(value)` tests a value against `DECIMAL_PATTERN`. It never
   throws.
 - `isDecimalStringEqual(a, b)` tests two decimal strings for exact equality,
@@ -609,7 +610,7 @@ totals and WebSocket updates. It uses `safeX`, and the row stays.
 | Group      | Functions                                                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Arithmetic | `addDecimalString`, `addDecimalStrings`, `subtractDecimalString`, `multiplyDecimalString`, `divideDecimalString` (40 places, half-up), `divideDecimalStringRoundDown` (40 places, truncate) |
-| Compare    | `compareDecimalStrings`, `isDecimalStringEqual`, `isDecimalStringGreaterThan`, `isDecimalStringZero`                                          |
+| Compare    | `compareDecimalStrings`, `isDecimalStringEqual`, `isDecimalStringGreaterThan`, `isDecimalStringZero`, `isDecimalStringInteger`                 |
 | Convert    | `roundDecimalString`, `scaledIntegerToDecimalString`, `numberToDecimalString`, `decimalStringToNumber`, `decimalStringToScaledInteger`, `timestampToIsoString` |
 | Formulas   | every `calculate*`, `estimate*`, `annualizeFundingRate`, `buildQuote`, `resolveCloseSize` and `wouldImmediatelyLiquidate` in `math/`         |
 | Wire       | `calculateOrderAmounts`                                                                                                                      |

@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 30.3.0
+
+### Minor Changes
+
+- [#758](https://github.com/lifinance/perps-sdk/pull/758) [`1135f55`](https://github.com/lifinance/perps-sdk/commit/1135f556c6ac72e6da38247d882d4961a412877b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `BaseMarket.neverAliases` list of `ProviderMarketRef` values. Each reference names a market listing that must never share a group with this market.
+
 ## 30.2.0
 
 ### Minor Changes
