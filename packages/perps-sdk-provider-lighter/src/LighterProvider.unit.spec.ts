@@ -7567,3 +7567,214 @@ describe('LighterProvider — transfer type variants', () => {
     })
   })
 })
+
+describe('LighterProvider — concurrent account reads', () => {
+  const OTHER_ADDRESS = '0x2222222222222222222222222222222222222222' as const
+
+  let accountRequests: { url: string; signal: AbortSignal | undefined }[] = []
+  let answerAccount: (url: string) => Response
+  let accountGate: Promise<void>
+
+  beforeEach(() => {
+    accountRequests = []
+    answerAccount = () => respond(ACCOUNT_PAYLOAD)
+    accountGate = Promise.resolve()
+  })
+
+  const unavailable = (): Response =>
+    new Response('service unavailable', { status: 503 })
+
+  /**
+   * The fetch each provider receives through its client config. It records each
+   * account request at dispatch and answers it once `accountGate` resolves. An
+   * abort rejects the request, as `fetch` does. Other requests reach the stub.
+   */
+  const injectedFetch: typeof fetch = (input, init) => {
+    const url = String(input)
+    if (!url.includes('/api/v1/account?')) {
+      return fetch(input, init)
+    }
+    const signal = init?.signal ?? undefined
+    accountRequests.push({ url, signal })
+    return new Promise((resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason))
+      accountGate.then(() => resolve(answerAccount(url)))
+    })
+  }
+
+  /** Holds every account answer until the returned release runs. */
+  const holdAccountReads = (): (() => void) => {
+    let release = (): void => {}
+    accountGate = new Promise((resolve) => {
+      release = resolve
+    })
+    return release
+  }
+
+  /** Lets every started read reach its account request. */
+  const flushReads = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, 0))
+
+  /** Binds with the injected fetch and the venue retry policy minus its delay. */
+  const boundProvider = (
+    create: typeof lighterProvider = lighterProvider
+  ): LighterPerpsProvider => {
+    const provider = create({ storage: createMemoryStorage() })
+    provider.bind({
+      config: {
+        ...STUB_CLIENT.config,
+        fetch: injectedFetch,
+        retry: { baseDelayMs: 0, maxDelayMs: 0 },
+      },
+    } as PerpsSDKClient)
+    return provider
+  }
+
+  it('sends one account request for concurrent reads of one wallet', async () => {
+    const release = holdAccountReads()
+    const provider = boundProvider()
+
+    const reads = Promise.all([
+      provider.getAccount({ address: ADDRESS }),
+      provider.getPositions({ address: ADDRESS }),
+      provider.accountExists({ address: ADDRESS }),
+    ])
+    await flushReads()
+    release()
+
+    const [account, positions, exists] = await reads
+    expect(accountRequests).toHaveLength(1)
+    expect(account.address).toBe(ADDRESS)
+    expect(positions.positions).toEqual([])
+    expect(exists).toBe(true)
+  })
+
+  it('gives every concurrent read the one failure of a 503 request sequence', async () => {
+    answerAccount = unavailable
+    const release = holdAccountReads()
+    const provider = boundProvider()
+
+    const reads = Promise.allSettled([
+      provider.getAccount({ address: ADDRESS }),
+      provider.getPositions({ address: ADDRESS }),
+      provider.accountExists({ address: ADDRESS }),
+    ])
+    await flushReads()
+    release()
+
+    const reasons = (await reads).map((result) =>
+      result.status === 'rejected' ? result.reason : undefined
+    )
+    // One request sequence: the first attempt and the venue 503 retry.
+    expect(accountRequests).toHaveLength(2)
+    expect(reasons[0]).toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      message: expect.stringContaining('503'),
+    })
+    expect(reasons[1]).toBe(reasons[0])
+    expect(reasons[2]).toBe(reasons[0])
+  })
+
+  it('sends one account request for each wallet', async () => {
+    answerAccount = (url) =>
+      url.includes(OTHER_ADDRESS)
+        ? respond(
+            { code: LIGHTER_CODE_ACCOUNT_NOT_FOUND, message: 'not found' },
+            400
+          )
+        : respond(ACCOUNT_PAYLOAD)
+    const release = holdAccountReads()
+    const provider = boundProvider()
+
+    const reads = Promise.all([
+      provider.accountExists({ address: ADDRESS }),
+      provider.accountExists({ address: OTHER_ADDRESS }),
+    ])
+    await flushReads()
+    release()
+
+    expect(await reads).toEqual([true, false])
+    expect(
+      accountRequests.map((r) => new URL(r.url).searchParams.get('value'))
+    ).toEqual([ADDRESS, OTHER_ADDRESS])
+  })
+
+  it.each([
+    ['lighter and lighter-rh', lighterRhProvider, LIGHTER_RH_REST_URL],
+    ['two lighter instances', lighterProvider, DEFAULT_LIGHTER_REST_URL],
+  ])('sends one account request for each provider instance: %s', async (_name, second, secondRestUrl) => {
+    const release = holdAccountReads()
+    const providers = [boundProvider(), boundProvider(second)]
+
+    const reads = Promise.all(
+      providers.map((provider) => provider.accountExists({ address: ADDRESS }))
+    )
+    await flushReads()
+    release()
+
+    expect(await reads).toEqual([true, true])
+    expect(accountRequests.map((r) => new URL(r.url).origin)).toEqual([
+      DEFAULT_LIGHTER_REST_URL,
+      secondRestUrl,
+    ])
+  })
+
+  it('sends a fresh account request after a read fails or succeeds', async () => {
+    answerAccount = unavailable
+    const provider = boundProvider()
+
+    await expect(
+      provider.accountExists({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+    answerAccount = () => respond(ACCOUNT_PAYLOAD)
+    await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
+      true
+    )
+    await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
+      true
+    )
+
+    expect(accountRequests).toHaveLength(4)
+  })
+
+  it('keeps the shared request for another read when one read aborts', async () => {
+    const release = holdAccountReads()
+    const provider = boundProvider()
+    const controller = new AbortController()
+
+    const aborted = provider.getPositions(
+      { address: ADDRESS },
+      { signal: controller.signal }
+    )
+    const kept = provider.accountExists({ address: ADDRESS })
+    await flushReads()
+    controller.abort(new Error('consumer left'))
+
+    await expect(aborted).rejects.toThrow('consumer left')
+    release()
+    await expect(kept).resolves.toBe(true)
+    expect(accountRequests).toHaveLength(1)
+    expect(accountRequests[0]?.signal?.aborted).toBe(false)
+  })
+
+  it('cancels the account request when its only read aborts', async () => {
+    const release = holdAccountReads()
+    const provider = boundProvider()
+    const controller = new AbortController()
+
+    const aborted = provider.accountExists(
+      { address: ADDRESS },
+      { signal: controller.signal }
+    )
+    await flushReads()
+    controller.abort(new Error('consumer left'))
+
+    await expect(aborted).rejects.toThrow('consumer left')
+    expect(accountRequests[0]?.signal?.aborted).toBe(true)
+    release()
+    await expect(provider.accountExists({ address: ADDRESS })).resolves.toBe(
+      true
+    )
+    expect(accountRequests).toHaveLength(2)
+  })
+})

@@ -162,9 +162,9 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
+import { createSharedAccountRead } from './utils/fetchDetailedAccount.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
-  fetchDetailedAccount,
   LIGHTER_MARKET_SLIPPAGE_PERCENT,
   type LighterFastWithdrawal,
   lighterAsset,
@@ -479,6 +479,7 @@ export const createLighterProvider = (
       rateLimitHold,
     })
   }
+  const readAccount = createSharedAccountRead((signal) => apiClient({ signal }))
 
   const readOnlyTokenManager = new LighterReadOnlyTokenManager({
     storage,
@@ -954,11 +955,11 @@ export const createLighterProvider = (
 
   /** The account, or `undefined` when Lighter has no account for the address. */
   const fetchAccountIfExists = async (
-    client: LighterApiClient,
-    address: Address
+    address: Address,
+    opts?: SDKRequestOptions
   ): Promise<LtAccount | undefined> => {
     try {
-      return await fetchDetailedAccount(client, address)
+      return await readAccount(address, opts?.signal)
     } catch (err) {
       if (
         err instanceof PerpsError &&
@@ -1003,7 +1004,7 @@ export const createLighterProvider = (
     address: Address,
     opts?: SDKRequestOptions
   ): Promise<boolean> =>
-    (await fetchAccountIfExists(apiClient(opts), address)) !== undefined
+    (await fetchAccountIfExists(address, opts)) !== undefined
 
   let setupPromise: Promise<SetupAction[]> | undefined
 
@@ -1029,7 +1030,7 @@ export const createLighterProvider = (
    * across both routes, so a perps↔spot transfer has nothing to move.
    */
   const assertSendAssetMode = async (address: Address): Promise<void> => {
-    const account = await fetchDetailedAccount(apiClient(), address)
+    const account = await readAccount(address)
     if (account.account_trading_mode === LT_ACCOUNT_TRADING_MODE_UNIFIED) {
       throw new PerpsError(
         PerpsErrorCode.PooledCategoryTransfer,
@@ -1132,7 +1133,7 @@ export const createLighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
       const client = apiClient(opts)
-      const accountPromise = fetchDetailedAccount(client, params.address)
+      const accountPromise = readAccount(params.address, opts?.signal)
       const localKey = await keyStore.get(params.address)
       const registeredKeyPromise =
         localKey === null
@@ -1401,7 +1402,7 @@ export const createLighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<ProviderWithdrawableBalance[]> {
       const [account, categoryId] = await Promise.all([
-        fetchDetailedAccount(apiClient(opts), params.address),
+        readAccount(params.address, opts?.signal),
         perpsCategoryId(),
       ])
       return lighterWithdrawableBalances(
@@ -1417,7 +1418,7 @@ export const createLighterProvider = (
     ): Promise<WithdrawalSourceTypes[]> {
       const client = apiClient(opts)
       const [account, categoryId] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         perpsCategoryId(),
       ])
       const rows = lighterWithdrawableBalances(
@@ -1441,10 +1442,9 @@ export const createLighterProvider = (
       params: ProviderGetPositionsParams,
       opts?: SDKRequestOptions
     ): Promise<PositionsResponse> {
-      const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         registry.sync(),
       ])
 
@@ -1513,8 +1513,7 @@ export const createLighterProvider = (
           `Lighter market '${marketId}' is a spot market and carries no leverage setting`
         )
       }
-      const client = apiClient(opts)
-      const account = await fetchAccountIfExists(client, params.address)
+      const account = await fetchAccountIfExists(params.address, opts)
       const row = account?.positions.find(
         (p) => String(p.market_id) === marketId
       )
@@ -1570,7 +1569,7 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         registry.sync(),
       ])
       const marketId =
@@ -1658,7 +1657,7 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         registry.sync(),
       ])
 
@@ -1762,7 +1761,7 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const registry = getMarketRegistry(requireClient(), providerKey)
       const [account] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         registry.sync(),
       ])
 
@@ -1854,7 +1853,7 @@ export const createLighterProvider = (
 
       const inputCursor = decodeActivityCursor(params.cursor)
       const client = apiClient(opts)
-      const account = await fetchDetailedAccount(client, params.address)
+      const account = await readAccount(params.address, opts?.signal)
       const marketRegistry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
       // Markets identify funding and liquidation rows; assets identify ledger
@@ -2194,7 +2193,7 @@ export const createLighterProvider = (
             if (apiKey !== null) {
               return apiKey.accountIndex
             }
-            const account = await fetchDetailedAccount(apiClient(), addr)
+            const account = await readAccount(addr)
             return account.index
           },
         },

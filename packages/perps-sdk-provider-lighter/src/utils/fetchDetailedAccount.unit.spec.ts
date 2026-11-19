@@ -2,7 +2,10 @@ import { PerpsErrorCode } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { LIGHTER_CODE_ACCOUNT_NOT_FOUND } from '../constants.js'
 import { LighterApiClient } from './apiClient.js'
-import { fetchDetailedAccount } from './fetchDetailedAccount.js'
+import {
+  createSharedAccountRead,
+  fetchDetailedAccount,
+} from './fetchDetailedAccount.js'
 
 const ADDRESS = '0x1111111111111111111111111111111111111111' as const
 
@@ -14,9 +17,13 @@ const stubFetch =
       headers: { 'content-type': 'application/json' },
     })
 
-const clientWith = (fetchImpl: typeof fetch): LighterApiClient =>
+const clientWith = (
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal
+): LighterApiClient =>
   new LighterApiClient('https://lighter.test', {
     fetchImpl,
+    signal,
     policy: {
       enabled: false,
       maxAttempts: 1,
@@ -73,5 +80,87 @@ describe('fetchDetailedAccount', () => {
     await expect(fetchDetailedAccount(client, ADDRESS)).rejects.toMatchObject({
       code: PerpsErrorCode.AccountNotFound,
     })
+  })
+})
+
+describe('createSharedAccountRead', () => {
+  const MIXED_CASE_ADDRESS =
+    '0xAbCdEf0123456789aBcDeF0123456789AbCdEf01' as const
+
+  /**
+   * Shared reads over a fetch that records each request at dispatch, holds its
+   * answer until `release`, and rejects on abort, as `fetch` does.
+   */
+  const heldReads = () => {
+    const requestSignals: (AbortSignal | undefined)[] = []
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const signal = init?.signal ?? undefined
+      requestSignals.push(signal)
+      return new Promise((resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason))
+        gate.then(() =>
+          resolve(
+            new Response(
+              JSON.stringify({ code: 200, accounts: [{ index: 42 }] })
+            )
+          )
+        )
+      })
+    }
+    const read = createSharedAccountRead((signal) =>
+      clientWith(fetchImpl, signal)
+    )
+    return { read, requestSignals, release }
+  }
+
+  const flushReads = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, 0))
+
+  it('shares one request among the reads of an address in any letter case', async () => {
+    const { read, requestSignals, release } = heldReads()
+
+    const reads = Promise.all([
+      read(MIXED_CASE_ADDRESS),
+      read(MIXED_CASE_ADDRESS.toLowerCase() as `0x${string}`),
+    ])
+    await flushReads()
+    release()
+
+    const [first, second] = await reads
+    expect(second).toBe(first)
+    expect(requestSignals).toHaveLength(1)
+  })
+
+  it('aborts the shared request only when every read with a signal aborts', async () => {
+    const { read, requestSignals, release } = heldReads()
+    const firstController = new AbortController()
+    const secondController = new AbortController()
+
+    const first = read(ADDRESS, firstController.signal)
+    const second = read(ADDRESS, secondController.signal)
+    await flushReads()
+    firstController.abort(new Error('first left'))
+    await expect(first).rejects.toThrow('first left')
+    expect(requestSignals[0]?.aborted).toBe(false)
+
+    secondController.abort(new Error('second left'))
+    await expect(second).rejects.toThrow('second left')
+    expect(requestSignals[0]?.aborted).toBe(true)
+
+    release()
+    await expect(read(ADDRESS)).resolves.toMatchObject({ index: 42 })
+    expect(requestSignals).toHaveLength(2)
+  })
+
+  it('rejects a read with an aborted signal without a request', async () => {
+    const { read, requestSignals } = heldReads()
+    const reason = new Error('already left')
+
+    await expect(read(ADDRESS, AbortSignal.abort(reason))).rejects.toBe(reason)
+    expect(requestSignals).toHaveLength(0)
   })
 })
