@@ -137,6 +137,10 @@ async function deriveStarkKeyPair(
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
+const isVenueInteger = (value: unknown): value is number | string =>
+  (typeof value === 'number' && Number.isSafeInteger(value)) ||
+  (typeof value === 'string' && /^\d+$/.test(value))
+
 const refuse = (message: string): never => {
   throw new PerpsError(PerpsErrorCode.SDKError, message)
 }
@@ -164,7 +168,7 @@ export async function signOnboardingRequest(
     !isRecord(creation) ||
     typeof creation.wallet !== 'string' ||
     !isAddressEqual(getAddress(creation.wallet), walletAddress) ||
-    Number(creation.accountIndex) !== ACCOUNT_INDEX ||
+    String(creation.accountIndex) !== String(ACCOUNT_INDEX) ||
     creation.tosAccepted !== true ||
     creation.action !== 'REGISTER' ||
     creation.host !== deps.baseUrl ||
@@ -243,13 +247,24 @@ export async function registerExtendedApiKey(
         L1_SIGNATURE: withoutHexPrefix(signature),
         L1_MESSAGE_TIME: time,
       },
+      secretResponse: true,
     }
   )
   const account = await deps.client.send<{
-    accountId: number | string
-    l2Vault: number | string
-    l2Key: string
+    accountId: unknown
+    l2Vault: unknown
+    l2Key: unknown
   }>('GET', '/api/v1/user/account/info', { apiKey })
+  if (
+    !isVenueInteger(account.accountId) ||
+    !isVenueInteger(account.l2Vault) ||
+    typeof account.l2Key !== 'string' ||
+    !/^(0x[0-9a-f]+|\d+)$/i.test(account.l2Key)
+  ) {
+    return refuse(
+      'Extended account info has no valid account id, position or Stark key.'
+    )
+  }
   if (BigInt(account.l2Key) !== BigInt(starkPublicKey)) {
     return refuse(
       'Extended holds a different Stark key for this account than the wallet signature gives.'
