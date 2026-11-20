@@ -20,6 +20,7 @@ import type {
   StarkActionStep,
   StarkMessage,
   StarkOrderFields,
+  StarkSignedActionStep,
   TriggerOrderInput,
   UpdateLeverageParams,
   WithdrawalAssetRef,
@@ -559,6 +560,30 @@ describe('Stark steps', () => {
     }
 
     expect(updateLeverage.stark.messages).toEqual([])
+  })
+
+  it('reports a client-sent request with its venue order id', () => {
+    const sent: StarkSignedActionStep = {
+      action: ActionType.PLACE_ORDER,
+      stark: placeOrder.stark,
+      clientSent: { orderId: '2123003046861942784' },
+    }
+    const step: SignedActionStep = sent
+
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+    expect(sent.clientSent?.orderId).toBe('2123003046861942784')
+  })
+
+  it('leaves clientSent out for a request that the backend sends', () => {
+    const onboard: StarkSignedActionStep = {
+      action: ActionType.CREATE_ACCOUNT,
+      stark: {
+        request: { method: 'POST', path: '/auth/onboard', body: {} },
+        messages: [],
+      },
+    }
+
+    expect(onboard.clientSent).toBeUndefined()
   })
 
   it('binds the fields to the message type', () => {

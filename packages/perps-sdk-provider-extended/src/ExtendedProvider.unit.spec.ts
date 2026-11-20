@@ -347,23 +347,25 @@ describe('extendedProvider', () => {
     expect(provider.snapOrderSize(btc, '0.123456789')).toBe('0.12345')
   })
 
-  it('projects the setup step from the stored credentials', async () => {
+  it('projects both setup steps from the stored credentials', async () => {
     stubFetch({})
     const { provider } = await setup()
-    const setupStep = {
-      type: ActionType.REGISTER_API_KEY,
+    const step = (type: ActionType, signingMethod: SigningMethod) => ({
+      type,
       signer: PerpsSigner.USER,
-      signingMethod: SigningMethod.SESSION,
-      relay: ActionRelay.CLIENT,
+      signingMethod,
+      relay: ActionRelay.API,
       options: null,
       revoke: null,
-    }
+    })
 
     expect(
       provider.projectConfig({ provider: 'extended', apiKeyRegistered: true }, [
-        setupStep,
+        step(ActionType.CREATE_ACCOUNT, SigningMethod.STARK),
+        step(ActionType.REGISTER_API_KEY, SigningMethod.SESSION),
       ])
     ).toEqual([
+      { type: ActionType.CREATE_ACCOUNT, values: [], satisfied: true },
       { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
     ])
   })
@@ -387,16 +389,15 @@ describe('extendedProvider', () => {
       })
     })
 
-    it('sends nothing for the setup step', async () => {
+    it.each([
+      ActionType.CREATE_ACCOUNT,
+      ActionType.REGISTER_API_KEY,
+    ])('sends nothing for the setup step %s', async (action) => {
       stubFetch({})
       const { provider } = await setup(null)
 
       expect(
-        await provider.resolveActionRequest?.(
-          ActionType.REGISTER_API_KEY,
-          ADDRESS,
-          PerpsSigner.USER
-        )
+        await provider.resolveActionRequest?.(action, ADDRESS, PerpsSigner.USER)
       ).toEqual({})
     })
   })

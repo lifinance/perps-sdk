@@ -16,6 +16,7 @@ import {
   SigningMethod,
   type StarkActionStep,
   type StarkMessage,
+  type StarkSignedActionStep,
   UserActionStatus,
 } from '@lifi/perps-types'
 import { commitBridgeQuote, readBridgeRecipient } from '../bridge/rhino.js'
@@ -33,7 +34,8 @@ import { executeDeposit } from './deposit.js'
 import type { ExtendedCredentials } from './ExtendedCredentialStore.js'
 import {
   type ExtendedRegistrationDeps,
-  registerExtendedAccount,
+  registerExtendedApiKey,
+  signOnboardingRequest,
 } from './registerAccount.js'
 
 /** @internal */
@@ -205,19 +207,25 @@ async function prepareWithdrawal(
   }
 }
 
+/**
+ * Sign the step and send it with the API key. A withdrawal first gets its
+ * recipient and a committed bridge quote. A success gives the signed request
+ * for `executeAction`, where the backend records it; a refusal or an
+ * unconfirmed send gives the result, which stays in the client.
+ */
 async function executeStarkStep(
   deps: ExtendedSignActionsDeps,
   unprepared: StarkActionStep,
   credentials: ExtendedCredentials
-): Promise<ActionResult> {
+): Promise<{ sent: StarkSignedActionStep } | { result: ActionResult }> {
   const step =
     unprepared.action === ActionType.WITHDRAWAL
       ? await prepareWithdrawal(deps, unprepared, credentials)
       : unprepared
   const body = await buildSignedBody(step, deps.starkDomain, credentials)
+  const { method, path } = step.stark.request
   let data: unknown
   try {
-    const { method, path } = step.stark.request
     data = await deps.client.send(method, path, {
       body,
       apiKey: credentials.apiKey,
@@ -228,26 +236,34 @@ async function executeStarkStep(
       error.code !== PerpsErrorCode.ThirdPartyError
     ) {
       return {
-        action: step.action,
-        status: UserActionStatus.Failed,
-        error: error.message,
-        errorCode: error.code,
+        result: {
+          action: step.action,
+          status: UserActionStatus.Failed,
+          error: error.message,
+          errorCode: error.code,
+        },
       }
     }
     return {
-      action: step.action,
-      status: UserActionStatus.Indeterminate,
-      error: `${step.action} was sent to Extended, but Extended did not confirm it. ${CHECK_ACCOUNT_BEFORE_RETRY_TEXT}`,
-      errorCode:
-        error instanceof PerpsError ? error.code : PerpsErrorCode.ServerError,
+      result: {
+        action: step.action,
+        status: UserActionStatus.Indeterminate,
+        error: `${step.action} was sent to Extended, but Extended did not confirm it. ${CHECK_ACCOUNT_BEFORE_RETRY_TEXT}`,
+        errorCode:
+          error instanceof PerpsError ? error.code : PerpsErrorCode.ServerError,
+      },
     }
   }
   const orderId = (data as { id?: unknown } | undefined)?.id
   return {
-    action: step.action,
-    // Extended acknowledges a request before its matching engine applies it.
-    status: UserActionStatus.Submitted,
-    ...(orderId === undefined ? {} : { orderId: String(orderId) }),
+    sent: {
+      action: step.action,
+      stark: {
+        request: { ...step.stark.request, body },
+        messages: step.stark.messages,
+      },
+      clientSent: orderId === undefined ? {} : { orderId: String(orderId) },
+    },
   }
 }
 
@@ -261,18 +277,31 @@ const requireUserWallet = (ctx: SignActionsContext | undefined) => {
   return ctx.userWallet
 }
 
+/** A sent request that is still to be reported, as a known result. */
+const sentResult = (sent: StarkSignedActionStep): ActionResult => ({
+  action: sent.action,
+  status: UserActionStatus.Submitted,
+  ...(sent.clientSent?.orderId === undefined
+    ? {}
+    : { orderId: sent.clientSent.orderId }),
+})
+
 /**
- * Extended's `signActions` arms. Every arm runs in the client and returns no
- * signed step, so `executeAction` is skipped and neither key leaves the client.
+ * Extended's `signActions` arms. Neither the Stark key nor the API key leaves
+ * the client.
  *
- * - `SESSION` with `REGISTER_API_KEY`: the wallet signs the Stark key seed,
- *   the account registration, and the API-key request. The credentials go to
- *   the credential store.
- * - `STARK`: sign each message with the stored Stark key, write the
- *   signatures into the body, and send the request with the stored API key.
- *   A message that spends from another position is refused before signing.
- *   A withdrawal first gets its recipient and a committed bridge quote. The
- *   arm stops at the first result that is not `Submitted`.
+ * - `SESSION` with `REGISTER_API_KEY`: create an API key for the account and
+ *   store the credentials. The wallet signs the API-key request, and the Stark
+ *   key seed when this session has not signed it yet.
+ * - `STARK` with `CREATE_ACCOUNT`: sign the backend-built onboarding request
+ *   and return it unsent; the backend sends it to Extended.
+ * - `STARK` with any other action: sign each message with the stored Stark
+ *   key, write the signatures into the body, and send the request with the
+ *   stored API key. Each success is a signed step with `clientSent` for
+ *   `executeAction`, where the backend records it. A message that spends from
+ *   another position is refused before signing. A withdrawal first gets its
+ *   recipient and a committed bridge quote. The arm stops at the first
+ *   refused or unconfirmed send, which stays a local result.
  * - `EVM_TX` with `DEPOSIT`: approve and deposit USDC through the Rhino.fi
  *   bridge from the user's wallet, with a quote committed right before the
  *   deposit leg.
@@ -286,9 +315,9 @@ export async function extendedSignActions(
   address: Address,
   ctx?: SignActionsContext
 ): Promise<SignActionsResult> {
-  const executed: ActionResult[] = []
   switch (method) {
     case SigningMethod.SESSION: {
+      const executed: ActionResult[] = []
       try {
         for (const step of steps) {
           if (step.action !== ActionType.REGISTER_API_KEY) {
@@ -297,7 +326,7 @@ export async function extendedSignActions(
               `Extended has no session-step executor for action '${step.action}'.`
             )
           }
-          await registerExtendedAccount(deps, requireUserWallet(ctx), address)
+          await registerExtendedApiKey(deps, requireUserWallet(ctx), address)
           executed.push({
             action: step.action,
             status: UserActionStatus.Accepted,
@@ -310,13 +339,8 @@ export async function extendedSignActions(
     }
 
     case SigningMethod.STARK: {
-      const credentials = await deps.credentialStore.get(address)
-      if (credentials === null) {
-        throw new PerpsError(
-          PerpsErrorCode.SetupRequired,
-          'Extended credentials are missing on this device. Run the Extended setup again.'
-        )
-      }
+      const signed: StarkSignedActionStep[] = []
+      const executed: ActionResult[] = []
       try {
         for (const step of steps) {
           if (!isStarkStep(step)) {
@@ -325,16 +349,40 @@ export async function extendedSignActions(
               `Extended received a non-Stark step ('${step.action}') under the stark signing method.`
             )
           }
-          const result = await executeStarkStep(deps, step, credentials)
-          executed.push(result)
-          if (result.status !== UserActionStatus.Submitted) {
+          if (step.action === ActionType.CREATE_ACCOUNT) {
+            signed.push(
+              await signOnboardingRequest(
+                deps,
+                requireUserWallet(ctx),
+                address,
+                step
+              )
+            )
+            continue
+          }
+          const credentials = await deps.credentialStore.get(address)
+          if (credentials === null) {
+            throw new PerpsError(
+              PerpsErrorCode.SetupRequired,
+              'Extended credentials are missing on this device. Run the Extended setup again.'
+            )
+          }
+          const outcome = await executeStarkStep(deps, step, credentials)
+          if ('result' in outcome) {
+            executed.push(outcome.result)
             break
           }
+          signed.push(outcome.sent)
         }
       } catch (error) {
-        rethrowWithKnownResults(executed, error)
+        rethrowWithKnownResults(
+          signed
+            .filter((step) => step.clientSent !== undefined)
+            .map(sentResult),
+          error
+        )
       }
-      return { signed: [], executed }
+      return { signed, executed }
     }
 
     case SigningMethod.EVM_TX: {
