@@ -253,6 +253,45 @@ describe('extendedSignActions STARK', () => {
     expect(requests).toHaveLength(0)
   })
 
+  const fixtureMessage = (
+    hashCall: (typeof starkFixtures.transfers)[number]['hashCalls'][number]
+  ): StarkActionStep['stark']['messages'][number] => ({
+    ...toStarkMessage(hashCall).message,
+    signaturePath: ['settlement', 'signature'],
+  })
+
+  it.each([
+    [
+      'a transfer for an order',
+      ActionType.PLACE_ORDER,
+      fixtureMessage(starkFixtures.transfers[0].hashCalls[0]),
+    ],
+    [
+      'a transfer for a withdrawal',
+      ActionType.WITHDRAWAL,
+      fixtureMessage(starkFixtures.transfers[0].hashCalls[0]),
+    ],
+    [
+      'a withdrawal for an order',
+      ActionType.PLACE_ORDER,
+      fixtureMessage(starkFixtures.withdrawals[0].hashCalls[0]),
+    ],
+  ])('refuses to sign %s', async (_label, action, message) => {
+    const { deps, requests } = await setup([placedOrderAnswer])
+    const step: StarkActionStep = {
+      action,
+      stark: {
+        request: { method: 'POST', path: '/api/v1/user/order', body: {} },
+        messages: [message],
+      },
+    }
+
+    await expect(
+      extendedSignActions(deps, SigningMethod.STARK, [step], address)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requests).toHaveLength(0)
+  })
+
   it.each([
     ['__proto__', 'polluted'],
     ['constructor', 'prototype', 'polluted'],
