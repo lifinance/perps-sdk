@@ -117,6 +117,13 @@ export interface ExtendedProviderOptions {
   storage?: StorageAdapter
 }
 
+// Without credentials on this device both steps run; on a new device the
+// onboarding returns the existing account.
+const EXTENDED_SETUP = [
+  ActionType.CREATE_ACCOUNT,
+  ActionType.REGISTER_API_KEY,
+] as const
+
 const isUnauthorized = (error: unknown): error is ExtendedApiError =>
   error instanceof ExtendedApiError &&
   error.code === PerpsErrorCode.Unauthorized
@@ -380,7 +387,7 @@ export const extendedProvider = (
       params: ProviderGetDepositFlowParams
     ): Promise<DepositFlow> {
       if ((await credentialStore.get(params.address)) === null) {
-        return { kind: 'setupRequired', setup: [ActionType.REGISTER_API_KEY] }
+        return { kind: 'setupRequired', setup: [...EXTENDED_SETUP] }
       }
       return {
         kind: 'venueDepositPipeline',
@@ -396,7 +403,7 @@ export const extendedProvider = (
       params: ProviderGetWithdrawFlowParams
     ): Promise<WithdrawFlow> {
       if ((await credentialStore.get(params.address)) === null) {
-        return { kind: 'setupRequired', setup: [ActionType.REGISTER_API_KEY] }
+        return { kind: 'setupRequired', setup: [...EXTENDED_SETUP] }
       }
       return { kind: 'ready', destination: getAddress(params.address) }
     },

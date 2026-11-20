@@ -409,11 +409,11 @@ describe('extendedProvider', () => {
 
       expect(await provider.getDepositFlow?.({ address: ADDRESS })).toEqual({
         kind: 'setupRequired',
-        setup: [ActionType.REGISTER_API_KEY],
+        setup: [ActionType.CREATE_ACCOUNT, ActionType.REGISTER_API_KEY],
       })
       expect(await provider.getWithdrawFlow?.({ address: ADDRESS })).toEqual({
         kind: 'setupRequired',
-        setup: [ActionType.REGISTER_API_KEY],
+        setup: [ActionType.CREATE_ACCOUNT, ActionType.REGISTER_API_KEY],
       })
     })
 
