@@ -1133,19 +1133,15 @@ export const createLighterProvider = (
       opts?: SDKRequestOptions
     ): Promise<AccountResponse> {
       const client = apiClient(opts)
-      const accountPromise = readAccount(params.address, opts?.signal)
-      const localKey = await keyStore.get(params.address)
-      const registeredKeyPromise =
-        localKey === null
-          ? Promise.resolve(undefined)
-          : fetchRegisteredApiKey(
-              client,
-              localKey.accountIndex,
-              localKey.apiKeyIndex
-            )
-      const [account, registeredKey] = await Promise.all([
-        accountPromise,
-        registeredKeyPromise,
+      const localKeyPromise = keyStore.get(params.address)
+      const [account, localKey, registeredKey] = await Promise.all([
+        readAccount(params.address, opts?.signal),
+        localKeyPromise,
+        localKeyPromise.then((key) =>
+          key === null
+            ? undefined
+            : fetchRegisteredApiKey(client, key.accountIndex, key.apiKeyIndex)
+        ),
       ])
 
       const apiKeyRegistered =

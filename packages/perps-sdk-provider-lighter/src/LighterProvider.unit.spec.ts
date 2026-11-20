@@ -7617,9 +7617,10 @@ describe('LighterProvider — concurrent account reads', () => {
 
   /** Binds with the injected fetch and the venue retry policy minus its delay. */
   const boundProvider = (
-    create: typeof lighterProvider = lighterProvider
+    create: typeof lighterProvider = lighterProvider,
+    storage: StorageAdapter = createMemoryStorage()
   ): LighterPerpsProvider => {
-    const provider = create({ storage: createMemoryStorage() })
+    const provider = create({ storage })
     provider.bind({
       config: {
         ...STUB_CLIENT.config,
@@ -7673,6 +7674,61 @@ describe('LighterProvider — concurrent account reads', () => {
     })
     expect(reasons[1]).toBe(reasons[0])
     expect(reasons[2]).toBe(reasons[0])
+  })
+
+  it('holds the next account read after the shared account request returns 429', async () => {
+    answerAccount = () =>
+      respond({ code: 23000, message: 'rate limit exceeded' }, 429)
+    const release = holdAccountReads()
+    const provider = boundProvider()
+
+    const reads = Promise.allSettled([
+      provider.getAccount({ address: ADDRESS }),
+      provider.getPositions({ address: ADDRESS }),
+      provider.accountExists({ address: ADDRESS }),
+    ])
+    await flushReads()
+    release()
+
+    const reasons = (await reads).map((result) =>
+      result.status === 'rejected' ? result.reason : undefined
+    )
+    expect(accountRequests).toHaveLength(1)
+    expect(reasons[0]).toMatchObject({
+      code: PerpsErrorCode.RateLimitExceeded,
+    })
+    expect(reasons[1]).toBe(reasons[0])
+    expect(reasons[2]).toBe(reasons[0])
+
+    await expect(
+      provider.accountExists({ address: ADDRESS })
+    ).rejects.toMatchObject({ code: PerpsErrorCode.RateLimitExceeded })
+    expect(accountRequests).toHaveLength(1)
+  })
+
+  it('handles the account read when the key store fails during getAccount', async () => {
+    answerAccount = unavailable
+    const release = holdAccountReads()
+    const storageFailure = new Error('storage unavailable')
+    const provider = boundProvider(lighterProvider, {
+      get: () => Promise.reject(storageFailure),
+      set: async () => {},
+      remove: async () => {},
+    })
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+
+    try {
+      await expect(provider.getAccount({ address: ADDRESS })).rejects.toBe(
+        storageFailure
+      )
+      release()
+      await vi.waitFor(() => expect(accountRequests).toHaveLength(2))
+      await flushReads()
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 
   it('sends one account request for each wallet', async () => {

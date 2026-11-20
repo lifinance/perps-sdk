@@ -97,6 +97,7 @@ export const createSharedAccountRead = (
     if (signal?.aborted) {
       return Promise.reject(signal.reason)
     }
+    // Lighter matches `l1_address` case-insensitively, so every casing gets the same account.
     const key = address.toLowerCase()
     const read = pending.get(key) ?? fetchSharedAccount(key, address)
     read.consumers += 1

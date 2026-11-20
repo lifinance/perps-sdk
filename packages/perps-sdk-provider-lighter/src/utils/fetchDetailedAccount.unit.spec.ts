@@ -91,7 +91,10 @@ describe('createSharedAccountRead', () => {
    * Shared reads over a fetch that records each request at dispatch, holds its
    * answer until `release`, and rejects on abort, as `fetch` does.
    */
-  const heldReads = () => {
+  const heldReads = (
+    answer: () => Response = () =>
+      new Response(JSON.stringify({ code: 200, accounts: [{ index: 42 }] }))
+  ) => {
     const requestSignals: (AbortSignal | undefined)[] = []
     let release = (): void => {}
     const gate = new Promise<void>((resolve) => {
@@ -102,13 +105,7 @@ describe('createSharedAccountRead', () => {
       requestSignals.push(signal)
       return new Promise((resolve, reject) => {
         signal?.addEventListener('abort', () => reject(signal.reason))
-        gate.then(() =>
-          resolve(
-            new Response(
-              JSON.stringify({ code: 200, accounts: [{ index: 42 }] })
-            )
-          )
-        )
+        gate.then(() => resolve(answer()))
       })
     }
     const read = createSharedAccountRead((signal) =>
@@ -162,5 +159,71 @@ describe('createSharedAccountRead', () => {
 
     await expect(read(ADDRESS, AbortSignal.abort(reason))).rejects.toBe(reason)
     expect(requestSignals).toHaveLength(0)
+  })
+
+  it.each([
+    { order: 'first', keptJoinsFirst: true },
+    { order: 'second', keptJoinsFirst: false },
+  ])('keeps the shared request for a read without a signal that joins $order', async ({
+    keptJoinsFirst,
+  }) => {
+    const { read, requestSignals, release } = heldReads()
+    const controller = new AbortController()
+    const reason = new Error('signalled read left')
+
+    const first = keptJoinsFirst
+      ? read(ADDRESS)
+      : read(ADDRESS, controller.signal)
+    const second = keptJoinsFirst
+      ? read(ADDRESS, controller.signal)
+      : read(ADDRESS)
+    const [kept, aborted] = keptJoinsFirst ? [first, second] : [second, first]
+    await flushReads()
+    controller.abort(reason)
+
+    await expect(aborted).rejects.toBe(reason)
+    expect(requestSignals[0]?.aborted).toBe(false)
+    release()
+    await expect(kept).resolves.toMatchObject({ index: 42 })
+    expect(requestSignals).toHaveLength(1)
+  })
+
+  it('gives every read with a signal the shared rejection, then sends a fresh request', async () => {
+    const { read, requestSignals, release } = heldReads(
+      () => new Response(JSON.stringify({ message: 'boom' }), { status: 500 })
+    )
+
+    const first = read(ADDRESS, new AbortController().signal)
+    const second = read(ADDRESS, new AbortController().signal)
+    await flushReads()
+    release()
+
+    const failure = await first.catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+    await expect(second).rejects.toBe(failure)
+    await expect(read(ADDRESS)).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+    })
+    expect(requestSignals).toHaveLength(2)
+  })
+
+  it('ignores an abort that comes after the shared read settles', async () => {
+    const { read, requestSignals, release } = heldReads()
+    const controller = new AbortController()
+
+    const settled = read(ADDRESS, controller.signal)
+    await flushReads()
+    release()
+    await expect(settled).resolves.toMatchObject({ index: 42 })
+
+    const fresh = read(ADDRESS)
+    controller.abort(new Error('late abort'))
+
+    await expect(fresh).resolves.toMatchObject({ index: 42 })
+    await expect(settled).resolves.toMatchObject({ index: 42 })
+    expect(requestSignals.map((signal) => signal?.aborted)).toEqual([
+      false,
+      false,
+    ])
   })
 })
