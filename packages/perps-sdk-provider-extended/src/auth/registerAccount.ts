@@ -1,6 +1,12 @@
 import { type PerpsClientSigner, PerpsError } from '@lifi/perps-sdk'
-import { type Address, PerpsErrorCode } from '@lifi/perps-types'
-import { getAddress } from 'viem'
+import {
+  type Address,
+  type Hex,
+  PerpsErrorCode,
+  type StarkActionStep,
+  type StarkSignedActionStep,
+} from '@lifi/perps-types'
+import { getAddress, isAddressEqual } from 'viem'
 import { EXTENDED_API_KEY_DESCRIPTION } from '../constants.js'
 import {
   calculateStarkPrivateKey,
@@ -23,14 +29,6 @@ export interface ExtendedRegistrationDeps {
   /** Extended host, signed into the registration as `host`. */
   baseUrl: string
   signingDomain: string
-}
-
-interface OnboardedAccount {
-  defaultAccount: {
-    id: number | string
-    l2Vault: number | string
-    l2Key: string
-  }
 }
 
 /** Format a time as Extended signs it: UTC, whole seconds. @internal */
@@ -95,33 +93,95 @@ export const buildAccountRegistrationTypedData = (
 const withoutHexPrefix = (signature: string): string =>
   signature.replace(/^0x/, '')
 
-/**
- * Create the Extended account of `address`, or recover it, and store its
- * credentials. The wallet signs three times: the Stark key seed, the account
- * registration, and the API-key request. Onboarding an existing account gives
- * that account again, so this also restores the credentials on a new device.
- *
- * @throws {PerpsError} `SDKError` when Extended holds a different Stark key
- *   for the account than the one the wallet signature gives.
- * @internal
- */
-export async function registerExtendedAccount(
+interface StarkKeyPair {
+  starkPrivateKey: Hex
+  starkPublicKey: Hex
+}
+
+// The account step derives the key pair, and the API-key step of the same
+// setup reuses it, so the wallet signs the key seed once per session.
+const keyPairs = new WeakMap<
+  ExtendedCredentialStore,
+  Map<string, StarkKeyPair>
+>()
+
+const pendingKeyPairs = (store: ExtendedCredentialStore) => {
+  const pending = keyPairs.get(store) ?? new Map<string, StarkKeyPair>()
+  keyPairs.set(store, pending)
+  return pending
+}
+
+async function deriveStarkKeyPair(
   deps: ExtendedRegistrationDeps,
   wallet: PerpsClientSigner,
   address: Address
-): Promise<ExtendedCredentials> {
-  const walletAddress = getAddress(address)
+): Promise<StarkKeyPair> {
+  const pending = pendingKeyPairs(deps.credentialStore)
+  const cached = pending.get(address.toLowerCase())
+  if (cached !== undefined) {
+    return cached
+  }
   const keySeed = await wallet.signTypedData({
     account: wallet.account,
-    ...buildAccountCreationTypedData(walletAddress, deps.signingDomain),
+    ...buildAccountCreationTypedData(getAddress(address), deps.signingDomain),
   })
   const starkPrivateKey = await calculateStarkPrivateKey(keySeed)
-  const starkPublicKey = calculateStarkPublicKey(starkPrivateKey)
+  const keyPair = {
+    starkPrivateKey,
+    starkPublicKey: calculateStarkPublicKey(starkPrivateKey),
+  }
+  pending.set(address.toLowerCase(), keyPair)
+  return keyPair
+}
 
-  const registrationTime = formatSignatureTime(new Date())
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const refuse = (message: string): never => {
+  throw new PerpsError(PerpsErrorCode.SDKError, message)
+}
+
+/**
+ * Sign the backend-built onboarding request of `address`: the wallet signs
+ * the Stark key seed and the backend's `accountCreation`, and the Stark key
+ * signs the wallet and its public key. The backend sends the request, so it
+ * owns the referral code; the request needs no API key. The SDK refuses an
+ * `accountCreation` that names another wallet, another action, or another
+ * Extended host.
+ *
+ * @internal
+ */
+export async function signOnboardingRequest(
+  deps: ExtendedRegistrationDeps,
+  wallet: PerpsClientSigner,
+  address: Address,
+  step: StarkActionStep
+): Promise<StarkSignedActionStep> {
+  const { request } = step.stark
+  const creation = request.body?.accountCreation
+  const walletAddress = getAddress(address)
+  if (
+    !isRecord(creation) ||
+    typeof creation.wallet !== 'string' ||
+    !isAddressEqual(getAddress(creation.wallet), walletAddress) ||
+    Number(creation.accountIndex) !== ACCOUNT_INDEX ||
+    creation.tosAccepted !== true ||
+    creation.action !== 'REGISTER' ||
+    creation.host !== deps.baseUrl ||
+    typeof creation.time !== 'string'
+  ) {
+    return refuse(
+      'Extended onboarding request does not register this wallet on this Extended host.'
+    )
+  }
+  const { starkPrivateKey, starkPublicKey } = await deriveStarkKeyPair(
+    deps,
+    wallet,
+    address
+  )
   const registration = buildAccountRegistrationTypedData(
     walletAddress,
-    registrationTime,
+    creation.time,
     deps.baseUrl,
     deps.signingDomain
   )
@@ -129,55 +189,80 @@ export async function registerExtendedAccount(
     account: wallet.account,
     ...registration,
   })
-  const onboarded = await deps.client.send<OnboardedAccount>(
-    'POST',
-    '/auth/onboard',
-    {
-      body: {
-        l1Signature: withoutHexPrefix(l1Signature),
-        l2Key: starkPublicKey,
-        l2Signature: await signStarkHash(
-          calculateStarkRegistrationHash(walletAddress, starkPublicKey),
-          starkPrivateKey
-        ),
-        accountCreation: registration.message,
-        referralCode: null,
+  return {
+    action: step.action,
+    stark: {
+      request: {
+        ...request,
+        body: {
+          ...request.body,
+          l1Signature: withoutHexPrefix(l1Signature),
+          l2Key: starkPublicKey,
+          l2Signature: await signStarkHash(
+            calculateStarkRegistrationHash(walletAddress, starkPublicKey),
+            starkPrivateKey
+          ),
+        },
       },
-    }
-  )
-  const account = onboarded.defaultAccount
-  if (BigInt(account.l2Key) !== BigInt(starkPublicKey)) {
-    throw new PerpsError(
-      PerpsErrorCode.SDKError,
-      'Extended holds a different Stark key for this account than the wallet signature gives.'
-    )
+      messages: step.stark.messages,
+    },
   }
+}
 
-  const apiKeyTime = formatSignatureTime(new Date())
-  const apiKeySignature = await wallet.signMessage({
+/**
+ * Create an API key for the main account of `address` and store the
+ * credentials. Extended ties a key created without an account header to the
+ * wallet's account index 0; the SDK then reads the account with the new key.
+ * On a new device the wallet signs the key seed again.
+ *
+ * @throws {PerpsError} `SDKError` when Extended holds a different Stark key
+ *   for the account than the one the wallet signature gives.
+ * @internal
+ */
+export async function registerExtendedApiKey(
+  deps: ExtendedRegistrationDeps,
+  wallet: PerpsClientSigner,
+  address: Address
+): Promise<ExtendedCredentials> {
+  const { starkPrivateKey, starkPublicKey } = await deriveStarkKeyPair(
+    deps,
+    wallet,
+    address
+  )
+  const time = formatSignatureTime(new Date())
+  const signature = await wallet.signMessage({
     account: wallet.account,
-    message: `${API_KEY_PATH}@${apiKeyTime}`,
+    message: `${API_KEY_PATH}@${time}`,
   })
-  const created = await deps.client.send<{ key: string }>(
+  const { key: apiKey } = await deps.client.send<{ key: string }>(
     'POST',
     API_KEY_PATH,
     {
       body: { description: EXTENDED_API_KEY_DESCRIPTION },
       headers: {
-        L1_SIGNATURE: withoutHexPrefix(apiKeySignature),
-        L1_MESSAGE_TIME: apiKeyTime,
-        'X-X10-ACTIVE-ACCOUNT': String(account.id),
+        L1_SIGNATURE: withoutHexPrefix(signature),
+        L1_MESSAGE_TIME: time,
       },
     }
   )
-
+  const account = await deps.client.send<{
+    accountId: number | string
+    l2Vault: number | string
+    l2Key: string
+  }>('GET', '/api/v1/user/account/info', { apiKey })
+  if (BigInt(account.l2Key) !== BigInt(starkPublicKey)) {
+    return refuse(
+      'Extended holds a different Stark key for this account than the wallet signature gives.'
+    )
+  }
   const credentials: ExtendedCredentials = {
     starkPrivateKey,
     starkPublicKey,
-    accountId: String(account.id),
+    accountId: String(account.accountId),
     positionId: String(account.l2Vault),
-    apiKey: created.key,
+    apiKey,
   }
   await deps.credentialStore.set(address, credentials)
+  pendingKeyPairs(deps.credentialStore).delete(address.toLowerCase())
   return credentials
 }

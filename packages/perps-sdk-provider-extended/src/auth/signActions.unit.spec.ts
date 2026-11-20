@@ -11,6 +11,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, it } from 'vitest'
 import { createFetchMock, errorAnswer, okAnswer } from '../../test/fetchMock.js'
 import {
+  registrationCases,
   signingKey,
   starkFixtures,
   toStarkMessage,
@@ -110,27 +111,34 @@ describe('extendedSignActions STARK', () => {
     'limit buy GTT nonce=1',
     'limit buy with position TP/SL',
     'limit sell builder fee 5bp',
-  ])('sends the body of the Python SDK with every signature: %s', async (name) => {
+  ])('sends the body of the Python SDK with every signature, then reports it: %s', async (name) => {
     const { deps, requests } = await setup([placedOrderAnswer])
+    const step = buildOrderStep(name)
 
     const result = await extendedSignActions(
       deps,
       SigningMethod.STARK,
-      [buildOrderStep(name)],
+      [step],
       address
     )
 
     expect(requests[0].body).toEqual(orderFixture(name).request)
     expect(requests[0].headers['x-api-key']).toBe('test-api-key')
     expect(result).toEqual({
-      signed: [],
-      executed: [
+      signed: [
         {
           action: ActionType.PLACE_ORDER,
-          status: UserActionStatus.Submitted,
-          orderId: '1802919074413810230',
+          stark: {
+            request: {
+              ...step.stark.request,
+              body: orderFixture(name).request,
+            },
+            messages: step.stark.messages,
+          },
+          clientSent: { orderId: '1802919074413810230' },
         },
       ],
+      executed: [],
     })
   })
 
@@ -159,10 +167,12 @@ describe('extendedSignActions STARK', () => {
       method: 'PATCH',
       body: { market: 'BTC-USD', leverage: '10' },
     })
-    expect(result.executed).toEqual([
+    expect(result.executed).toEqual([])
+    expect(result.signed).toEqual([
       {
         action: ActionType.UPDATE_LEVERAGE,
-        status: UserActionStatus.Submitted,
+        stark: updateLeverage.stark,
+        clientSent: {},
       },
     ])
   })
@@ -269,6 +279,46 @@ describe('extendedSignActions STARK', () => {
     })
   })
 
+  it('returns the signed onboarding request unsent, without credentials', async () => {
+    const { deps, requests } = await setup([], null)
+    const wallet = createWalletClient({
+      account: privateKeyToAccount(`0x${starkFixtures.meta.ethPrivateKey}`),
+      transport: http('http://127.0.0.1:1'),
+    })
+    const [registration] = registrationCases
+
+    const result = await extendedSignActions(
+      deps,
+      SigningMethod.STARK,
+      [
+        {
+          action: ActionType.CREATE_ACCOUNT,
+          stark: {
+            request: {
+              method: 'POST',
+              path: '/auth/onboard',
+              body: {
+                accountCreation: {
+                  ...registration.payload.accountCreation,
+                  accountIndex: 0,
+                },
+                referralCode: null,
+              },
+            },
+            messages: [],
+          },
+        },
+      ],
+      address,
+      { userWallet: wallet }
+    )
+
+    expect(requests).toEqual([])
+    expect(result.executed).toEqual([])
+    expect(result.signed).toHaveLength(1)
+    expect(result.signed[0]).not.toHaveProperty('clientSent')
+  })
+
   it('requires the setup when this device has no credentials', async () => {
     const { deps } = await setup([], null)
 
@@ -293,17 +343,15 @@ describe('extendedSignActions SESSION', () => {
     session: {},
   } as const
 
-  it('runs the account setup for REGISTER_API_KEY and stores the credentials', async () => {
+  it('creates the API key for REGISTER_API_KEY and stores the credentials', async () => {
     const { deps } = await setup(
       [
-        okAnswer({
-          defaultAccount: {
-            id: 330870,
-            l2Key: signingKey.starkPublicKey,
-            l2Vault: 430876,
-          },
-        }),
         okAnswer({ key: 'test-api-key' }),
+        okAnswer({
+          accountId: 330870,
+          l2Key: signingKey.starkPublicKey,
+          l2Vault: '430876',
+        }),
       ],
       null
     )
