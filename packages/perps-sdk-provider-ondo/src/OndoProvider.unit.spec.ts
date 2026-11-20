@@ -1240,14 +1240,6 @@ describe('OndoProvider — getAccount (logged in)', () => {
     expect(account.collateralBalances).toEqual([])
   })
 
-  it('names the collateral row from the provider category, not the market quote asset', async () => {
-    const { provider } = await loggedInProvider()
-
-    const account = await provider.getAccount({ address: ADDRESS })
-
-    expect(account.collateralBalances[0].asset.displayName).toBe('USD Coin')
-  })
-
   it('maps the balance summary and positions, exposing the session expiry in config', async () => {
     const { provider } = await loggedInProvider()
     const account = await provider.getAccount({ address: ADDRESS })

@@ -169,8 +169,9 @@ describe('getAccount', () => {
     ])
   })
 
-  it('keeps registry display names on spot and collateral balance assets by token id', async () => {
+  it('names spot rows from the registry by token id and the dex collateral row from its market quote asset', async () => {
     const usdc = { ...USDC_ASSET, displayName: 'USD Coin', decimals: 8 }
+    const quoteAsset = { ...usdc, displayName: 'USD Coin from market metadata' }
     ;({ restore } = installInfoFetchMock(
       {
         ...defaultResponses(),
@@ -187,10 +188,17 @@ describe('getAccount', () => {
               hold: '0',
               entryNtl: '0',
             },
+            {
+              coin: 'USDH',
+              token: 360,
+              total: '5',
+              hold: '0',
+              entryNtl: '0',
+            },
           ],
         },
       },
-      HL_MARKETS.map((market) => ({ ...market, quoteAsset: usdc })),
+      HL_MARKETS.map((market) => ({ ...market, quoteAsset })),
       [],
       [
         {
@@ -214,6 +222,14 @@ describe('getAccount', () => {
           displaySymbol: 'HYPE',
           logoURI: '',
           displayName: 'Hyperliquid',
+          decimals: 8,
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '360',
+          displaySymbol: 'USDH',
+          logoURI: '',
+          displayName: '',
           decimals: 8,
         },
         usdc,
@@ -240,7 +256,7 @@ describe('getAccount', () => {
       },
       {
         categoryId: 'hyperliquid',
-        asset: usdc,
+        asset: quoteAsset,
         units: '10000',
         valueUsd: '10000',
         price: '1',
@@ -288,6 +304,19 @@ describe('getAccount', () => {
         units: '0.01',
         valueUsd: '0',
         transferable: '0.01',
+      },
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '360',
+          displaySymbol: 'USDH',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDH_spot.svg',
+          decimals: 8,
+        },
+        units: '5',
+        valueUsd: '0',
+        transferable: '5',
       },
     ])
   })
