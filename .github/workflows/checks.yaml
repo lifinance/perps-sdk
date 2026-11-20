@@ -29,4 +29,9 @@ jobs:
       - name: Knip
         run: pnpm knip:check
       - name: Test
-        run: pnpm -r --workspace-concurrency=1 --filter './packages/**' test
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            VITEST_MAX_WORKERS=2 pnpm -r --no-sort --workspace-concurrency=2 --filter './packages/**' test
+          else
+            pnpm -r --workspace-concurrency=1 --filter './packages/**' test
+          fi
