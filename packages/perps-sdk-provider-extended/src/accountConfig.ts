@@ -15,16 +15,19 @@ function assertNever(value: never): never {
 }
 
 /**
- * Project one Extended setup descriptor. Extended has one setup step,
- * `REGISTER_API_KEY`, which creates the Stark key, the account and the API
- * key. It is satisfied when this device holds those credentials. The switch
- * is exhaustive over `ActionType`, so an enum addition fails to compile.
+ * Project one Extended setup descriptor. Extended has two setup steps:
+ * `CREATE_ACCOUNT` (the onboarding, which the backend sends) and
+ * `REGISTER_API_KEY` (the API key, made in the client). Both are satisfied
+ * when this device holds the credentials, which exist only after the account
+ * does; on a new device the onboarding gives the existing account again. The
+ * switch is exhaustive over `ActionType`, so an enum addition fails to compile.
  */
 function projectExtendedDescriptor(
   descriptor: ProviderAction,
   config: ExtendedAccountConfig
 ): AccountConfigSetting {
   switch (descriptor.type) {
+    case ActionType.CREATE_ACCOUNT:
     case ActionType.REGISTER_API_KEY:
       return {
         type: descriptor.type,
