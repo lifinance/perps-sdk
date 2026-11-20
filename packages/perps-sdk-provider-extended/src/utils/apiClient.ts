@@ -68,6 +68,8 @@ export interface ExtendedRequestOptions {
   /** The account's API key, sent as `X-Api-Key`. */
   apiKey?: string
   headers?: Record<string, string>
+  /** The response carries a secret, so errors leave its body out. */
+  secretResponse?: boolean
 }
 
 interface ExtendedEnvelope {
@@ -136,7 +138,12 @@ export class ExtendedApiClient {
       signal: this.signal,
     })
     const text = await response.text()
-    return unwrap<T>(path, response.status, parseBody(text), text)
+    return unwrap<T>(
+      path,
+      response.status,
+      parseBody(text),
+      options?.secretResponse === true ? undefined : text
+    )
   }
 }
 
@@ -144,7 +151,7 @@ function unwrap<T>(
   path: string,
   httpStatus: number,
   envelope: ExtendedEnvelope | undefined,
-  text: string
+  previewText: string | undefined
 ): T {
   if (httpStatus >= 200 && httpStatus < 300 && envelope?.status === 'OK') {
     return envelope.data as T
@@ -154,7 +161,9 @@ function unwrap<T>(
   const venueMessage =
     typeof envelope?.error?.message === 'string'
       ? envelope.error.message
-      : bodyPreview(text)
+      : previewText === undefined
+        ? 'body withheld'
+        : bodyPreview(previewText)
   throw new ExtendedApiError(
     `Extended ${path} failed (${venueCode ?? httpStatus}): ${venueMessage}`,
     httpStatus,
