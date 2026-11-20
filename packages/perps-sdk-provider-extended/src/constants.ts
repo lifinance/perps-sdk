@@ -26,3 +26,13 @@ export const EXTENDED_BASE_FEE_TIER = {
   maker: '0',
   taker: '0.00025',
 }
+
+/**
+ * Extended mainnet WebSocket: the v2 JSON-RPC stream, where one connection
+ * carries every subscription and the account subscribe message carries the
+ * API key.
+ *
+ * @public
+ */
+export const DEFAULT_EXTENDED_WS_URL =
+  'wss://api.starknet.extended.exchange/stream.extended.exchange/v2/rpc'
