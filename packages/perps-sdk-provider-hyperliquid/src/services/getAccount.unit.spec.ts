@@ -169,6 +169,158 @@ describe('getAccount', () => {
     ])
   })
 
+  it('names spot rows from the registry by token id and the dex collateral row from its market quote asset', async () => {
+    const usdc = { ...USDC_ASSET, displayName: 'USD Coin', decimals: 8 }
+    const quoteAsset = { ...usdc, displayName: 'USD Coin from market metadata' }
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        spotClearinghouseState: {
+          ...HL_SPOT_CLEARINGHOUSE_STATE,
+          balances: [
+            ...HL_SPOT_CLEARINGHOUSE_STATE.balances,
+            { coin: 'PURR', token: 1, total: '2', hold: '0', entryNtl: '0' },
+            { coin: 'HYPE', token: 150, total: '3', hold: '1', entryNtl: '0' },
+            {
+              coin: 'UBTC',
+              token: 197,
+              total: '0.01',
+              hold: '0',
+              entryNtl: '0',
+            },
+            {
+              coin: 'USDH',
+              token: 360,
+              total: '5',
+              hold: '0',
+              entryNtl: '0',
+            },
+          ],
+        },
+      },
+      HL_MARKETS.map((market) => ({ ...market, quoteAsset })),
+      [],
+      [
+        {
+          providerId: 'hyperliquid',
+          id: '197',
+          displaySymbol: 'UBTC',
+          logoURI: '',
+          displayName: 'Unit Bitcoin',
+          decimals: 10,
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '999',
+          displaySymbol: 'PURR',
+          logoURI: '',
+          displayName: 'Another Token',
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '150',
+          displaySymbol: 'HYPE',
+          logoURI: '',
+          displayName: 'Hyperliquid',
+          decimals: 8,
+        },
+        {
+          providerId: 'hyperliquid',
+          id: '360',
+          displaySymbol: 'USDH',
+          logoURI: '',
+          displayName: '',
+          decimals: 8,
+        },
+        usdc,
+      ]
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.collateralBalances).toStrictEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '0',
+          displaySymbol: 'USDC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+          decimals: 8,
+          displayName: 'USD Coin',
+        },
+        units: '500',
+        valueUsd: '500',
+        price: '1',
+        transferable: '500',
+      },
+      {
+        categoryId: 'hyperliquid',
+        asset: quoteAsset,
+        units: '10000',
+        valueUsd: '10000',
+        price: '1',
+        transferable: HL_CLEARINGHOUSE_STATE.withdrawable,
+      },
+    ])
+    expect(result.balances).toStrictEqual([
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '1',
+          displaySymbol: 'PURR',
+          logoURI: 'https://app.hyperliquid.xyz/coins/PURR_spot.svg',
+        },
+        units: '2',
+        valueUsd: '0',
+        transferable: '2',
+      },
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '150',
+          displaySymbol: 'HYPE',
+          logoURI:
+            'https://static.debank.com/image/hyper_token/logo_url/hyper/0b3e288cfe418e9ce69eef4c96374583.png',
+          decimals: 8,
+          displayName: 'Hyperliquid',
+        },
+        units: '3',
+        valueUsd: '0',
+        transferable: '2',
+      },
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '197',
+          displaySymbol: 'UBTC',
+          logoURI: 'https://app.hyperliquid.xyz/coins/UBTC_spot.svg',
+          decimals: 10,
+          displayName: 'Unit Bitcoin',
+        },
+        units: '0.01',
+        valueUsd: '0',
+        transferable: '0.01',
+      },
+      {
+        categoryId: 'spot',
+        asset: {
+          providerId: 'hyperliquid',
+          id: '360',
+          displaySymbol: 'USDH',
+          logoURI: 'https://app.hyperliquid.xyz/coins/USDH_spot.svg',
+          decimals: 8,
+        },
+        units: '5',
+        valueUsd: '0',
+        transferable: '5',
+      },
+    ])
+  })
+
   it('skips an outcome market position and an outcome spot token', async () => {
     ;({ restore } = installInfoFetchMock(
       {
