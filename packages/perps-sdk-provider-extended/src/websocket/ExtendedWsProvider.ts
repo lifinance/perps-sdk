@@ -219,15 +219,18 @@ export class ExtendedWsProvider extends WsProviderBase<SubState> {
       return this.openAccountChannel(sub)
     }
     const wires = this.publicWires(sub)
-    for (const [key, state] of wires) {
-      await this.registerSub(key, state)
-    }
-    await this.rws.ready()
-    return () => {
-      for (const [key, state] of wires) {
-        this.releaseWire(key, state)
+    return this.openWires(
+      async () => {
+        for (const [key, state] of wires) {
+          await this.registerSub(key, state)
+        }
+      },
+      () => {
+        for (const [key, state] of wires) {
+          this.releaseWire(key, state)
+        }
       }
-    }
+    )
   }
 
   private publicWires(sub: Subscription): Array<[string, SubState]> {
@@ -334,22 +337,17 @@ export class ExtendedWsProvider extends WsProviderBase<SubState> {
     }
     const count = this.accountWireRefs.get(key) ?? 0
     this.accountWireRefs.set(key, count + 1)
-    if (count === 0) {
-      this.accounts.set(key, {
-        address: sub.address,
-        positions: new Map(),
-        balance: undefined,
-      })
-      try {
+    const register = async () => {
+      if (count === 0) {
+        this.accounts.set(key, {
+          address: sub.address,
+          positions: new Map(),
+          balance: undefined,
+        })
         await this.registerSub(key, state)
-      } catch (error) {
-        this.accountWireRefs.delete(key)
-        this.accounts.delete(key)
-        throw error
       }
     }
-    await this.rws.ready()
-    return () => {
+    return this.openWires(register, () => {
       const remaining = (this.accountWireRefs.get(key) ?? 1) - 1
       if (remaining > 0) {
         this.accountWireRefs.set(key, remaining)
@@ -358,7 +356,7 @@ export class ExtendedWsProvider extends WsProviderBase<SubState> {
       this.accountWireRefs.delete(key)
       this.accounts.delete(key)
       this.releaseWire(key, state)
-    }
+    })
   }
 
   private releaseWire(key: string, state: SubState): void {
