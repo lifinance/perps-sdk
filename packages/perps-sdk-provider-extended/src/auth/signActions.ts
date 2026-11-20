@@ -131,6 +131,19 @@ export async function buildSignedBody(
   if (messages.length === 0) {
     return request.body
   }
+  // The stored key signs without a wallet prompt, so the backend cannot ask it
+  // to move funds to another position or to a withdrawal recipient it chose.
+  const fundsMove = messages.find(
+    ({ type }) =>
+      type === 'transfer' ||
+      (type === 'withdrawal' && step.action !== ActionType.WITHDRAWAL)
+  )
+  if (fundsMove !== undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended does not sign a ${fundsMove.type} message for a '${step.action}' step.`
+    )
+  }
   if (request.body === undefined) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
