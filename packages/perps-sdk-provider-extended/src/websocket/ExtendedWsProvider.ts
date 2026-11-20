@@ -167,6 +167,8 @@ export class ExtendedWsProvider extends WsProviderBase<SubState> {
     )
     this.client = client
     this.registry = client && getMarketRegistry(client, providerKey)
+    // `seq` counts per connection, and the replay sends fresh snapshots.
+    this.rws.on('close', () => this.onClose())
   }
 
   async subscribeQuote(

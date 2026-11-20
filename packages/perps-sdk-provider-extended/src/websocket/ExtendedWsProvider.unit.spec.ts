@@ -229,6 +229,35 @@ describe('ExtendedWsProvider', () => {
 
       expect(rws.reconnect).toHaveBeenCalledTimes(1)
     })
+
+    it('starts the sequence again on the next connection', async () => {
+      const { provider, feed, rws } = await setup()
+      const { events, listener } = collect()
+      await provider.subscribe(
+        { dex: 'extended', channel: 'orderbook', marketId: 'ETH-USD' },
+        listener
+      )
+      feed(frame('orderbooks.ETH-USD', 1, 'ORDERBOOKS.SNAPSHOT', SNAPSHOT))
+      feed(frame('orderbooks.ETH-USD', 3, 'ORDERBOOKS.SNAPSHOT', SNAPSHOT))
+
+      for (const onClose of Reflect.get(rws, 'listeners').close) {
+        onClose(1006, '')
+      }
+      feed(frame('orderbooks.ETH-USD', 0, 'ORDERBOOKS.SNAPSHOT', SNAPSHOT))
+      feed(
+        frame('orderbooks.ETH-USD', 1, 'ORDERBOOKS.DELTA', {
+          t: 'DELTA',
+          m: 'ETH-USD',
+          b: [{ q: '-0.462', p: '1758.7', c: '0' }],
+          a: [],
+        })
+      )
+
+      expect(rws.reconnect).toHaveBeenCalledTimes(1)
+      expect(lastBook(events).bids).toEqual([
+        { price: '1758.8', size: '22.075' },
+      ])
+    })
   })
 
   it('merges mark price and funding into the market context', async () => {
