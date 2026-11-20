@@ -1,5 +1,6 @@
 import { PerpsError } from '@lifi/perps-sdk'
 import { type Address, PerpsErrorCode } from '@lifi/perps-types'
+import { isAddress } from 'viem'
 import type { ExtendedApiClient } from '../utils/apiClient.js'
 
 /**
@@ -39,18 +40,30 @@ export async function readBridgeContract(
   apiKey: string,
   chain: string
 ): Promise<Address> {
-  const config = await client.send<{
-    chains: { chain: string; contractAddress: Address }[]
-  }>('GET', '/api/v1/user/bridge/config', { apiKey })
-  const entry = config.chains.find((candidate) => candidate.chain === chain)
-  if (entry === undefined) {
+  const config = await client.send<{ chains?: unknown } | null>(
+    'GET',
+    '/api/v1/user/bridge/config',
+    { apiKey }
+  )
+  const chains: unknown[] = Array.isArray(config?.chains) ? config.chains : []
+  const entry = chains.find(
+    (candidate): candidate is { contractAddress?: unknown } =>
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      'chain' in candidate &&
+      candidate.chain === chain
+  )
+  const contract = entry?.contractAddress
+  if (typeof contract !== 'string' || !isAddress(contract)) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       `Extended names no bridge contract for chain ${chain}.`
     )
   }
-  return entry.contractAddress
+  return contract
 }
+
+const STARK_ADDRESS = /^(0x[0-9a-fA-F]+|\d+)$/
 
 /**
  * The Starknet address that receives a withdrawal to an EVM chain: the
@@ -62,16 +75,21 @@ export async function readBridgeRecipient(
   client: ExtendedApiClient,
   apiKey: string
 ): Promise<string> {
-  const account = await client.send<{ bridgeStarknetAddress?: string }>(
+  const account = await client.send<{ bridgeStarknetAddress?: unknown } | null>(
     'GET',
     '/api/v1/user/account/info',
     { apiKey }
   )
-  if (account.bridgeStarknetAddress === undefined) {
+  const address = account?.bridgeStarknetAddress
+  if (
+    typeof address !== 'string' ||
+    !STARK_ADDRESS.test(address) ||
+    BigInt(address) === 0n
+  ) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       'Extended reports no bridge address for this account.'
     )
   }
-  return account.bridgeStarknetAddress
+  return address
 }

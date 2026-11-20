@@ -360,6 +360,8 @@ export interface ProviderSetup {
    * whose account has not yet been funded (Hyperliquid accounts are created by
    * their first deposit). When `false`, `setup` is empty and `isReady` is
    * `false` — the consumer prompts the deposit flow before any setup steps.
+   * Always `true` for a venue that opens the account in setup (a SIWE step, or
+   * a `CREATE_ACCOUNT` step as on Extended): `setup` then stages the opening.
    */
   accountExists: boolean
   /** Unsatisfied setup steps, ordered by descriptor `sequence`. */

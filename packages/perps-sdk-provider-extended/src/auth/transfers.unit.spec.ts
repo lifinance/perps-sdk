@@ -5,6 +5,7 @@ import {
   PerpsErrorCode,
   SigningMethod,
   type StarkActionStep,
+  UserActionStatus,
 } from '@lifi/perps-types'
 import {
   type Address,
@@ -47,7 +48,13 @@ const CREDENTIALS: ExtendedCredentials = {
 const ok = (data: unknown) =>
   new Response(JSON.stringify({ status: 'OK', data }))
 
-/** Extended answers by path; `calls` records each method, path and body. */
+const refused = (status: number) => () =>
+  new Response('{"status":"ERROR"}', { status })
+
+/**
+ * Extended answers by path; `calls` records each method, path and body. A
+ * route that is a function gives its own response.
+ */
 function venue(routes: Record<string, unknown>) {
   const calls: { method: string; path: string; body: unknown }[] = []
   const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
@@ -59,9 +66,10 @@ function venue(routes: Record<string, unknown>) {
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
     })
     const route = routes[`${method} ${path.split('?')[0]}`]
-    return route === undefined
-      ? new Response('{"status":"ERROR"}', { status: 404 })
-      : ok(route)
+    if (route === undefined) {
+      return new Response('{"status":"ERROR"}', { status: 404 })
+    }
+    return typeof route === 'function' ? (route as () => Response)() : ok(route)
   })
   return { fetchImpl, calls }
 }
@@ -150,9 +158,87 @@ describe('Extended withdrawal', () => {
         stark: expect.objectContaining({
           request: expect.objectContaining({ body: fixture.request }),
         }),
-        clientSent: {},
+        clientSent: { orderId: '1234' },
       }),
     ])
+  })
+
+  const BRIDGE_ADDRESS =
+    '0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd'
+  const withdrawalRoutes = {
+    'GET /api/v1/user/account/info': { bridgeStarknetAddress: BRIDGE_ADDRESS },
+    'GET /api/v1/user/bridge/quote': { id: '6afd8157fc04af19fd7f2b66' },
+    'POST /api/v1/user/bridge/quote': null,
+    'POST /api/v1/user/withdrawal': 1234,
+  }
+
+  it.each([
+    ['an empty string', ''],
+    ['null', null],
+    ['zero', '0x0'],
+  ])('refuses a bridge address that is %s before it commits a quote', async (_label, bridgeStarknetAddress) => {
+    const { fetchImpl, calls } = venue({
+      ...withdrawalRoutes,
+      'GET /api/v1/user/account/info': { bridgeStarknetAddress },
+    })
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.STARK,
+        [withdrawalStep()],
+        ADDRESS
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(calls.map(({ path }) => path)).toEqual(['/api/v1/user/account/info'])
+  })
+
+  it('reports a refused API key as Failed with Unauthorized, sending no withdrawal', async () => {
+    const { fetchImpl, calls } = venue({
+      ...withdrawalRoutes,
+      'GET /api/v1/user/account/info': refused(401),
+    })
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.STARK,
+      [withdrawalStep()],
+      ADDRESS
+    )
+
+    expect(result).toEqual({
+      signed: [],
+      executed: [
+        expect.objectContaining({
+          action: ActionType.WITHDRAWAL,
+          status: UserActionStatus.Failed,
+          errorCode: PerpsErrorCode.Unauthorized,
+        }),
+      ],
+    })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('reports a refused quote as Failed, sending no withdrawal', async () => {
+    const { fetchImpl, calls } = venue({
+      ...withdrawalRoutes,
+      'GET /api/v1/user/bridge/quote': refused(400),
+    })
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.STARK,
+      [withdrawalStep()],
+      ADDRESS
+    )
+
+    expect(result.executed).toEqual([
+      expect.objectContaining({
+        status: UserActionStatus.Failed,
+        errorCode: PerpsErrorCode.ExchangeRejected,
+      }),
+    ])
+    expect(calls.map(({ method }) => method)).toEqual(['GET', 'GET'])
   })
 
   const withChange = (
@@ -185,6 +271,38 @@ describe('Extended withdrawal', () => {
           ...(body.settlement as object),
           amount: '1000000',
         }
+      }),
+    ],
+    [
+      'a request amount past the settlement precision',
+      withChange((step) => {
+        step.stark.request.body = {
+          ...step.stark.request.body,
+          amount: '19.9000004',
+        }
+      }),
+    ],
+    [
+      'a signed amount that is not an integer',
+      withChange((step) => {
+        const [message] = step.stark.messages
+        message.fields = { ...message.fields, amount: '19.9' }
+      }),
+    ],
+    [
+      'a destination chain that Extended does not bridge to',
+      withChange((step) => {
+        step.stark.request.body = {
+          ...step.stark.request.body,
+          chainId: 'STRK',
+        }
+      }),
+    ],
+    [
+      'a message that spends from another position',
+      withChange((step) => {
+        const [message] = step.stark.messages
+        message.fields = { ...message.fields, positionId: '1' }
       }),
     ],
     [
@@ -375,6 +493,85 @@ describe('Extended deposit', () => {
     expect(callsAtSwitch).toBe(1)
     expect(calls).toHaveLength(3)
     expect(arbitrumWallet.sent).toHaveLength(1)
+  })
+
+  it.each([
+    ['without a contract address', { chains: [{ chain: 'ARB' }] }],
+    [
+      'with a contract that is not an address',
+      { chains: [{ chain: 'ARB', contractAddress: '0x1234' }] },
+    ],
+    ['without chains', {}],
+  ])('refuses a bridge config %s before the wallet signs', async (_label, config) => {
+    const { fetchImpl } = venue({
+      ...bridgeRoutes,
+      'GET /api/v1/user/bridge/config': config,
+    })
+    const { client, sent } = wallet()
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.EVM_TX,
+        legs(),
+        ADDRESS,
+        { userWallet: client }
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(sent).toEqual([])
+  })
+
+  it('reports a refused API key on the bridge config as Failed with Unauthorized', async () => {
+    const { fetchImpl } = venue({
+      ...bridgeRoutes,
+      'GET /api/v1/user/bridge/config': refused(401),
+    })
+    const { client, sent } = wallet()
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client }
+    )
+
+    expect(result).toEqual({
+      signed: [],
+      executed: [
+        expect.objectContaining({
+          action: ActionType.DEPOSIT,
+          status: UserActionStatus.Failed,
+          errorCode: PerpsErrorCode.Unauthorized,
+        }),
+      ],
+    })
+    expect(sent).toEqual([])
+  })
+
+  it('reports a refused quote after the approval as Failed, sending no deposit', async () => {
+    const { fetchImpl } = venue({
+      ...bridgeRoutes,
+      'GET /api/v1/user/bridge/quote': refused(400),
+    })
+    const { client, sent } = wallet()
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client }
+    )
+
+    expect(result.executed).toEqual([
+      expect.objectContaining({ status: UserActionStatus.Accepted }),
+      expect.objectContaining({
+        status: UserActionStatus.Failed,
+        errorCode: PerpsErrorCode.ExchangeRejected,
+      }),
+    ])
+    expect(sent).toHaveLength(1)
   })
 
   it('refuses an approval to another spender before the wallet signs', async () => {
