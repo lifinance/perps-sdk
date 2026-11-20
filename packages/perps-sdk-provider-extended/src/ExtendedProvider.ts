@@ -230,7 +230,10 @@ export const extendedProvider = (
   // which is removed first so the setup step stages again.
   const withCredentials = async <T>(
     address: Address,
-    fallback: { missing: () => T; rejected: () => T },
+    fallback: {
+      missing: () => T | Promise<T>
+      rejected: () => T | Promise<T>
+    },
     fn: (credentials: ExtendedCredentials) => Promise<T>
   ): Promise<T> => {
     const credentials = await credentialStore.get(address)
@@ -263,12 +266,15 @@ export const extendedProvider = (
     },
   })
 
-  const statusRead = <T>(withoutCredentials: () => T) => ({
+  const statusRead = <T>(withoutCredentials: () => T | Promise<T>) => ({
     missing: withoutCredentials,
     rejected: withoutCredentials,
   })
 
-  const accountWithoutCredentials = (address: Address): AccountResponse => ({
+  const emptyAccount = (
+    address: Address,
+    config: ExtendedAccountConfig
+  ): AccountResponse => ({
     provider: EXTENDED_PROVIDER_KEY,
     address,
     balances: [],
@@ -277,8 +283,17 @@ export const extendedProvider = (
     marginUsed: '0',
     unrealizedPnl: '0',
     feeTier: EXTENDED_BASE_FEE_TIER,
-    config: { provider: EXTENDED_PROVIDER_KEY, apiKeyRegistered: false },
+    config,
   })
+
+  const accountWithoutCredentials = async (
+    address: Address
+  ): Promise<AccountResponse> =>
+    emptyAccount(address, {
+      provider: EXTENDED_PROVIDER_KEY,
+      apiKeyRegistered: false,
+      accountCreated: await credentialStore.isAccountCreated(address),
+    })
 
   // Extended answers 404 for the balance of an account that holds nothing.
   const readBalance = (
@@ -323,13 +338,10 @@ export const extendedProvider = (
           const config: ExtendedAccountConfig = {
             provider: EXTENDED_PROVIDER_KEY,
             apiKeyRegistered: true,
+            accountCreated: true,
           }
           if (balance === null) {
-            return {
-              ...accountWithoutCredentials(params.address),
-              positions,
-              config,
-            }
+            return { ...emptyAccount(params.address, config), positions }
           }
           const units = unknownToDecimalString(
             balance.balance,
@@ -838,12 +850,21 @@ export const extendedProvider = (
       )
     },
 
-    // Extended refusing the API key means it is revoked: remove the
-    // credentials so the setup step stages again.
+    // A confirmed onboarding lets the API-key step run next. Extended refusing
+    // the API key means it is revoked: remove the credentials so the setup
+    // step stages again.
     async onExecuteResults(
       address: Address,
       results: ActionResult[]
     ): Promise<undefined> {
+      const onboarded = results.some(
+        (result) =>
+          result.action === ActionType.CREATE_ACCOUNT &&
+          result.status === UserActionStatus.Accepted
+      )
+      if (onboarded) {
+        await credentialStore.markAccountCreated(address)
+      }
       const unauthorized = results.some(
         (result) =>
           result.status === UserActionStatus.Failed &&

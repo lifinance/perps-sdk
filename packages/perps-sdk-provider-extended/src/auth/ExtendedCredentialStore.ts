@@ -2,6 +2,7 @@ import { readValidatedRecord, type StorageAdapter } from '@lifi/perps-sdk'
 import type { Address, Hex } from '@lifi/perps-types'
 
 const STORAGE_PREFIX = 'lifi-perps-extended-credentials'
+const ACCOUNT_CREATED_PREFIX = 'lifi-perps-extended-account-created'
 
 /**
  * The client-held credentials of one Extended account. None of them leaves
@@ -81,5 +82,19 @@ export class ExtendedCredentialStore {
 
   async remove(address: Address): Promise<void> {
     await this.storage.remove(this.storageKey(address))
+  }
+
+  private accountCreatedKey(address: Address): string {
+    return `${ACCOUNT_CREATED_PREFIX}:${this.host}:${address.toLowerCase()}`
+  }
+
+  /** Remember that the backend confirmed the onboarding of `address`. */
+  async markAccountCreated(address: Address): Promise<void> {
+    await this.storage.set(this.accountCreatedKey(address), 'true')
+  }
+
+  /** Whether this device saw the backend confirm the onboarding of `address`. */
+  async isAccountCreated(address: Address): Promise<boolean> {
+    return (await this.storage.get(this.accountCreatedKey(address))) === 'true'
   }
 }

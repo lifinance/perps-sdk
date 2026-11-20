@@ -129,6 +129,7 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: true,
+        accountCreated: true,
         balance: {
           balance: '0.065740',
           equity: '0.065740',
@@ -158,6 +159,7 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: true,
+        accountCreated: true,
       })
     })
 
@@ -171,7 +173,43 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: false,
+        accountCreated: false,
       })
+    })
+
+    it('reports the account created once the backend confirmed the onboarding', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      await provider.onExecuteResults?.(ADDRESS, [
+        {
+          action: ActionType.CREATE_ACCOUNT,
+          status: UserActionStatus.Accepted,
+        },
+      ])
+      const account = await provider.getAccount({ address: ADDRESS })
+
+      expect(account.config).toEqual({
+        provider: 'extended',
+        apiKeyRegistered: false,
+        accountCreated: true,
+      })
+    })
+
+    it('does not report the account created after a refused onboarding', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      await provider.onExecuteResults?.(ADDRESS, [
+        {
+          action: ActionType.CREATE_ACCOUNT,
+          status: UserActionStatus.Failed,
+          error: 'refused',
+        },
+      ])
+      const account = await provider.getAccount({ address: ADDRESS })
+
+      expect(account.config).toMatchObject({ accountCreated: false })
     })
 
     it('removes credentials that Extended refuses', async () => {
@@ -366,14 +404,27 @@ describe('extendedProvider', () => {
       revoke: null,
     })
 
-    expect(
-      provider.projectConfig({ provider: 'extended', apiKeyRegistered: true }, [
-        step(ActionType.CREATE_ACCOUNT, SigningMethod.STARK),
-        step(ActionType.REGISTER_API_KEY, SigningMethod.SESSION),
-      ])
-    ).toEqual([
+    const project = (apiKeyRegistered: boolean, accountCreated: boolean) =>
+      provider.projectConfig(
+        { provider: 'extended', apiKeyRegistered, accountCreated },
+        [
+          step(ActionType.CREATE_ACCOUNT, SigningMethod.STARK),
+          step(ActionType.REGISTER_API_KEY, SigningMethod.SESSION),
+        ]
+      )
+
+    expect(project(true, true)).toEqual([
       { type: ActionType.CREATE_ACCOUNT, values: [], satisfied: true },
       { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
+    ])
+    // After the onboarding and before the API key: the API-key step is next.
+    expect(project(false, true)).toEqual([
+      { type: ActionType.CREATE_ACCOUNT, values: [], satisfied: true },
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
+    ])
+    expect(project(false, false).map((s) => s.satisfied)).toEqual([
+      false,
+      false,
     ])
   })
 
