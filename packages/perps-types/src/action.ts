@@ -135,7 +135,99 @@ export interface SiweActionStep {
 }
 
 /**
+ * Settlement fields of a Stark order. Each value is an integer as a decimal or
+ * `0x` hex string. Amounts are signed: the side that the account pays is
+ * negative.
+ *
+ * @public
+ */
+export interface StarkOrderFields {
+  positionId: string
+  baseAssetId: string
+  baseAmount: string
+  quoteAssetId: string
+  quoteAmount: string
+  feeAssetId: string
+  feeAmount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * Settlement fields of a transfer between two Stark positions. Each value is
+ * an integer as a decimal or `0x` hex string.
+ *
+ * @public
+ */
+export interface StarkTransferFields {
+  recipientPositionId: string
+  senderPositionId: string
+  collateralId: string
+  amount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * Settlement fields of a Stark withdrawal. Each value is an integer as a
+ * decimal or `0x` hex string.
+ *
+ * @public
+ */
+export interface StarkWithdrawalFields {
+  /** Starknet contract address that receives the withdrawal. */
+  recipient: string
+  positionId: string
+  collateralId: string
+  amount: string
+  /** Unix time in seconds. */
+  expiration: string
+  salt: string
+}
+
+/**
+ * One message that a Stark step signs. The provider signs it with the
+ * account's Stark key and writes the `{ r, s }` signature into the request
+ * body at `signaturePath`.
+ *
+ * @public
+ */
+export type StarkMessage = {
+  /** Object keys from the body root to the signature, e.g. `['settlement', 'signature']`. */
+  signaturePath: string[]
+} & (
+  | { type: 'order'; fields: StarkOrderFields }
+  | { type: 'transfer'; fields: StarkTransferFields }
+  | { type: 'withdrawal'; fields: StarkWithdrawalFields }
+)
+
+/**
+ * A backend-built venue request. The provider signs each of `stark.messages`,
+ * writes the signatures into `stark.request.body`, and returns a
+ * {@link StarkSignedActionStep}. An empty `messages` list marks a request that
+ * the API key alone authorizes, e.g. a cancel.
+ * @public
+ */
+export interface StarkActionStep {
+  action: ActionType
+  stark: {
+    request: {
+      method: 'POST' | 'PATCH' | 'DELETE'
+      /** Venue-relative, e.g. `/user/order`; base URL resolution is provider-side. */
+      path: string
+      /** Large integers are strings, so a JSON round trip keeps them exact. */
+      body?: Record<string, unknown>
+    }
+    messages: StarkMessage[]
+  }
+}
+
+/**
  * Union of all unsigned action-step encodings produced by `createAction`.
+ * Each variant has its own top-level key besides `action`, because providers
+ * tell the variants apart by key.
  *
  * @public
  */
@@ -146,6 +238,7 @@ export type ActionStep =
   | HmacActionStep
   | SessionActionStep
   | SiweActionStep
+  | StarkActionStep
 
 /**
  * Signed EIP-712 action step ready for backend execution.
@@ -225,6 +318,24 @@ export interface SiweSignedActionStep {
 }
 
 /**
+ * Signed Stark step for `executeAction`. `stark.request.body` carries every
+ * signature. When `clientSent` is present, the client already sent the
+ * request to the venue with its client-held API key, and the backend only
+ * records it. When `clientSent` is absent, the backend sends the request to
+ * the venue (a request that needs no client-held key, e.g. onboarding).
+ *
+ * @public
+ */
+export interface StarkSignedActionStep {
+  action: ActionType
+  stark: StarkActionStep['stark']
+  clientSent?: {
+    /** Venue order id from the venue's answer, when the request placed an order. */
+    orderId?: string
+  }
+}
+
+/**
  * Union of all signed action-step encodings accepted by `executeAction`.
  *
  * @public
@@ -235,6 +346,7 @@ export type SignedActionStep =
   | EvmTxSignedActionStep
   | HmacSignedActionStep
   | SiweSignedActionStep
+  | StarkSignedActionStep
 
 /**
  * Advice that ends the `error` of every `Indeterminate` result, because the
@@ -654,6 +766,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.UPDATE_ASSET_COLLATERAL]: UpdateAssetCollateralParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.CREATE_ACCOUNT]: Record<string, never>
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
   [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>

@@ -160,6 +160,7 @@ function projectLighterDescriptor(
     case ActionType.META_ONBOARD:
     case ActionType.META_CREATE_REFERRAL_CODE:
     case ActionType.SYNC_FEE_ATTRIBUTION:
+    case ActionType.CREATE_ACCOUNT:
     case ActionType.REVOKE_BUILDER_FEE:
     case ActionType.REVOKE_SESSION_AGENT:
     case ActionType.REVOKE_INTEGRATOR:
