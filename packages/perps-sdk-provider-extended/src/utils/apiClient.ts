@@ -104,9 +104,8 @@ const parseBody = (text: string): ExtendedEnvelope | undefined => {
 }
 
 /**
- * HTTP boundary against Extended's REST API. Requests go from the client
- * straight to Extended: the API key never reaches the LI.FI backend. The
- * client unwraps `data` from an `OK` envelope and throws
+ * HTTP boundary against Extended's REST API, directly or through a proxy that
+ * forwards the request as it is. The client unwraps `data` from an `OK` envelope and throws
  * {@link ExtendedApiError} for every answer that is not a success. Only GET
  * requests are retried, because Extended writes are not idempotent.
  *

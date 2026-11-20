@@ -55,7 +55,7 @@ function stubFetch(venue: Record<string, Route>) {
       if (url.startsWith(`${BACKEND}/providers`)) {
         return new Response(JSON.stringify({ providers: [PROVIDER_METADATA] }))
       }
-      const path = url.slice(DEFAULT_EXTENDED_API_URL.length)
+      const path = url.slice(`${BACKEND}/extended`.length)
       venueCalls.push({
         path,
         apiKey: new Headers(init?.headers).get('x-api-key'),
@@ -93,6 +93,31 @@ describe('extendedProvider', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('sends account requests straight to Extended when apiUrl is set', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).startsWith(`${BACKEND}/markets`)
+        ? new Response(JSON.stringify(MARKETS_RESPONSE))
+        : new Response(venueBody([]))
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const storage = createMemoryStorage()
+    await new ExtendedCredentialStore(storage, DEFAULT_EXTENDED_API_URL).set(
+      ADDRESS,
+      CREDENTIALS
+    )
+    const provider = extendedProvider({
+      storage,
+      apiUrl: DEFAULT_EXTENDED_API_URL,
+    })
+    provider.bind(STUB_CLIENT)
+
+    await provider.getPositions({ address: ADDRESS })
+
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
+      `${DEFAULT_EXTENDED_API_URL}/api/v1/user/positions`
+    )
   })
 
   describe('getAccount', () => {
