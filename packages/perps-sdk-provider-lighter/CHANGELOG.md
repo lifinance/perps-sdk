@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 50.1.1
+
+### Patch Changes
+
+- [#756](https://github.com/lifinance/perps-sdk/pull/756) [`bd61377`](https://github.com/lifinance/perps-sdk/commit/bd613774c3d33f7982f4fafd7303c0b9ff627f69) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `isDecimalStringEqual` and `safeIsDecimalStringEqual` for exact decimal-string equality. The Hyperliquid, Lighter, and Ondo providers use them for their equality checks, and their results do not change.
+
+- [#763](https://github.com/lifinance/perps-sdk/pull/763) [`ae0c64c`](https://github.com/lifinance/perps-sdk/commit/ae0c64cd9911b78a1db090e83366fdd5047496f0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Use `isDecimalStringInteger` for the integer initial margin fraction check in the Lighter ROE calculation. The ROE results do not change.
+
 ## 50.1.0
 
 ### Minor Changes

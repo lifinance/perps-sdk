@@ -1,5 +1,13 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 39.0.2
+
+### Patch Changes
+
+- [#756](https://github.com/lifinance/perps-sdk/pull/756) [`bd61377`](https://github.com/lifinance/perps-sdk/commit/bd613774c3d33f7982f4fafd7303c0b9ff627f69) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `isDecimalStringEqual` and `safeIsDecimalStringEqual` for exact decimal-string equality. The Hyperliquid, Lighter, and Ondo providers use them for their equality checks, and their results do not change.
+
+- [#761](https://github.com/lifinance/perps-sdk/pull/761) [`02b11de`](https://github.com/lifinance/perps-sdk/commit/02b11decea0969e3bbb413927040f8d187d5f530) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Hyperliquid spot balance assets keep the non-empty `displayName` of the registry asset with the same token ID in account snapshots and `spotBalances` frames.
+
 ## 39.0.1
 
 ### Patch Changes
