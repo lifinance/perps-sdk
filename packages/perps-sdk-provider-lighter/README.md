@@ -61,6 +61,8 @@ Lighter does not evict API keys through `onExecuteResults`. A failed action alon
 
 Each provider instance shares one request hold across its Lighter API clients, polls, and token-management requests. An HTTP `429` or HTTP `405` response starts the hold and fails at once with `RateLimitExceeded`. The provider does not retry that request. The provider uses `Retry-After` when Lighter supplies it, up to a maximum of five minutes. Otherwise, the hold lasts 60 seconds. All Lighter requests from that provider fail before network dispatch until the hold expires. Separate provider instances do not share a hold.
 
+Concurrent account reads for one wallet on one provider instance share one `/api/v1/account` request sequence and its result. A `signal` abort rejects only the read that owns the signal. The provider cancels the shared request only when every read that joined it aborts. A read without a `signal` keeps the shared request active. A read after the shared request settles sends a new request.
+
 ## Activity asset identity
 
 Deposit, withdrawal, and transfer rows carry a registry `Asset`.
