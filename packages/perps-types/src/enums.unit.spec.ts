@@ -235,6 +235,10 @@ describe('SigningMethod credential members', () => {
 })
 
 describe('ActionType wire values', () => {
+  it('CREATE_ACCOUNT carries wire value "createAccount"', () => {
+    expect(ActionType.CREATE_ACCOUNT).toBe('createAccount')
+  })
+
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
   })

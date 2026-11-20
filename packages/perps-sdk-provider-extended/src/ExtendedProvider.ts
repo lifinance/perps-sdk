@@ -710,13 +710,16 @@ export const extendedProvider = (
 
     /**
      * The backend writes the Stark key and the position into each settlement
-     * it builds, so every action except the setup sends them.
+     * it builds, so every action except the two setup steps sends them.
      */
     async resolveActionRequest(
       action: ActionType,
       address: Address
     ): Promise<ActionSignerContribution> {
-      if (action === ActionType.REGISTER_API_KEY) {
+      if (
+        action === ActionType.CREATE_ACCOUNT ||
+        action === ActionType.REGISTER_API_KEY
+      ) {
         return {}
       }
       const credentials = await credentialStore.get(address)

@@ -203,6 +203,8 @@ export enum ActionType {
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
   UPDATE_ASSET_COLLATERAL = 'updateAssetCollateral',
   REGISTER_API_KEY = 'registerApiKey',
+  /** Opens the venue account, where the venue needs a separate step for it (Extended onboarding). */
+  CREATE_ACCOUNT = 'createAccount',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
   SIWE_LOGIN = 'siweLogin',
   CREATE_DEPOSIT_ADDRESS = 'createDepositAddress',
@@ -346,9 +348,9 @@ export enum SigningMethod {
   /** Client-only venue REST call authorized by a provider session token; produces no backend-bound signed step, so `executeAction` is skipped. */
   SESSION = 'session',
   /**
-   * Client-only venue request that the provider sends with a client-held API
-   * key, after it signs the step's Stark messages with the account's Stark
-   * key; produces no backend-bound signed step, so `executeAction` is skipped.
+   * Backend-built venue request signed with the account's Stark key. The
+   * provider sends it with a client-held API key and reports it to
+   * `executeAction`, or returns it unsent for the backend to send.
    */
   STARK = 'stark',
 }

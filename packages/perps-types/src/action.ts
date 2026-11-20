@@ -204,10 +204,10 @@ export type StarkMessage = {
 )
 
 /**
- * A venue request that the provider sends from the client with its
- * client-held API key. The provider first signs each of `stark.messages` and
- * writes the signatures into `stark.request.body`. An empty `messages` list
- * marks a request that the API key alone authorizes, e.g. a cancel.
+ * A backend-built venue request. The provider signs each of `stark.messages`,
+ * writes the signatures into `stark.request.body`, and returns a
+ * {@link StarkSignedActionStep}. An empty `messages` list marks a request that
+ * the API key alone authorizes, e.g. a cancel.
  * @public
  */
 export interface StarkActionStep {
@@ -318,6 +318,24 @@ export interface SiweSignedActionStep {
 }
 
 /**
+ * Signed Stark step for `executeAction`. `stark.request.body` carries every
+ * signature. When `clientSent` is present, the client already sent the
+ * request to the venue with its client-held API key, and the backend only
+ * records it. When `clientSent` is absent, the backend sends the request to
+ * the venue (a request that needs no client-held key, e.g. onboarding).
+ *
+ * @public
+ */
+export interface StarkSignedActionStep {
+  action: ActionType
+  stark: StarkActionStep['stark']
+  clientSent?: {
+    /** Venue order id from the venue's answer, when the request placed an order. */
+    orderId?: string
+  }
+}
+
+/**
  * Union of all signed action-step encodings accepted by `executeAction`.
  *
  * @public
@@ -328,6 +346,7 @@ export type SignedActionStep =
   | EvmTxSignedActionStep
   | HmacSignedActionStep
   | SiweSignedActionStep
+  | StarkSignedActionStep
 
 /**
  * Advice that ends the `error` of every `Indeterminate` result, because the
@@ -733,6 +752,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.UPDATE_ASSET_COLLATERAL]: UpdateAssetCollateralParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.CREATE_ACCOUNT]: Record<string, never>
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
   [ActionType.CREATE_DEPOSIT_ADDRESS]: Record<string, never>
