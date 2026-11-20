@@ -91,11 +91,19 @@ async function calculateMessageHash(
   }
 }
 
+const PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
 function writeAtPath(
   body: Record<string, unknown>,
   path: string[],
   value: unknown
 ): void {
+  if (path.some((key) => PROTOTYPE_KEYS.has(key))) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended signature path '${path.join('.')}' names a prototype key.`
+    )
+  }
   let target = body
   for (const key of path.slice(0, -1)) {
     const next = target[key] ?? {}

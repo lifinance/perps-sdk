@@ -253,6 +253,21 @@ describe('extendedSignActions STARK', () => {
     expect(requests).toHaveLength(0)
   })
 
+  it.each([
+    ['__proto__', 'polluted'],
+    ['constructor', 'prototype', 'polluted'],
+  ])('refuses a signature path through a prototype key: %s', async (...signaturePath) => {
+    const { deps, requests } = await setup([placedOrderAnswer])
+    const step = buildOrderStep('limit buy GTT nonce=1')
+    step.stark.messages[0].signaturePath = signaturePath
+
+    await expect(
+      extendedSignActions(deps, SigningMethod.STARK, [step], address)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requests).toHaveLength(0)
+    expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false)
+  })
+
   it('keeps the earlier results when a later step cannot be signed', async () => {
     const { deps } = await setup([placedOrderAnswer])
     const valid = buildOrderStep('limit buy GTT nonce=1')

@@ -118,6 +118,8 @@ describe('Extended account setup', () => {
     ],
     ['another host', { host: 'https://example.com' }],
     ['another action', { action: 'CREATE_SUB_ACCOUNT' }],
+    ['no account index', { accountIndex: null }],
+    ['an empty account index', { accountIndex: '' }],
   ])('refuses an onboarding request for %s', async (_label, change) => {
     const { deps } = setup([])
 
@@ -173,6 +175,35 @@ describe('Extended account setup', () => {
 
     // The key seed, then the registration: no second key seed.
     expect(signTypedData).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['no position', { accountId: 330870, l2Key: signingKey.starkPublicKey }],
+    ['no account id', { l2Vault: '430876', l2Key: signingKey.starkPublicKey }],
+    ['no Stark key', { accountId: 330870, l2Vault: '430876' }],
+  ])('refuses account info with %s, and stores nothing', async (_label, info) => {
+    const { deps, credentialStore } = setup([
+      okAnswer({ key: 'test-api-key' }),
+      okAnswer(info),
+    ])
+
+    await expect(
+      registerExtendedApiKey(deps, wallet, ethAddress)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(await credentialStore.get(ethAddress)).toBeNull()
+  })
+
+  it('leaves the new API key out of the error for an unexpected answer', async () => {
+    const { deps } = setup([
+      { status: 200, body: '{"data":{"key":"secret-api-key"}}' },
+    ])
+
+    const error = await registerExtendedApiKey(deps, wallet, ethAddress).catch(
+      (caught: unknown) => caught
+    )
+
+    expect(error).toMatchObject({ code: PerpsErrorCode.ThirdPartyError })
+    expect(String((error as Error).message)).not.toContain('secret-api-key')
   })
 
   it('refuses an account that holds a different Stark key, and stores nothing', async () => {
