@@ -4,6 +4,7 @@ import {
   calculateTransferable,
   compareDecimalStrings,
   createWarnOnce,
+  type DepositFlow,
   estimateLiquidationPriceAtMarketRate,
   getMarketRegistry,
   getProviders,
@@ -15,12 +16,16 @@ import {
   type ProviderAccountExistsParams,
   type ProviderGetAccountParams,
   type ProviderGetActivityParams,
+  type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
   type ProviderGetPositionsParams,
   type ProviderGetQuoteParams,
+  type ProviderGetWithdrawableBalancesParams,
+  type ProviderGetWithdrawFlowParams,
+  type ProviderWithdrawableBalance,
   resolveQuote,
   resolveRetryPolicy,
   type SDKRequestOptions,
@@ -30,6 +35,7 @@ import {
   toMarketDisplay,
   toPerpsMarketDisplay,
   unknownToDecimalString,
+  type WithdrawFlow,
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
@@ -58,6 +64,7 @@ import {
   type SigningMethod,
   UserActionStatus,
 } from '@lifi/perps-types'
+import { getAddress } from 'viem'
 import { projectExtendedConfigSettings } from './accountConfig.js'
 import { getAccountSummary } from './accountSummary.js'
 import {
@@ -68,6 +75,8 @@ import { extendedSignActions } from './auth/signActions.js'
 import {
   DEFAULT_EXTENDED_API_URL,
   EXTENDED_BASE_FEE_TIER,
+  EXTENDED_DEPOSIT_COLLATERAL,
+  EXTENDED_DEPOSIT_GAS,
   EXTENDED_PROVIDER_KEY,
   EXTENDED_SIGNING_DOMAIN,
 } from './constants.js'
@@ -107,6 +116,13 @@ export interface ExtendedProviderOptions {
   /** Credential persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
+
+// Without credentials on this device both steps run; on a new device the
+// onboarding returns the existing account.
+const EXTENDED_SETUP = [
+  ActionType.CREATE_ACCOUNT,
+  ActionType.REGISTER_API_KEY,
+] as const
 
 const isUnauthorized = (error: unknown): error is ExtendedApiError =>
   error instanceof ExtendedApiError &&
@@ -214,7 +230,10 @@ export const extendedProvider = (
   // which is removed first so the setup step stages again.
   const withCredentials = async <T>(
     address: Address,
-    fallback: { missing: () => T; rejected: () => T },
+    fallback: {
+      missing: () => T | Promise<T>
+      rejected: () => T | Promise<T>
+    },
     fn: (credentials: ExtendedCredentials) => Promise<T>
   ): Promise<T> => {
     const credentials = await credentialStore.get(address)
@@ -247,12 +266,15 @@ export const extendedProvider = (
     },
   })
 
-  const statusRead = <T>(withoutCredentials: () => T) => ({
+  const statusRead = <T>(withoutCredentials: () => T | Promise<T>) => ({
     missing: withoutCredentials,
     rejected: withoutCredentials,
   })
 
-  const accountWithoutCredentials = (address: Address): AccountResponse => ({
+  const emptyAccount = (
+    address: Address,
+    config: ExtendedAccountConfig
+  ): AccountResponse => ({
     provider: EXTENDED_PROVIDER_KEY,
     address,
     balances: [],
@@ -261,8 +283,17 @@ export const extendedProvider = (
     marginUsed: '0',
     unrealizedPnl: '0',
     feeTier: EXTENDED_BASE_FEE_TIER,
-    config: { provider: EXTENDED_PROVIDER_KEY, apiKeyRegistered: false },
+    config,
   })
+
+  const accountWithoutCredentials = async (
+    address: Address
+  ): Promise<AccountResponse> =>
+    emptyAccount(address, {
+      provider: EXTENDED_PROVIDER_KEY,
+      apiKeyRegistered: false,
+      accountCreated: await credentialStore.isAccountCreated(address),
+    })
 
   // Extended answers 404 for the balance of an account that holds nothing.
   const readBalance = (
@@ -307,13 +338,10 @@ export const extendedProvider = (
           const config: ExtendedAccountConfig = {
             provider: EXTENDED_PROVIDER_KEY,
             apiKeyRegistered: true,
+            accountCreated: true,
           }
           if (balance === null) {
-            return {
-              ...accountWithoutCredentials(params.address),
-              positions,
-              config,
-            }
+            return { ...emptyAccount(params.address, config), positions }
           }
           const units = unknownToDecimalString(
             balance.balance,
@@ -359,6 +387,70 @@ export const extendedProvider = (
               },
             },
           }
+        }
+      )
+    },
+
+    /**
+     * A deposit always runs Extended's Rhino.fi bridge from Arbitrum, because
+     * the bridge needs a quote committed with the account's API key.
+     */
+    async getDepositFlow(
+      params: ProviderGetDepositFlowParams
+    ): Promise<DepositFlow> {
+      if ((await credentialStore.get(params.address)) === null) {
+        return { kind: 'setupRequired', setup: [...EXTENDED_SETUP] }
+      }
+      return {
+        kind: 'venueDepositPipeline',
+        chainId: EXTENDED_DEPOSIT_COLLATERAL.chainId,
+        gasAsset: EXTENDED_DEPOSIT_GAS,
+        collateral: EXTENDED_DEPOSIT_COLLATERAL,
+        bridgeAction: ActionType.DEPOSIT,
+      }
+    },
+
+    /** A withdrawal goes to the user's own address on the destination chain. */
+    async getWithdrawFlow(
+      params: ProviderGetWithdrawFlowParams
+    ): Promise<WithdrawFlow> {
+      if ((await credentialStore.get(params.address)) === null) {
+        return { kind: 'setupRequired', setup: [...EXTENDED_SETUP] }
+      }
+      return { kind: 'ready', destination: getAddress(params.address) }
+    },
+
+    getWithdrawableBalances(
+      params: ProviderGetWithdrawableBalancesParams,
+      opts?: SDKRequestOptions
+    ): Promise<ProviderWithdrawableBalance[]> {
+      return withCredentials(
+        params.address,
+        dataRead('withdrawable balance read'),
+        async ({ apiKey }) => {
+          const [{ providers }, balance] = await Promise.all([
+            getProviders(requireClient(), opts),
+            readBalance(apiClient(opts), apiKey),
+          ])
+          const available =
+            balance === null
+              ? '0'
+              : unknownToDecimalString(
+                  balance.availableForWithdrawal,
+                  'balance.availableForWithdrawal',
+                  EXTENDED_PROVIDER_KEY
+                )
+          if (!isDecimalStringGreaterThan(available, '0')) {
+            return []
+          }
+          return [
+            {
+              assetId: requireExtendedCollateralAsset(providers).id,
+              categoryId: EXTENDED_PROVIDER_KEY,
+              available,
+              max: available,
+            },
+          ]
         }
       )
     },
@@ -758,12 +850,21 @@ export const extendedProvider = (
       )
     },
 
-    // Extended refusing the API key means it is revoked: remove the
-    // credentials so the setup step stages again.
+    // A confirmed onboarding lets the API-key step run next. Extended refusing
+    // the API key means it is revoked: remove the credentials so the setup
+    // step stages again.
     async onExecuteResults(
       address: Address,
       results: ActionResult[]
     ): Promise<undefined> {
+      const onboarded = results.some(
+        (result) =>
+          result.action === ActionType.CREATE_ACCOUNT &&
+          result.status === UserActionStatus.Accepted
+      )
+      if (onboarded) {
+        await credentialStore.markAccountCreated(address)
+      }
       const unauthorized = results.some(
         (result) =>
           result.status === UserActionStatus.Failed &&

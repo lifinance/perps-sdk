@@ -10,6 +10,7 @@ import {
   ActionType,
   type Address,
   CHECK_ACCOUNT_BEFORE_RETRY_TEXT,
+  type EvmTxActionStep,
   type Hex,
   PerpsErrorCode,
   SigningMethod,
@@ -18,6 +19,14 @@ import {
   type StarkSignedActionStep,
   UserActionStatus,
 } from '@lifi/perps-types'
+import { parseUnits } from 'viem'
+import { commitBridgeQuote, readBridgeRecipient } from '../bridge/rhino.js'
+import {
+  EXTENDED_BRIDGE_CHAINS,
+  EXTENDED_SETTLEMENT_DECIMALS,
+  EXTENDED_VENUE_BRIDGE_CHAIN,
+} from '../constants.js'
+import { toStarkHex } from '../signing/starkFelt.js'
 import { signStarkHash } from '../signing/starkKey.js'
 import {
   calculateStarkOrderHash,
@@ -26,6 +35,7 @@ import {
   type StarkDomain,
 } from '../signing/starkMessageHash.js'
 import { ExtendedApiError } from '../utils/apiClient.js'
+import { executeDeposit } from './deposit.js'
 import type { ExtendedCredentials } from './ExtendedCredentialStore.js'
 import {
   type ExtendedRegistrationDeps,
@@ -53,17 +63,24 @@ const spendingPositionOf = (message: StarkMessage): string => {
   }
 }
 
-async function calculateMessageHash(
+function assertOwnPosition(
   message: StarkMessage,
-  domain: StarkDomain,
   credentials: ExtendedCredentials
-): Promise<Hex> {
+): void {
   if (BigInt(spendingPositionOf(message)) !== BigInt(credentials.positionId)) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       `Extended ${message.type} message spends from position ${spendingPositionOf(message)}, not from the account position ${credentials.positionId}.`
     )
   }
+}
+
+async function calculateMessageHash(
+  message: StarkMessage,
+  domain: StarkDomain,
+  credentials: ExtendedCredentials
+): Promise<Hex> {
+  assertOwnPosition(message, credentials)
   switch (message.type) {
     case 'order':
       return calculateStarkOrderHash(
@@ -162,16 +179,144 @@ export async function buildSignedBody(
   return body
 }
 
+const isEvmTxStep = (step: ActionStep): step is EvmTxActionStep =>
+  'txParams' in step
+
+const DECIMAL_AMOUNT = new RegExp(
+  `^\\d+(\\.\\d{1,${EXTENDED_SETTLEMENT_DECIMALS}})?$`
+)
+
+/** Settlement units of a request amount, or `undefined` past the settlement precision. */
+const requestUnits = (amount: string): bigint | undefined =>
+  DECIMAL_AMOUNT.test(amount)
+    ? parseUnits(amount, EXTENDED_SETTLEMENT_DECIMALS)
+    : undefined
+
+/** An integer amount in settlement units, or `undefined` when it is not one. */
+const settlementUnits = (value: unknown): bigint | undefined => {
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    return BigInt(value)
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value)
+  }
+  return undefined
+}
+
+const WITHDRAWAL_CHAINS = new Set(Object.values(EXTENDED_BRIDGE_CHAINS))
+
 /**
- * Sign the step and send it with the API key. A success gives the signed
- * request for `executeAction`, where the backend records it; a refusal or an
+ * Complete a withdrawal step with the parts that need the API key: the
+ * account's bridge address as the recipient, in the signed message and in the
+ * settlement, and a committed Rhino.fi quote for the destination chain. The
+ * SDK writes the recipient itself, so no step can redirect the funds.
+ */
+async function prepareWithdrawal(
+  deps: ExtendedSignActionsDeps,
+  step: StarkActionStep,
+  credentials: ExtendedCredentials
+): Promise<StarkActionStep> {
+  const body = step.stark.request.body
+  const chainOut = body?.chainId
+  const amount = body?.amount
+  if (
+    body === undefined ||
+    typeof chainOut !== 'string' ||
+    typeof amount !== 'string' ||
+    !/^\d+(\.\d+)?$/.test(amount)
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'Extended withdrawal step has no destination chain or amount.'
+    )
+  }
+  const [message, ...otherMessages] = step.stark.messages
+  const settlement = body.settlement
+  if (
+    message === undefined ||
+    message.type !== 'withdrawal' ||
+    otherMessages.length > 0 ||
+    typeof settlement !== 'object' ||
+    settlement === null
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'Extended withdrawal step must carry one withdrawal message and a settlement.'
+    )
+  }
+  if (!WITHDRAWAL_CHAINS.has(chainOut)) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended does not bridge withdrawals to chain ${chainOut}.`
+    )
+  }
+  const settlementAmount =
+    'amount' in settlement ? settlement.amount : undefined
+  const signedAmount = settlementUnits(message.fields.amount)
+  if (
+    signedAmount === undefined ||
+    requestUnits(amount) !== signedAmount ||
+    settlementUnits(settlementAmount) !== signedAmount
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended withdrawal amounts do not agree: ${amount} in the request, ${String(message.fields.amount)} in the signed message, ${String(settlementAmount)} in the settlement.`
+    )
+  }
+  assertOwnPosition(message, credentials)
+  const bridgeAddress = await readBridgeRecipient(
+    deps.client,
+    credentials.apiKey
+  )
+  const quoteId = await commitBridgeQuote(deps.client, credentials.apiKey, {
+    chainIn: EXTENDED_VENUE_BRIDGE_CHAIN,
+    chainOut,
+    amount,
+  })
+  // Written as Extended's own SDK writes it: the integer in hex.
+  const recipient = toStarkHex(bridgeAddress)
+  return {
+    action: step.action,
+    stark: {
+      request: {
+        ...step.stark.request,
+        body: { ...body, quoteId, settlement: { ...settlement, recipient } },
+      },
+      messages: [{ ...message, fields: { ...message.fields, recipient } }],
+    },
+  }
+}
+
+/**
+ * Sign the step and send it with the API key. A withdrawal first gets its
+ * recipient and a committed bridge quote. A success gives the signed request
+ * for `executeAction`, where the backend records it; a refusal or an
  * unconfirmed send gives the result, which stays in the client.
  */
 async function executeStarkStep(
   deps: ExtendedSignActionsDeps,
-  step: StarkActionStep,
+  unprepared: StarkActionStep,
   credentials: ExtendedCredentials
 ): Promise<{ sent: StarkSignedActionStep } | { result: ActionResult }> {
+  let step = unprepared
+  if (unprepared.action === ActionType.WITHDRAWAL) {
+    try {
+      step = await prepareWithdrawal(deps, unprepared, credentials)
+    } catch (error) {
+      // Nothing is sent yet, so any venue answer leaves the withdrawal undone.
+      if (error instanceof ExtendedApiError) {
+        return {
+          result: {
+            action: unprepared.action,
+            status: UserActionStatus.Failed,
+            error: error.message,
+            errorCode: error.code,
+          },
+        }
+      }
+      throw error
+    }
+  }
   const body = await buildSignedBody(step, deps.starkDomain, credentials)
   const { method, path } = step.stark.request
   let data: unknown
@@ -204,7 +349,11 @@ async function executeStarkStep(
       },
     }
   }
-  const orderId = (data as { id?: unknown } | undefined)?.id
+  // An order answers `{ id }`; a withdrawal answers its id as the bare value.
+  const orderId =
+    typeof data === 'string' || typeof data === 'number'
+      ? data
+      : (data as { id?: unknown } | undefined)?.id
   return {
     sent: {
       action: step.action,
@@ -249,8 +398,12 @@ const sentResult = (sent: StarkSignedActionStep): ActionResult => ({
  *   key, write the signatures into the body, and send the request with the
  *   stored API key. Each success is a signed step with `clientSent` for
  *   `executeAction`, where the backend records it. A message that spends from
- *   another position is refused before signing. The arm stops at the first
+ *   another position is refused before signing. A withdrawal first gets its
+ *   recipient and a committed bridge quote. The arm stops at the first
  *   refused or unconfirmed send, which stays a local result.
+ * - `EVM_TX` with `DEPOSIT`: approve and deposit USDC through the Rhino.fi
+ *   bridge from the user's wallet, with a quote committed right before the
+ *   deposit leg.
  *
  * @public
  */
@@ -331,10 +484,31 @@ export async function extendedSignActions(
       return { signed, executed }
     }
 
+    case SigningMethod.EVM_TX: {
+      const credentials = await deps.credentialStore.get(address)
+      if (credentials === null) {
+        throw new PerpsError(
+          PerpsErrorCode.SetupRequired,
+          'Extended credentials are missing on this device. Run the Extended setup again.'
+        )
+      }
+      const legs = steps.filter(isEvmTxStep)
+      if (
+        legs.length !== steps.length ||
+        legs.some((leg) => leg.action !== ActionType.DEPOSIT)
+      ) {
+        throw new PerpsError(
+          PerpsErrorCode.SDKError,
+          'Extended runs only deposit legs under the evmTx signing method.'
+        )
+      }
+      return executeDeposit(deps.client, credentials.apiKey, legs, ctx)
+    }
+
     default:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
-        `Extended does not sign via '${method}'. Supported methods: session, stark.`
+        `Extended does not sign via '${method}'. Supported methods: session, stark, evmTx.`
       )
   }
 }
