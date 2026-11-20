@@ -111,8 +111,13 @@ import { snapOrderPrice, snapOrderSize } from './utils/orderFormatting.js'
  * @public
  */
 export interface ExtendedProviderOptions {
-  /** Extended host. Defaults to mainnet. */
+  /** Extended host that the signatures and stored credentials name. Defaults to mainnet. */
   apiUrl?: string
+  /**
+   * Where the account requests go. Defaults to the LI.FI API's Extended proxy,
+   * because Extended answers no CORS preflight, or to `apiUrl` when it is set.
+   */
+  requestUrl?: string
   /** Credential persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
@@ -137,9 +142,9 @@ const venueError = (code: PerpsErrorCode, message: string): PerpsError => {
 /**
  * Extended provider plugin factory.
  *
- * Every account read goes from the client straight to Extended with the
- * account's API key from the credential store; the key never reaches the
- * LI.FI backend. A data read throws `SetupRequired` when this device holds no
+ * Every account request carries the account's API key from the credential
+ * store. By default it goes through the LI.FI API's Extended proxy, which
+ * forwards the key and does not keep it. A data read throws `SetupRequired` when this device holds no
  * credentials and `Unauthorized` when Extended refuses the stored API key,
  * which is removed first. A status read (`getAccount`, `accountExists`)
  * reports the state without credentials instead.
@@ -177,7 +182,11 @@ export const extendedProvider = (
 
   const apiClient = (opts?: SDKRequestOptions): ExtendedApiClient => {
     const client = requireClient()
-    return new ExtendedApiClient(apiUrl, {
+    const requestUrl =
+      options.requestUrl ??
+      options.apiUrl ??
+      `${client.config.apiUrl.replace(/\/$/, '')}/extended`
+    return new ExtendedApiClient(requestUrl, {
       signal: opts?.signal,
       policy: resolveRetryPolicy(
         EXTENDED_RETRY_DEFAULTS,

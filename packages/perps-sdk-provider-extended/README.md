@@ -31,6 +31,12 @@ const ws = new PerpsWsClient(client, {
 })
 ```
 
+## Requests
+
+Extended answers no CORS preflight, so a browser cannot call its account routes. The SDK sends each account request to the Extended proxy of the LI.FI API (`<apiUrl>/extended`). The proxy forwards the API key and does not keep it. The Stark private key stays on the device. The WebSocket connects to Extended directly.
+
+To call Extended directly, for example from a server, set `apiUrl` or `requestUrl`.
+
 ## Account setup
 
 The setup has two steps. The user's wallet signs three messages in total.
