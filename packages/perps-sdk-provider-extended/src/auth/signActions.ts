@@ -19,8 +19,12 @@ import {
   type StarkSignedActionStep,
   UserActionStatus,
 } from '@lifi/perps-types'
+import { parseUnits } from 'viem'
 import { commitBridgeQuote, readBridgeRecipient } from '../bridge/rhino.js'
-import { EXTENDED_VENUE_BRIDGE_CHAIN } from '../constants.js'
+import {
+  EXTENDED_SETTLEMENT_DECIMALS,
+  EXTENDED_VENUE_BRIDGE_CHAIN,
+} from '../constants.js'
 import { toStarkHex } from '../signing/starkFelt.js'
 import { signStarkHash } from '../signing/starkKey.js'
 import {
@@ -174,11 +178,40 @@ async function prepareWithdrawal(
   if (
     body === undefined ||
     typeof chainOut !== 'string' ||
-    typeof amount !== 'string'
+    typeof amount !== 'string' ||
+    !/^\d+(\.\d+)?$/.test(amount)
   ) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       'Extended withdrawal step has no destination chain or amount.'
+    )
+  }
+  const [message, ...otherMessages] = step.stark.messages
+  const settlement = body.settlement
+  if (
+    message === undefined ||
+    message.type !== 'withdrawal' ||
+    otherMessages.length > 0 ||
+    typeof settlement !== 'object' ||
+    settlement === null
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      'Extended withdrawal step must carry one withdrawal message and a settlement.'
+    )
+  }
+  const settlementAmount =
+    'amount' in settlement ? settlement.amount : undefined
+  const signedAmount = BigInt(message.fields.amount)
+  if (
+    signedAmount !== parseUnits(amount, EXTENDED_SETTLEMENT_DECIMALS) ||
+    (typeof settlementAmount !== 'string' &&
+      typeof settlementAmount !== 'number') ||
+    BigInt(settlementAmount) !== signedAmount
+  ) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended withdrawal amounts do not agree: ${amount} in the request, ${message.fields.amount} in the signed message, ${String(settlementAmount)} in the settlement.`
     )
   }
   const [bridgeAddress, quoteId] = await Promise.all([
@@ -191,26 +224,14 @@ async function prepareWithdrawal(
   ])
   // Written as Extended's own SDK writes it: the integer in hex.
   const recipient = toStarkHex(bridgeAddress)
-  const settlement = body.settlement
   return {
     action: step.action,
     stark: {
       request: {
         ...step.stark.request,
-        body: {
-          ...body,
-          quoteId,
-          settlement: {
-            ...(typeof settlement === 'object' ? settlement : {}),
-            recipient,
-          },
-        },
+        body: { ...body, quoteId, settlement: { ...settlement, recipient } },
       },
-      messages: step.stark.messages.map((message) =>
-        message.type === 'withdrawal'
-          ? { ...message, fields: { ...message.fields, recipient } }
-          : message
-      ),
+      messages: [{ ...message, fields: { ...message.fields, recipient } }],
     },
   }
 }

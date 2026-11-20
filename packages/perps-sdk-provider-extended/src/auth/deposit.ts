@@ -112,6 +112,14 @@ export async function executeDeposit(
     let args = txParams.args
     let txHash: Hex
     try {
+      if (wallet.chain?.id !== txParams.chainId && ctx?.switchToChain) {
+        wallet = await ctx.switchToChain(txParams.chainId)
+      }
+      if (wallet.chain?.id !== txParams.chainId) {
+        refuse(
+          `Extended deposit runs on chain ${txParams.chainId}, but the wallet is on chain ${wallet.chain?.id ?? 'unknown'}.`
+        )
+      }
       if (txParams.functionName === 'depositWithId') {
         const amount = BigInt(String(args[1]))
         const quoteId = await commitBridgeQuote(client, apiKey, {
@@ -120,14 +128,6 @@ export async function executeDeposit(
           amount: formatUnits(amount, EXTENDED_DEPOSIT_COLLATERAL.decimals),
         })
         args = [args[0], amount, BigInt(`0x${quoteId}`)]
-      }
-      if (wallet.chain?.id !== txParams.chainId && ctx?.switchToChain) {
-        wallet = await ctx.switchToChain(txParams.chainId)
-      }
-      if (wallet.chain?.id !== txParams.chainId) {
-        refuse(
-          `Extended deposit runs on chain ${txParams.chainId}, but the wallet is on chain ${wallet.chain?.id ?? 'unknown'}.`
-        )
       }
       txHash = await wallet.writeContract({
         address: txParams.to,

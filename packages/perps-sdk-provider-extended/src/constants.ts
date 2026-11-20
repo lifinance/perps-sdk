@@ -56,5 +56,8 @@ export const EXTENDED_BRIDGE_CHAINS: Readonly<Record<number, string>> = {
   [EXTENDED_DEPOSIT_CHAIN_ID]: 'ARB',
 }
 
+/** Decimals of the collateral amounts in Extended's Stark settlements. @internal */
+export const EXTENDED_SETTLEMENT_DECIMALS = 6
+
 /** Rhino.fi chain code of Extended's own side of the bridge. @internal */
 export const EXTENDED_VENUE_BRIDGE_CHAIN = 'ARC'

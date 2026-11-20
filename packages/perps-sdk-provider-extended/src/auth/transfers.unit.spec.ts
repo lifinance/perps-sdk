@@ -8,13 +8,14 @@ import {
 } from '@lifi/perps-types'
 import {
   type Address,
+  type Chain,
   createWalletClient,
   custom,
   decodeFunctionData,
   type Hex,
   parseAbi,
 } from 'viem'
-import { arbitrum } from 'viem/chains'
+import { arbitrum, mainnet } from 'viem/chains'
 import { describe, expect, it, vi } from 'vitest'
 import {
   signingKey,
@@ -153,6 +154,64 @@ describe('Extended withdrawal', () => {
       }),
     ])
   })
+
+  const withChange = (
+    change: (step: StarkActionStep) => void
+  ): StarkActionStep => {
+    const step = withdrawalStep()
+    change(step)
+    return step
+  }
+
+  it.each([
+    [
+      'a request amount that differs',
+      withChange((step) => {
+        step.stark.request.body = { ...step.stark.request.body, amount: '1' }
+      }),
+    ],
+    [
+      'a signed amount that differs',
+      withChange((step) => {
+        const [message] = step.stark.messages
+        message.fields = { ...message.fields, amount: '1000000' }
+      }),
+    ],
+    [
+      'a settlement amount that differs',
+      withChange((step) => {
+        const body = step.stark.request.body ?? {}
+        body.settlement = {
+          ...(body.settlement as object),
+          amount: '1000000',
+        }
+      }),
+    ],
+    [
+      'a second message',
+      withChange((step) => {
+        step.stark.messages.push(step.stark.messages[0])
+      }),
+    ],
+    [
+      'no withdrawal message',
+      withChange((step) => {
+        step.stark.messages = []
+      }),
+    ],
+  ])('refuses %s before it calls Extended', async (_label, step) => {
+    const { fetchImpl, calls } = venue({})
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.STARK,
+        [step],
+        ADDRESS
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(calls).toEqual([])
+  })
 })
 
 describe('Extended deposit', () => {
@@ -188,8 +247,8 @@ describe('Extended deposit', () => {
     },
   ]
 
-  /** A wallet on Arbitrum whose node accepts and mines every transaction. */
-  function wallet() {
+  /** A wallet whose node accepts and mines every transaction. */
+  function wallet(chain: Chain = arbitrum) {
     const sent: { to: string; data: Hex }[] = []
     const request = async ({
       method,
@@ -235,7 +294,7 @@ describe('Extended deposit', () => {
       sent,
       client: createWalletClient({
         account: ADDRESS,
-        chain: arbitrum,
+        chain,
         transport: custom({ request }),
       }),
     }
@@ -293,6 +352,29 @@ describe('Extended deposit', () => {
     ])
     expect(result.signed.every((leg) => 'txHash' in leg)).toBe(true)
     expect(onProgress).toHaveBeenCalledTimes(4)
+  })
+
+  it('switches the wallet chain before it commits the quote', async () => {
+    const { fetchImpl, calls } = venue(bridgeRoutes)
+    const arbitrumWallet = wallet()
+    let callsAtSwitch: number | undefined
+    const switchToChain = vi.fn(async () => {
+      callsAtSwitch = calls.length
+      return arbitrumWallet.client
+    })
+
+    await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs().slice(1),
+      ADDRESS,
+      { userWallet: wallet(mainnet).client, switchToChain }
+    )
+
+    // Only the bridge config is read before the switch.
+    expect(callsAtSwitch).toBe(1)
+    expect(calls).toHaveLength(3)
+    expect(arbitrumWallet.sent).toHaveLength(1)
   })
 
   it('refuses an approval to another spender before the wallet signs', async () => {
