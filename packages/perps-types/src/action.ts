@@ -215,7 +215,7 @@ export interface StarkActionStep {
   stark: {
     request: {
       method: 'POST' | 'PATCH' | 'DELETE'
-      /** Venue-relative, e.g. `/user/order`; base URL resolution is provider-side. */
+      /** Venue-relative, e.g. `/api/v1/user/order`; base URL resolution is provider-side. */
       path: string
       /** Large integers are strings, so a JSON round trip keeps them exact. */
       body?: Record<string, unknown>
