@@ -6,7 +6,10 @@ import {
   type ResolvedRetryPolicy,
 } from '@lifi/perps-sdk'
 import { PerpsErrorCode } from '@lifi/perps-types'
-import { EXTENDED_USER_AGENT } from '../constants.js'
+import {
+  EXTENDED_DEFAULT_PAGE_LIMIT,
+  EXTENDED_USER_AGENT,
+} from '../constants.js'
 import { parseVenueJson } from './parseVenueJson.js'
 
 /** @internal */
@@ -137,7 +140,8 @@ export class ExtendedApiClient {
     apiKey: string,
     params: Record<string, string | number | undefined>
   ): Promise<ExtendedPage<T>> {
-    const query = Object.entries(params)
+    const limit = params.limit ?? EXTENDED_DEFAULT_PAGE_LIMIT
+    const query = Object.entries({ ...params, limit })
       .filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
       .join('&')
@@ -148,7 +152,6 @@ export class ExtendedApiClient {
     )
     const data = Array.isArray(envelope.data) ? (envelope.data as T[]) : []
     const cursor = envelope.pagination?.cursor
-    const limit = params.limit
     const isLastPage =
       cursor === undefined ||
       cursor === null ||

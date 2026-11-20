@@ -303,14 +303,21 @@ describe('extendedProvider', () => {
   })
 
   it('getActivity maps the recorded deposit and withdrawal', async () => {
-    stubFetch({
+    const calls = stubFetch({
       '/api/v1/user/assetOperations': {
         body: recordedBody('asset_operations'),
       },
     })
     const { provider } = await setup()
 
-    const { items } = await provider.getActivity({ address: ADDRESS })
+    const { items, pagination } = await provider.getActivity({
+      address: ADDRESS,
+    })
+
+    expect(calls.map((call) => call.path)).toEqual([
+      '/api/v1/user/assetOperations?limit=100',
+    ])
+    expect(pagination).toEqual({ limit: 2, hasMore: false })
 
     expect(items).toEqual([
       expect.objectContaining({
