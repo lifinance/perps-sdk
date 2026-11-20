@@ -5,7 +5,6 @@ import {
   PerpsErrorCode,
   SigningMethod,
   type StarkActionStep,
-  UserActionStatus,
 } from '@lifi/perps-types'
 import {
   type Address,
@@ -143,8 +142,15 @@ describe('Extended withdrawal', () => {
       'POST /api/v1/user/withdrawal',
     ])
     expect(calls[3].body).toEqual(fixture.request)
-    expect(result.executed).toEqual([
-      { action: ActionType.WITHDRAWAL, status: UserActionStatus.Submitted },
+    expect(result.executed).toEqual([])
+    expect(result.signed).toEqual([
+      expect.objectContaining({
+        action: ActionType.WITHDRAWAL,
+        stark: expect.objectContaining({
+          request: expect.objectContaining({ body: fixture.request }),
+        }),
+        clientSent: {},
+      }),
     ])
   })
 })
@@ -269,10 +275,23 @@ describe('Extended deposit', () => {
       20_000_000n,
       BigInt(`0x${QUOTE_ID}`),
     ])
-    expect(result.executed.map(({ status }) => status)).toEqual([
-      UserActionStatus.Accepted,
-      UserActionStatus.Submitted,
+    expect(result.executed).toEqual([])
+    expect(
+      result.signed.map((leg) =>
+        'txParams' in leg ? [leg.txParams.functionName, leg.txParams.args] : []
+      )
+    ).toEqual([
+      ['approve', [ARB_BRIDGE, AMOUNT]],
+      [
+        'depositWithId',
+        [
+          EXTENDED_DEPOSIT_COLLATERAL.address,
+          AMOUNT,
+          BigInt(`0x${QUOTE_ID}`).toString(),
+        ],
+      ],
     ])
+    expect(result.signed.every((leg) => 'txHash' in leg)).toBe(true)
     expect(onProgress).toHaveBeenCalledTimes(4)
   })
 

@@ -403,15 +403,7 @@ export async function extendedSignActions(
           'Extended runs only deposit legs under the evmTx signing method.'
         )
       }
-      return {
-        signed: [],
-        executed: await executeDeposit(
-          deps.client,
-          credentials.apiKey,
-          legs,
-          ctx
-        ),
-      }
+      return executeDeposit(deps.client, credentials.apiKey, legs, ctx)
     }
 
     default:

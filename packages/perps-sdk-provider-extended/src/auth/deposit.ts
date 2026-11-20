@@ -3,11 +3,13 @@ import {
   PerpsError,
   rethrowWithKnownResults,
   type SignActionsContext,
+  type SignActionsResult,
 } from '@lifi/perps-sdk'
 import {
   type ActionResult,
   CHECK_ACCOUNT_BEFORE_RETRY_TEXT,
   type EvmTxActionStep,
+  type EvmTxSignedActionStep,
   PerpsErrorCode,
   UserActionStatus,
 } from '@lifi/perps-types'
@@ -63,13 +65,18 @@ function validateDepositLegs(steps: EvmTxActionStep[], bridge: Address): void {
   }
 }
 
+/** The arguments as JSON carries them to the backend: integers as decimal strings. */
+const toWireArgs = (args: readonly unknown[]): unknown[] =>
+  args.map((arg) => (typeof arg === 'bigint' ? arg.toString() : arg))
+
 /**
  * Run Extended's deposit legs from the user's wallet: `approve` USDC to the
  * Rhino.fi bridge, then `depositWithId`. Right before the deposit leg, the
  * SDK gets and commits a bridge quote with the stored API key and writes its
- * id as the commitment id, because a quote expires in about two minutes. A
- * confirmed approval is `Accepted`; a mined deposit is `Submitted`, because
- * Extended credits it later. The legs stop at the first one that fails.
+ * id as the commitment id, because a quote expires in about two minutes.
+ * Each confirmed leg is a signed step with its `txHash` for `executeAction`,
+ * where the backend records it. A reverted or unconfirmed leg stops the legs
+ * and stays a local result.
  *
  * @internal
  */
@@ -78,7 +85,7 @@ export async function executeDeposit(
   apiKey: string,
   steps: EvmTxActionStep[],
   ctx: SignActionsContext | undefined
-): Promise<ActionResult[]> {
+): Promise<SignActionsResult> {
   let wallet: PerpsClientSigner =
     ctx?.userWallet ??
     refuse(
@@ -90,12 +97,21 @@ export async function executeDeposit(
   const bridge = await readBridgeContract(client, apiKey, chainIn)
   validateDepositLegs(steps, bridge)
 
-  const executed: ActionResult[] = []
+  const signed: EvmTxSignedActionStep[] = []
+  const confirmed = (): ActionResult[] =>
+    signed.map((leg) => ({
+      action: leg.action,
+      status:
+        leg.txParams.functionName === 'depositWithId'
+          ? UserActionStatus.Submitted
+          : UserActionStatus.Accepted,
+      txHash: leg.txHash,
+    }))
   for (const [index, step] of steps.entries()) {
     const { txParams } = step
+    let args = txParams.args
     let txHash: Hex
     try {
-      let args = txParams.args
       if (txParams.functionName === 'depositWithId') {
         const amount = BigInt(String(args[1]))
         const quoteId = await commitBridgeQuote(client, apiKey, {
@@ -122,7 +138,7 @@ export async function executeDeposit(
         account: wallet.account,
       })
     } catch (error) {
-      return rethrowWithKnownResults(executed, error)
+      return rethrowWithKnownResults(confirmed(), error)
     }
     try {
       ctx?.onProgress?.({
@@ -137,7 +153,7 @@ export async function executeDeposit(
     } catch (error) {
       return rethrowWithKnownResults(
         [
-          ...executed,
+          ...confirmed(),
           { action: step.action, status: UserActionStatus.Submitted, txHash },
         ],
         error
@@ -149,34 +165,41 @@ export async function executeDeposit(
       const receipt = await waitForTransactionReceipt(wallet, { hash: txHash })
       reverted = receipt.status === 'reverted'
     } catch (error) {
-      executed.push({
-        action: step.action,
-        status: UserActionStatus.Indeterminate,
-        txHash,
-        error: `The Extended deposit transaction ${txHash} was sent, but its receipt did not arrive. ${CHECK_ACCOUNT_BEFORE_RETRY_TEXT}`,
-        errorCode:
-          error instanceof WaitForTransactionReceiptTimeoutError
-            ? PerpsErrorCode.TimeoutError
-            : PerpsErrorCode.ServerError,
-      })
-      return executed
+      return {
+        signed: [],
+        executed: [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Indeterminate,
+            txHash,
+            error: `The Extended deposit transaction ${txHash} was sent, but its receipt did not arrive. ${CHECK_ACCOUNT_BEFORE_RETRY_TEXT}`,
+            errorCode:
+              error instanceof WaitForTransactionReceiptTimeoutError
+                ? PerpsErrorCode.TimeoutError
+                : PerpsErrorCode.ServerError,
+          },
+        ],
+      }
     }
     if (reverted) {
-      executed.push({
-        action: step.action,
-        status: UserActionStatus.Failed,
-        txHash,
-        error: `The Extended deposit transaction ${txHash} reverted.`,
-        errorCode: PerpsErrorCode.ExchangeRejected,
-      })
-      return executed
+      return {
+        signed: [],
+        executed: [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Failed,
+            txHash,
+            error: `The Extended deposit transaction ${txHash} reverted.`,
+            errorCode: PerpsErrorCode.ExchangeRejected,
+          },
+        ],
+      }
     }
-    const isDeposit = txParams.functionName === 'depositWithId'
-    executed.push({
+    signed.push({
       action: step.action,
-      status: isDeposit
-        ? UserActionStatus.Submitted
-        : UserActionStatus.Accepted,
+      txParams: { ...txParams, args: toWireArgs(args) },
       txHash,
     })
     try {
@@ -190,8 +213,8 @@ export async function executeDeposit(
         txHash,
       })
     } catch (error) {
-      return rethrowWithKnownResults(executed, error)
+      return rethrowWithKnownResults(confirmed(), error)
     }
   }
-  return executed
+  return { signed, executed: [] }
 }
