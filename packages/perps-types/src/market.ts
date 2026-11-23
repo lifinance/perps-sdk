@@ -17,6 +17,17 @@ export interface FundingInfo {
 }
 
 /**
+ * Provider-qualified reference to one market listing. `marketId` is the
+ * opaque {@link BaseMarket.id}, unique only within `providerId`.
+ *
+ * @public
+ */
+export interface ProviderMarketRef {
+  providerId: ProviderId
+  marketId: string
+}
+
+/**
  * Shared market metadata for perpetual and spot instruments.
  *
  * @public
@@ -53,6 +64,12 @@ export interface BaseMarket {
    * rather than applying this field directly.
    */
   sizeIncrement?: DecimalString
+  /**
+   * Listings that must never share a group with this market. One declaration
+   * excludes the pair in both directions. The pair never shares a group, even
+   * through an intermediate listing. An absent list adds no exclusions.
+   */
+  neverAliases?: ProviderMarketRef[]
 }
 
 /**

@@ -1,8 +1,8 @@
 import {
   type ActionSignerContribution,
-  compareDecimalStrings,
   type DepositFlow,
   HYPERLIQUID_USDC,
+  isDecimalStringEqual,
   isDecimalStringGreaterThan,
   isSpotCategory,
   isSubmittedOrAccepted,
@@ -504,7 +504,7 @@ export function hyperliquidProvider(
           'Leverage must be above zero'
         )
       }
-      return compareDecimalStrings(requested, reported.leverage) === 0
+      return isDecimalStringEqual(requested, reported.leverage)
     },
 
     triggerOrders: { modifyCanChangeType: true },
