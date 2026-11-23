@@ -25,6 +25,27 @@ export const safeIsDecimalStringGreaterThan = createSafeFunction(
 )
 
 /**
+ * Exact `a == b` on two decimal strings, so `'1'`, `'1.0'` and `'1.00'` are
+ * equal and `'1.0000000000000001'` is not `'1'`.
+ *
+ * @throws {PerpsError} `ValidationError` when either operand does not match the decimal pattern, for example `'01.00'`.
+ * @public
+ */
+export function isDecimalStringEqual(a: string, b: string): boolean {
+  return compareDecimalStrings(a, b) === 0
+}
+
+/**
+ * {@link isDecimalStringEqual}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeIsDecimalStringEqual = createSafeFunction(
+  'isDecimalStringEqual',
+  isDecimalStringEqual
+)
+
+/**
  * Exact `value == 0`, so a flat-position check never reads `'0.0'` as
  * non-zero.
  *
@@ -43,6 +64,27 @@ export function isDecimalStringZero(value: string): boolean {
 export const safeIsDecimalStringZero = createSafeFunction(
   'isDecimalStringZero',
   isDecimalStringZero
+)
+
+/**
+ * Exact `value` has no fractional part, so `'700.0'` is an integer and
+ * `'700.5'` is not.
+ *
+ * @throws {PerpsError} `ValidationError` when `value` does not match the decimal pattern.
+ * @public
+ */
+export function isDecimalStringInteger(value: string): boolean {
+  return decimalStringToBig(value).mod(1).eq(0)
+}
+
+/**
+ * {@link isDecimalStringInteger}, or `undefined` with a warning when it throws.
+ *
+ * @public
+ */
+export const safeIsDecimalStringInteger = createSafeFunction(
+  'isDecimalStringInteger',
+  isDecimalStringInteger
 )
 
 /**

@@ -3,15 +3,14 @@ import {
   buildPosition,
   calculateRoe as calculateMarginRoe,
   calculateNotionalValue,
-  compareDecimalStrings,
   createWarnOnce,
   divideDecimalString,
   isDecimalString,
   isDecimalStringGreaterThan,
+  isDecimalStringInteger,
   isDecimalStringZero,
   multiplyDecimalString,
   remarkPositionValues,
-  roundDecimalString,
   safeDivideDecimalString,
   safeIsDecimalStringGreaterThan,
   safeNumberToDecimalString,
@@ -76,10 +75,7 @@ export const calculateRoe = (position: Position): string | undefined => {
     !isDecimalStringGreaterThan(entryPrice, '0') ||
     !isDecimalString(initialMarginFractionBps) ||
     !isDecimalStringGreaterThan(initialMarginFractionBps, '0') ||
-    compareDecimalStrings(
-      initialMarginFractionBps,
-      roundDecimalString(initialMarginFractionBps, 0, 'truncate')
-    ) !== 0
+    !isDecimalStringInteger(initialMarginFractionBps)
   ) {
     return undefined
   }

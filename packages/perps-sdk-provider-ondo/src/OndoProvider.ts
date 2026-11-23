@@ -3,7 +3,6 @@ import {
   type ActionSignerContribution,
   buildFill,
   calculateTransferable,
-  compareDecimalStrings,
   createWarnOnce,
   type DepositFlow,
   ETHEREUM_USDC,
@@ -11,6 +10,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isDecimalStringEqual,
   isDecimalStringGreaterThan,
   localStorageAdapter,
   PerpsError,
@@ -1198,7 +1198,7 @@ export const ondoProvider = (
           'Leverage must be above zero'
         )
       }
-      return compareDecimalStrings(requested, reported.leverage) === 0
+      return isDecimalStringEqual(requested, reported.leverage)
     },
 
     triggerOrders: { modifyCanChangeType: false },
