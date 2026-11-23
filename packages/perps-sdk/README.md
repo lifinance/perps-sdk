@@ -158,6 +158,82 @@ rate as a signed fraction: `rate × (365 × 24 × 60 × 60 ÷ ratePeriodSeconds)
 It does not compound. Use `Provider.funding.ratePeriodSeconds` for the live
 rate and for the settled rates, because they have the same unit.
 
+## Portfolio history
+
+`getPortfolioHistory(client, { provider, address, range, bounds? })` returns
+the account value, the cumulative PnL, and the cumulative net transfers of
+one venue account, oldest point first. `range` is a venue preset: `24h`,
+`7d`, `30d`, or `all`. Each venue starts its preset at its own first sample,
+so two venues can answer the same preset with different first timestamps.
+A request without `bounds` keeps this preset read.
+
+`bounds` is an opt-in `PortfolioHistoryBounds`: an inclusive `start` and
+`end` in Unix milliseconds, with `start` at or before `end`. The client
+throws `PerpsError(ValidationError)` for other values. `range` still selects
+the preset or the sample resolution. A bounded response has this contract:
+
+- `opening` is the latest valid sample at or before `start`. It is absent
+  when the venue has no such sample. An absent `opening` never means a zero
+  balance: the caller must not infer a balance from a missing sample.
+- `points` holds only the valid samples after `start` through `end`. A
+  sample at `start` is the `opening`, not a point. A sample after `end` is
+  never a point.
+- `pnl` and `netTransfers` are relative to the first returned sample: the
+  `opening` when present, else the first point. That sample carries `'0'`
+  for both. An opening balance is never a transfer.
+- `netTransfers` keeps its unavailable semantics: when the first returned
+  sample has no value, no sample has one.
+- `totalPnl` is the `pnl` of the last point, or absent without points.
+- `volume` keeps each venue's own span, described below.
+
+Each venue reads its samples in its own way:
+
+- Lighter and Lighter RH keep the resolution of `range` and read
+  `/api/v1/pnl` from one bucket before `start` through `end`. The standard
+  finite ranges ask for one more bucket (`count_back` plus one). `all` keeps
+  its 1000 daily buckets. Lighter documents `count_back` as a sizing hint,
+  so bounds wider than `range` are not cut. `volume` spans the retained
+  samples. Lighter anchors its last fetched snapshot to the current account
+  value, so an `end` in the past shifts every account value by the change
+  since then.
+- Hyperliquid reads its presets from one `portfolio` request and keeps the
+  account scope: perps-only presets for a per-dex collateral account, and
+  combined presets for a unified or portfolio-margin account. When the
+  native preset has no sample at or before `start`, the read takes the
+  samples of the narrowest wider preset of the same scope that has one.
+  Without such a preset, the read returns the native samples without an
+  `opening`. A wider preset the SDK cannot join is skipped with a warning.
+  The ledger read starts at the first returned sample. `volume` stays the
+  native preset total.
+- Ondo reads the native `/v1/portfolio/summary/graph` preset first. When it
+  has no point at or before `start`, the read requests the next wider
+  preset, one at a time, until one has an opening point. Without such a
+  preset, the read returns the native points without an `opening`. A wider
+  graph read that fails is skipped with a warning. `volume` stays the native
+  preset total from `/v1/portfolio/summary`.
+
+A preset has limits. The `24h` and `7d` presets can start after `start`, so
+a bounded `24h` read often takes its opening from a wider preset. The `all`
+preset has no wider preset. A venue sample cadence sets the gap between the
+`opening` and `start`: a daily snapshot at midnight is the opening of a
+start at 19:44 on the same day, and a later snapshot does not replace it.
+
+```ts
+const end = Date.now()
+const history = await client.getPortfolioHistory({
+  provider: 'lighter',
+  address: '0xUser',
+  range: '30d',
+  bounds: { start: end - 30 * 24 * 60 * 60 * 1_000, end },
+})
+if (history.opening === undefined) {
+  // No balance is known at the start. Do not use zero.
+}
+```
+
+Provider plugins call the exported `buildPortfolioHistoryWindow(provider,
+points, bounds)` for the cut and the rebase. See `src/math/README.md`.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include

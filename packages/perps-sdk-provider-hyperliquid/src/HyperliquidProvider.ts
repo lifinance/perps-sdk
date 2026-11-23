@@ -457,11 +457,7 @@ export function hyperliquidProvider(
       params: ProviderGetPortfolioHistoryParams,
       opts?: SDKRequestOptions
     ): Promise<PortfolioHistoryResponse> =>
-      getPortfolioHistory(
-        contextRef.require(),
-        { address: params.address, range: params.range },
-        opts
-      ),
+      getPortfolioHistory(contextRef.require(), params, opts),
 
     getQuote: (
       params: ProviderGetQuoteParams,

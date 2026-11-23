@@ -1067,8 +1067,13 @@ export class PerpsClient {
 
   /**
    * The account's portfolio value and cumulative PnL over `params.range` at
-   * `params.provider`, read directly from the venue.
+   * `params.provider`, read directly from the venue. With `params.bounds`,
+   * the read returns the opening sample at or before `bounds.start` when the
+   * venue has one, and only the samples after `bounds.start` through
+   * `bounds.end`.
    *
+   * @throws {PerpsError} `ValidationError` when a bound is not a finite
+   *   number, or when `bounds.start` is after `bounds.end`.
    * @throws {PerpsError} When the provider plugin is not registered, when it
    *   declares no portfolio history read, or when the venue read fails.
    * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
@@ -1088,8 +1093,24 @@ export class PerpsClient {
         `Provider '${params.provider}' does not implement getPortfolioHistory.`
       )
     }
+    const { bounds } = params
+    if (
+      bounds !== undefined &&
+      (!Number.isFinite(bounds.start) ||
+        !Number.isFinite(bounds.end) ||
+        bounds.start > bounds.end)
+    ) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Portfolio history bounds need finite start and end, with start at or before end.'
+      )
+    }
     return plugin.getPortfolioHistory(
-      { address: params.address, range: params.range },
+      {
+        address: params.address,
+        range: params.range,
+        ...(bounds === undefined ? {} : { bounds }),
+      },
       options
     )
   }
