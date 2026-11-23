@@ -121,6 +121,8 @@ export interface LtToken {
   logo: string
   logo_extension: string
   market: 'PERPS' | 'SPOT'
+  /** Symbol that `assetDetails` and the spot order book use for this token, for example `rhSPY` for `SPY`. */
+  backend_symbol?: string
 }
 
 /**
