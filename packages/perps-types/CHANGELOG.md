@@ -1,5 +1,17 @@
 # @lifi/perps-types
 
+## 30.3.0
+
+### Minor Changes
+
+- [#758](https://github.com/lifinance/perps-sdk/pull/758) [`1135f55`](https://github.com/lifinance/perps-sdk/commit/1135f556c6ac72e6da38247d882d4961a412877b) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add an optional `BaseMarket.neverAliases` list of `ProviderMarketRef` values. Each reference names a market listing that must never share a group with this market.
+
+## 30.2.0
+
+### Minor Changes
+
+- [#747](https://github.com/lifinance/perps-sdk/pull/747) [`a113ae9`](https://github.com/lifinance/perps-sdk/commit/a113ae94d35627995a4d49211e81034cea56844c) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Send the exact native Lighter IMF on leverage actions and use it for order margin. `UpdateLeverageParams` and `PlaceOrderParams` accept an optional `initialMarginFractionBps`, the Lighter provider attaches the IMF to each `createAction` leverage request (a present value unchanged, else the half-up encoding of the leverage), `isLeverageEqual` compares a requested native IMF, `calculateOrderAmounts` takes the IMF as its exact margin rate, and `resolveExactLeverage` gives the formula leverage of a `MarketSettings` or `Position`. `resolveActionRequest` receives the caller's params.
+
 ## 30.1.0
 
 ### Minor Changes

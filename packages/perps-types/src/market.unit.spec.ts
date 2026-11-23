@@ -10,6 +10,7 @@ import {
   type OhlcvResponse,
   type PerpsMarket,
   type PerpsMarketDisplay,
+  type ProviderMarketRef,
   SPOT_CATEGORY_ID,
   type SpotMarket,
 } from './market.js'
@@ -174,6 +175,27 @@ describe('BaseMarket', () => {
     const base: BaseMarket = perpsMarket
     const parsed = JSON.parse(JSON.stringify(base)) as BaseMarket
     expect(parsed).toEqual(perpsMarket)
+  })
+
+  it('carries neverAliases references through a JSON roundtrip', () => {
+    const base: BaseMarket = {
+      ...perpsMarket,
+      neverAliases: [{ providerId: 'lighter', marketId: '120' }],
+    }
+    const parsed = JSON.parse(JSON.stringify(base)) as BaseMarket
+    expect(parsed.neverAliases).toEqual([
+      { providerId: 'lighter', marketId: '120' },
+    ])
+  })
+
+  it('types neverAliases as an optional list of provider market references', () => {
+    expectTypeOf<Pick<BaseMarket, 'neverAliases'>>().toEqualTypeOf<{
+      neverAliases?: ProviderMarketRef[]
+    }>()
+    expectTypeOf<ProviderMarketRef>().toEqualTypeOf<{
+      providerId: string
+      marketId: string
+    }>()
   })
 })
 
