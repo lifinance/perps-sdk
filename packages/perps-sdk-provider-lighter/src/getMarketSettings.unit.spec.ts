@@ -154,7 +154,7 @@ describe('Lighter leverage comparison validation', () => {
     const { provider } = setup('6.67')
     const error = expect.objectContaining({
       code: PerpsErrorCode.ValidationError,
-      message: expect.stringContaining('IMF'),
+      message: expect.stringMatching(/IMF|initialMarginFractionBps/),
     })
     expect(() =>
       provider.isLeverageEqual(requested, {
@@ -253,6 +253,85 @@ describe('Lighter leverage comparison validation', () => {
         leverage: '14.99',
         initialMarginFractionBps,
       })
+    ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
+  })
+})
+
+describe('Lighter leverage comparison with a requested native source', () => {
+  it.each([
+    // A settings-preserving write sends the reported IMF with the two-decimal
+    // leverage; the encoded leverage would read 1499 and reject a correct write.
+    ['6.67', '1500', '1500', true],
+    ['14.29', '700', '700', true],
+    ['15', '667', '667', true],
+    ['15', '700', '667', false],
+    ['15', '666', '667', false],
+  ])('compares requested %s with native %s against reported IMF %s', (requested, requestedImf, reportedImf, expected) => {
+    const { provider } = setup('6.67')
+    expect(
+      provider.isLeverageEqual(
+        requested,
+        {
+          marginMode: MarginMode.CROSS,
+          leverage: requested,
+          initialMarginFractionBps: reportedImf,
+        },
+        requestedImf
+      )
+    ).toBe(expected)
+  })
+
+  it('keeps two IMFs with the same display label apart', () => {
+    const { provider } = setup('6.67')
+    expect(
+      provider.isLeverageEqual(
+        '15',
+        {
+          marginMode: MarginMode.CROSS,
+          leverage: '15.02',
+          displayLeverage: '15',
+          initialMarginFractionBps: '666',
+        },
+        '667'
+      )
+    ).toBe(false)
+  })
+
+  it('does not read the requested leverage when the native source is present', () => {
+    const { provider } = setup('6.67')
+    expect(
+      provider.isLeverageEqual(
+        '0',
+        {
+          marginMode: MarginMode.CROSS,
+          leverage: '14.29',
+          initialMarginFractionBps: '700',
+        },
+        '700'
+      )
+    ).toBe(true)
+  })
+
+  it.each([
+    '0',
+    '-1',
+    '6.67',
+    '',
+    'NaN',
+    '1e1',
+    'invalid',
+  ])('rejects an unusable requested native IMF %j', (requestedImf) => {
+    const { provider } = setup('6.67')
+    expect(() =>
+      provider.isLeverageEqual(
+        '15',
+        {
+          marginMode: MarginMode.CROSS,
+          leverage: '14.99',
+          initialMarginFractionBps: '667',
+        },
+        requestedImf
+      )
     ).toThrow(expect.objectContaining({ code: PerpsErrorCode.ValidationError }))
   })
 })

@@ -36,28 +36,29 @@ describe('spotAssetFromToken', () => {
       'https://app.hyperliquid.xyz/coins/UBTC_spot.svg'
     )
   })
-  it('copies only decimals from the registry asset', () => {
+  it('copies decimals and the display name from the registry asset', () => {
     const registered: Asset = {
       providerId: 'hyperliquid',
-      id: '0',
-      displaySymbol: 'USDC (registry)',
-      logoURI: 'https://assets.example/usdc.svg',
-      displayName: 'USD Coin',
+      id: '197',
+      displaySymbol: 'UBTC (registry)',
+      logoURI: 'https://assets.example/ubtc.svg',
+      displayName: 'Unit Bitcoin',
       decimals: 8,
     }
-    expect(spotAssetFromToken(balance('USDC', 0), registered)).toEqual({
+    expect(spotAssetFromToken(balance('UBTC', 197), registered)).toStrictEqual({
       providerId: 'hyperliquid',
-      id: '0',
-      displaySymbol: 'USDC',
-      logoURI: 'https://app.hyperliquid.xyz/coins/USDC.svg',
+      id: '197',
+      displaySymbol: 'UBTC',
+      logoURI: 'https://app.hyperliquid.xyz/coins/UBTC_spot.svg',
       decimals: 8,
+      displayName: 'Unit Bitcoin',
     })
   })
 
   it.each([
     ['no registry asset', undefined],
     [
-      'a registry asset without decimals',
+      'a registry asset without decimals or a name',
       {
         providerId: 'hyperliquid',
         id: '0',
@@ -65,7 +66,17 @@ describe('spotAssetFromToken', () => {
         logoURI: '',
       },
     ],
-  ])('omits decimals for %s', (_, registered) => {
+    [
+      'a registry asset with an empty name',
+      {
+        providerId: 'hyperliquid',
+        id: '0',
+        displaySymbol: 'USDC',
+        logoURI: '',
+        displayName: '',
+      },
+    ],
+  ])('omits decimals and the display name for %s', (_, registered) => {
     expect(spotAssetFromToken(balance('USDC', 0), registered)).toStrictEqual({
       providerId: 'hyperliquid',
       id: '0',

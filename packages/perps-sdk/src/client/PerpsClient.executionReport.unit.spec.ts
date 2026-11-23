@@ -155,6 +155,13 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     expect(executeRequests).toHaveLength(1)
     expect(executeRequests[0].actions).toHaveLength(3)
     expect(onExecuteResults).toHaveBeenCalledWith(ADDRESS, response.results)
+    // The plugin reads the caller's own params when it prepares the request.
+    expect(resolveActionRequest).toHaveBeenCalledWith(
+      ActionType.PLACE_ORDER,
+      ADDRESS,
+      expect.any(String),
+      ORDER
+    )
   })
 
   it('keeps an uncertain first step as Indeterminate and submits nothing after it', async () => {
