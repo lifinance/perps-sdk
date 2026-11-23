@@ -151,4 +151,64 @@ describe('buildPortfolioHistoryWindow', () => {
       )
     ).toEqual({ opening: point(-2, '100', '0', '0'), points: [] })
   })
+
+  it('skips a sample with a non-finite timestamp and warns, so it cannot be the opening', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const result = buildPortfolioHistoryWindow(
+      'venue',
+      [
+        point(-5, '90', '-10'),
+        { timestamp: Number.NaN, accountValue: '100', pnl: '0' },
+        point(1, '105', '5'),
+      ],
+      { start: START, end: END }
+    )
+
+    expect(result).toEqual({
+      opening: point(-5, '90', '0'),
+      points: [point(1, '105', '15')],
+    })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '[venue] skipping portfolio history row: `timestamp` is not a valid timestamp'
+      )
+    )
+    warn.mockRestore()
+  })
+
+  it('keeps samples with one timestamp in input order and takes the last one at the start as the opening', () => {
+    const result = buildPortfolioHistoryWindow(
+      'venue',
+      [
+        point(0, '100', '0'),
+        point(0, '101', '1'),
+        point(2, '110', '10'),
+        point(2, '111', '11'),
+      ],
+      { start: START, end: END }
+    )
+
+    expect(result).toEqual({
+      opening: point(0, '101', '0'),
+      points: [point(2, '110', '9'), point(2, '111', '10')],
+    })
+  })
+
+  it('returns the opening alone when the start equals the end', () => {
+    expect(
+      buildPortfolioHistoryWindow('venue', SAMPLES, {
+        start: START,
+        end: START,
+      })
+    ).toEqual({ opening: point(-2, '100', '0', '0'), points: [] })
+    expect(
+      buildPortfolioHistoryWindow(
+        'venue',
+        [point(-2, '100', '0'), point(0, '101', '1')],
+        { start: START, end: START }
+      )
+    ).toEqual({ opening: point(0, '101', '0'), points: [] })
+  })
 })

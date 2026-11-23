@@ -191,22 +191,26 @@ Each venue reads its samples in its own way:
 - Lighter and Lighter RH keep the resolution of `range` and read
   `/api/v1/pnl` from one bucket before `start` through `end`. The standard
   finite ranges ask for one more bucket (`count_back` plus one). `all` keeps
-  its 1000 daily buckets. `volume` spans the retained samples. Lighter
-  anchors its last fetched snapshot to the current account value, so an
-  `end` in the past shifts every account value by the change since then.
+  its 1000 daily buckets. Lighter documents `count_back` as a sizing hint,
+  so bounds wider than `range` are not cut. `volume` spans the retained
+  samples. Lighter anchors its last fetched snapshot to the current account
+  value, so an `end` in the past shifts every account value by the change
+  since then.
 - Hyperliquid reads its presets from one `portfolio` request and keeps the
   account scope: perps-only presets for a per-dex collateral account, and
   combined presets for a unified or portfolio-margin account. When the
   native preset has no sample at or before `start`, the read takes the
   samples of the narrowest wider preset of the same scope that has one.
   Without such a preset, the read returns the native samples without an
-  `opening`. The ledger read starts at the first returned sample. `volume`
-  stays the native preset total.
+  `opening`. A wider preset the SDK cannot join is skipped with a warning.
+  The ledger read starts at the first returned sample. `volume` stays the
+  native preset total.
 - Ondo reads the native `/v1/portfolio/summary/graph` preset first. When it
   has no point at or before `start`, the read requests the next wider
   preset, one at a time, until one has an opening point. Without such a
-  preset, the read returns the native points without an `opening`. `volume`
-  stays the native preset total from `/v1/portfolio/summary`.
+  preset, the read returns the native points without an `opening`. A wider
+  graph read that fails is skipped with a warning. `volume` stays the native
+  preset total from `/v1/portfolio/summary`.
 
 A preset has limits. The `24h` and `7d` presets can start after `start`, so
 a bounded `24h` read often takes its opening from a wider preset. The `all`

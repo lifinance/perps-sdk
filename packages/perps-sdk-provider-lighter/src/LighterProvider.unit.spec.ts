@@ -4506,6 +4506,51 @@ describe('LighterProvider — getPortfolioHistory', () => {
         totalPnl: '20',
       })
     })
+
+    it('floors sub-second bounds to whole seconds', async () => {
+      overrideFetch((url) =>
+        url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+      )
+      const provider = makeProvider({
+        storage: await storageWithReadOnlyToken('pre-created-token', record),
+      })
+      provider.bind(STUB_CLIENT)
+
+      await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '30d',
+        bounds: { start: START_MS + 999, end: NOW_MS - 1 },
+      })
+
+      const [call] = pnlCalls()
+      const query = new URL(call.url).searchParams
+      expect(query.get('start_timestamp')).toBe(
+        String(START_SECONDS - DAY_SECONDS)
+      )
+      expect(query.get('end_timestamp')).toBe(String(NOW_SECONDS - 1))
+    })
+
+    it('sends a start_timestamp of 0 when the bucket before the start is before the epoch', async () => {
+      overrideFetch((url) =>
+        url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+      )
+      const provider = makeProvider({
+        storage: await storageWithReadOnlyToken('pre-created-token', record),
+      })
+      provider.bind(STUB_CLIENT)
+
+      await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '30d',
+        bounds: { start: 0, end: NOW_MS },
+      })
+
+      const [call] = pnlCalls()
+      const query = new URL(call.url).searchParams
+      expect(query.get('start_timestamp')).toBe('0')
+      expect(query.get('end_timestamp')).toBe(String(NOW_SECONDS))
+      expect(query.get('count_back')).toBe('31')
+    })
   })
 
   it('falls back to the standard token when /api/v1/pnl rejects the read-only token', async () => {

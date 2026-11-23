@@ -1,5 +1,6 @@
 import {
   buildPortfolioHistoryWindow,
+  createWarnOnce,
   PerpsError,
   type PortfolioHistoryWindow,
   type SDKRequestOptions,
@@ -119,11 +120,15 @@ const resolveWindow = (
   return window
 }
 
+const warnUnjoinablePresetOnce = createWarnOnce()
+
 /**
  * The bounded native samples when they hold an opening sample at or before
  * `bounds.start`. Otherwise the samples of the narrowest wider preset of the
  * same scope that holds one, or the native samples without an opening when
- * no preset holds one. A wider preset the venue did not send is skipped.
+ * no preset holds one. A wider preset the venue did not send, or whose
+ * series do not join, is skipped: the native samples are already usable, so
+ * the wider preset warns instead of failing the read.
  */
 const resolveBoundedWindow = (
   portfolio: HlPortfolio,
@@ -141,9 +146,22 @@ const resolveBoundedWindow = (
     if (window === undefined) {
       continue
     }
+    let widerPoints: PortfolioHistoryPoint[]
+    try {
+      widerPoints = joinWindow(window, period).points
+    } catch (error) {
+      if (!(error instanceof PerpsError)) {
+        throw error
+      }
+      warnUnjoinablePresetOnce(
+        period,
+        `[${PROVIDER_KEY}] portfolio window '${period}' gives no opening sample: ${error.message}`
+      )
+      continue
+    }
     const candidate = buildPortfolioHistoryWindow(
       PROVIDER_KEY,
-      joinWindow(window, period).points,
+      widerPoints,
       bounds
     )
     if (candidate.opening !== undefined) {

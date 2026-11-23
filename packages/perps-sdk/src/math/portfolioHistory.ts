@@ -22,6 +22,12 @@ const isValidSample = (
   provider: string,
   point: PortfolioHistoryPoint
 ): boolean => {
+  if (!Number.isFinite(point.timestamp)) {
+    warnSkippedVenueRow(provider, SAMPLE_ROW, 'timestamp', point.timestamp, {
+      expected: 'timestamp',
+    })
+    return false
+  }
   const invalid = (['accountValue', 'pnl'] as const).find(
     (field) => !isDecimalString(point[field])
   )
@@ -53,10 +59,10 @@ const buildRelativeSample = (
  * `bounds.start` is the `opening`, and the valid samples after `bounds.start`
  * through `bounds.end` are the `points`, oldest first. `pnl` and
  * `netTransfers` are relative to the first retained sample, so that sample
- * carries `'0'` for both. A sample whose `accountValue` or `pnl` does not
- * match the decimal pattern is skipped with a warning. A retained sample
- * stays without `netTransfers` when it or the first retained sample has none.
- * Never throws.
+ * carries `'0'` for both. A sample whose `timestamp` is not finite, or whose
+ * `accountValue` or `pnl` does not match the decimal pattern, is skipped with
+ * a warning. A retained sample stays without `netTransfers` when it or the
+ * first retained sample has none. Never throws.
  * @public
  */
 export function buildPortfolioHistoryWindow(

@@ -642,6 +642,68 @@ describe('Hyperliquid getPortfolioHistory', () => {
       expect(result.points.map((p) => p.timestamp)).toEqual([T2, T3])
     })
 
+    it('skips a wider preset whose PnL samples match no account-value timestamp, warns, and keeps the next wider preset', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const portfolio: HlPortfolio = [
+        ...STAGGERED_PORTFOLIO.map(([key, window]): HlPortfolio[number] =>
+          key === 'perpWeek'
+            ? [
+                key,
+                {
+                  ...window,
+                  pnlHistory: [
+                    [T0 + 1, '-5.0'],
+                    [T2 + 1, '5.0'],
+                  ],
+                },
+              ]
+            : [key, window]
+        ),
+        [
+          'perpMonth',
+          {
+            accountValueHistory: [
+              [T0, '990.0'],
+              [T2, '1020.0'],
+              [T3, '1030.0'],
+            ],
+            pnlHistory: [
+              [T0, '-15.0'],
+              [T2, '5.0'],
+              [T3, '15.0'],
+            ],
+            vlm: '3000.0',
+          },
+        ],
+      ]
+      const installed = installInfoFetchMock({
+        portfolio,
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T1, end: T3 },
+      })
+
+      expect(result.opening).toEqual({
+        timestamp: T0,
+        accountValue: '990.0',
+        pnl: '0',
+        netTransfers: '0',
+      })
+      expect(result.points.map((p) => p.pnl)).toEqual(['20', '30'])
+      expect(result.volume).toBe('100.0')
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[hyperliquid] portfolio window 'perpWeek' gives no opening sample"
+        )
+      )
+      warn.mockRestore()
+    })
+
     it('excludes samples after the end and skips the ledger read for an opening alone', async () => {
       const installed = installFetchMock({
         portfolio: STAGGERED_PORTFOLIO,

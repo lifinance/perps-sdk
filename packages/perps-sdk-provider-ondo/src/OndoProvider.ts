@@ -10,6 +10,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isAbortRejection,
   isDecimalStringEqual,
   isDecimalStringGreaterThan,
   localStorageAdapter,
@@ -241,6 +242,7 @@ export const ondoProvider = (
     getMarketRegistry(requireClient(), ONDO_PROVIDER_KEY)
 
   const warnDroppedOrder = createWarnOnce()
+  const warnWiderGraphReadOnce = createWarnOnce()
 
   /**
    * Map one venue row, or drop it. A row the mapper rejects, such as a
@@ -1181,9 +1183,29 @@ export const ondoProvider = (
           }
           const nativeIndex = PORTFOLIO_GRAPH_RANGES.indexOf(params.range)
           for (const range of PORTFOLIO_GRAPH_RANGES.slice(nativeIndex + 1)) {
+            let widerGraph: OndoPortfolioGraphPoint[] | null
+            try {
+              widerGraph = await readGraph(range)
+            } catch (error) {
+              // The native points are already usable, so a failed wider read
+              // only costs the opening. A session rejection and a caller
+              // abort still reject.
+              if (
+                error instanceof OndoSessionExpiredError ||
+                isAbortRejection(error, opts?.signal) ||
+                !(error instanceof PerpsError)
+              ) {
+                throw error
+              }
+              warnWiderGraphReadOnce(
+                range,
+                `[${ONDO_PROVIDER_KEY}] portfolio graph '${range}' read failed, so it gives no opening sample: ${error.message}`
+              )
+              continue
+            }
             const wider = mapPortfolioHistory(
               params.range,
-              (await readGraph(range)) ?? [],
+              widerGraph ?? [],
               summary,
               bounds
             )

@@ -1820,10 +1820,10 @@ export const createLighterProvider = (
         (bounds?.end ?? Date.now()) / 1_000
       )
       // A bounded read starts one bucket early, so the opening snapshot at or
-      // before `start` is in the response.
+      // before `start` is in the response. The venue takes no start below 0.
       const startTimestampSeconds =
         bounds !== undefined
-          ? Math.floor(bounds.start / 1_000) - window.bucketSeconds
+          ? Math.max(0, Math.floor(bounds.start / 1_000) - window.bucketSeconds)
           : params.range === 'all'
             ? 0
             : endTimestampSeconds - window.countBack * window.bucketSeconds

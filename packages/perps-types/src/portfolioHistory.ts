@@ -43,8 +43,9 @@ export interface PortfolioHistoryPoint {
 
 /**
  * Account portfolio value over the requested window, oldest point first.
- * `volume` and `totalPnl` are window totals a venue may not report. `volume`
- * stays the venue total for the preset `range`, also on a bounded read.
+ * `volume` and `totalPnl` are window totals a venue may not report. On a
+ * bounded read, `volume` keeps each venue's own span: the retained samples on
+ * Lighter, the preset `range` on Hyperliquid and Ondo.
  * @public
  */
 export interface PortfolioHistoryResponse {

@@ -2216,19 +2216,27 @@ describe('OndoProvider — getPortfolioHistory', () => {
         .filter((r) => r.url.includes('/v1/portfolio/summary/graph'))
         .map((r) => new URL(r.url).searchParams.get('range'))
 
-    beforeEach(() => {
+    /** Answer each graph preset from `GRAPH_BY_RANGE`, unless `override` answers it. */
+    const installGraphFetch = (
+      override: (range: string) => Response | undefined = () => undefined
+    ) =>
       fetchMock.mockImplementation(async (url: string | URL, init) => {
         const u = String(url)
         recorded.push({ url: u, init })
         if (u.includes('/v1/portfolio/summary/graph')) {
           const range = new URL(u).searchParams.get('range') ?? ''
-          return respond(envelope(GRAPH_BY_RANGE[range] ?? null))
+          return (
+            override(range) ?? respond(envelope(GRAPH_BY_RANGE[range] ?? null))
+          )
         }
         if (u.includes('/v1/portfolio/summary')) {
           return respond(envelope(PORTFOLIO_SUMMARY_RESULT))
         }
         return respond(envelope([]))
       })
+
+    beforeEach(() => {
+      installGraphFetch()
     })
 
     it('reads one graph when the native preset holds the opening point, and drops points after the end', async () => {
@@ -2317,6 +2325,83 @@ describe('OndoProvider — getPortfolioHistory', () => {
       })
       expect(history.opening).toBeUndefined()
       expect(graphRanges()).toEqual(['24h', '7d', '30d', 'all'])
+    })
+
+    it('skips a wider graph read that fails, warns, and keeps the next wider preset', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      installGraphFetch((range) => {
+        if (range === '7d') {
+          return respond({ success: false, error: 'graph unavailable' }, 500)
+        }
+        return range === '30d'
+          ? respond(envelope(GRAPH_BY_RANGE['7d']))
+          : undefined
+      })
+      const { provider } = await loggedInProvider()
+
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history.opening).toEqual({
+        timestamp: Date.parse('2025-03-04T00:00:00Z'),
+        accountValue: '4800.00',
+        pnl: '0',
+        netTransfers: '0',
+      })
+      expect(history.points.map((p) => p.pnl)).toEqual(['150'])
+      expect(graphRanges()).toEqual(['24h', '7d', '30d'])
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[ondo] portfolio graph '7d' read failed, so it gives no opening sample"
+        )
+      )
+      warn.mockRestore()
+    })
+
+    it('evicts the token and throws Unauthorized when the venue rejects the session on a wider graph read', async () => {
+      installGraphFetch((range) =>
+        range === '7d'
+          ? respond({ success: false, error: 'token expired' }, 401)
+          : undefined
+      )
+      const { provider, store } = await loggedInProvider()
+
+      await expect(
+        provider.getPortfolioHistory!({
+          address: ADDRESS,
+          range: '24h',
+          bounds: { start: START, end: END },
+        })
+      ).rejects.toMatchObject(sessionRejectedError('portfolio history read'))
+      await expect(store.get(ADDRESS)).resolves.toBeNull()
+    })
+
+    it('rejects with the abort reason when the caller aborts during a wider graph read', async () => {
+      const controller = new AbortController()
+      const reason = new Error('stopped')
+      installGraphFetch((range) => {
+        if (range === '7d') {
+          controller.abort(reason)
+          throw reason
+        }
+        return undefined
+      })
+      const { provider } = await loggedInProvider()
+
+      await expect(
+        provider.getPortfolioHistory!(
+          {
+            address: ADDRESS,
+            range: '24h',
+            bounds: { start: START, end: END },
+          },
+          { signal: controller.signal }
+        )
+      ).rejects.toBe(reason)
+      expect(graphRanges()).toEqual(['24h', '7d'])
     })
   })
 })

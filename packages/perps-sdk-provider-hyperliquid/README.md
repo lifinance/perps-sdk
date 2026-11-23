@@ -56,7 +56,9 @@ preset of the same scope that has one. The account values of every preset
 share one basis, and the ledger read covers the retained samples, so a wider
 preset gives comparable equity and transfer data. Without such a preset, the
 read returns the native samples without an `opening`. A wider preset that
-the venue did not send is skipped.
+the venue did not send is skipped. A wider preset whose PnL samples match no
+account-value timestamp is skipped with a warning, because the native
+samples are already usable.
 
 The ledger read starts at the first returned sample, the `opening` when
 present, and movements at that timestamp do not count. `volume` stays the
