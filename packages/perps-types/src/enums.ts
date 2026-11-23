@@ -113,6 +113,40 @@ export enum MarginMode {
   CROSS = 'CROSS',
 }
 
+/**
+ * Venue account mode that selects the cross-margin health formula.
+ *
+ * @public
+ */
+export enum AccountMode {
+  /** Hyperliquid standard: separate spot and perps balances, one cross pool per dex. */
+  STANDARD = 'STANDARD',
+  /** Hyperliquid DEX abstraction, which the venue discontinued. */
+  DEX_ABSTRACTION = 'DEX_ABSTRACTION',
+  /** Hyperliquid unified account or Lighter unified trading account. */
+  UNIFIED = 'UNIFIED',
+  /** Hyperliquid portfolio margin. */
+  PORTFOLIO_MARGIN = 'PORTFOLIO_MARGIN',
+  /** Lighter simple trading account: separate spot and perps balances. */
+  SIMPLE = 'SIMPLE',
+}
+
+/**
+ * Outcome of one cross-margin health read.
+ *
+ * @public
+ */
+export enum CrossMarginHealthStatus {
+  /** `ratio` holds the venue maintenance margin divided by the venue equity. */
+  MEASURED = 'MEASURED',
+  /** The pool carries no maintenance margin, so no ratio applies. */
+  NO_EXPOSURE = 'NO_EXPOSURE',
+  /** The pool carries maintenance margin and its equity is zero or below: the pool is past liquidation. */
+  NON_POSITIVE_EQUITY = 'NON_POSITIVE_EQUITY',
+  /** The account read lacks an input that the venue formula of the mode needs. */
+  UNAVAILABLE = 'UNAVAILABLE',
+}
+
 /** Per-market support for changing an open position's dedicated margin. @public */
 export enum PositionMarginAdjustment {
   /** The venue does not expose individual position margin. */

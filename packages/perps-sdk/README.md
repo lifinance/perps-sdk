@@ -358,6 +358,36 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Cross-margin health
+
+`AccountResponse.crossMarginHealth` tells how close each cross collateral pool is to its maintenance margin boundary.
+It describes the current account. It does not estimate the effect of an order or of a leverage change.
+Hyperliquid, Lighter, and Lighter RH set it. Ondo leaves it absent.
+
+Each `CrossMarginHealth` entry has these fields:
+
+- `mode`: the venue `AccountMode` that selects the formula.
+- `pool`: the collateral pool. The pool is an account, a Hyperliquid dex, or a Hyperliquid collateral asset.
+- `liquidationThreshold`: the venue boundary. A `ratio` above it is liquidatable. A `ratio` equal to it is not.
+- `status`: a `CrossMarginHealthStatus`.
+
+Only a `MEASURED` entry has a `ratio`: maintenance margin divided by equity, as a fraction. A higher ratio means a greater liquidation risk.
+`NO_EXPOSURE` means that the pool has no maintenance margin.
+`NON_POSITIVE_EQUITY` means that the pool has maintenance margin and its equity is zero or less.
+`UNAVAILABLE` means that the account read lacks an input of the venue formula for that mode.
+The provider READMEs give the formula for each venue and mode.
+
+```ts
+import { CrossMarginHealthStatus, isDecimalStringGreaterThan } from '@lifi/perps-sdk'
+
+for (const health of account.crossMarginHealth ?? []) {
+  if (health.status === CrossMarginHealthStatus.MEASURED) {
+    const atRisk = isDecimalStringGreaterThan(health.ratio, health.liquidationThreshold)
+    console.log(health.pool, health.ratio, atRisk)
+  }
+}
+```
+
 ### Leverage confirmation
 
 `provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.

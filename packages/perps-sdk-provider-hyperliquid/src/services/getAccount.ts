@@ -31,6 +31,7 @@ import type {
   HlUserFees,
 } from '../types/index.js'
 import { isUnifiedAbstraction } from '../utils/abstractionMode.js'
+import { buildHyperliquidCrossMarginHealth } from '../utils/crossMarginHealth.js'
 import {
   assetIsOutcome,
   partitionSpotBalances,
@@ -306,5 +307,12 @@ export const getAccount = async (
       taker: feesResult.userCrossRate ?? '0',
     },
     config,
+    crossMarginHealth: buildHyperliquidCrossMarginHealth(
+      params.address,
+      abstractionResult,
+      stateByDex,
+      spotState,
+      quoteAssetByCategory
+    ),
   }
 }

@@ -82,6 +82,8 @@ export {
   PerpsExecutionError,
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
+export type { CrossMarginHealthInput } from './math/crossMargin.js'
+export { buildCrossMarginHealth } from './math/crossMargin.js'
 export {
   buildFill,
   calculateAverageFillPrice,

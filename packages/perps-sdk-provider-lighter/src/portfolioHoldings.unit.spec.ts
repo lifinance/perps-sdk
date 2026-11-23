@@ -4,6 +4,10 @@ import {
 } from '@lifi/perps-sdk'
 import type { AccountSummary } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  LIGHTER_ASSET_DETAILS_RESPONSE,
+  LIGHTER_RH_ASSET_DETAILS_RESPONSE,
+} from '../test/assetDetails.js'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider, lighterRhProvider } from './LighterProvider.js'
 import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
@@ -211,6 +215,13 @@ async function setup(
       }
       if (url.includes('/api/v1/apikeys')) {
         return respond({ code: 200, api_keys: [] })
+      }
+      if (url.includes('/api/v1/assetDetails')) {
+        return respond(
+          url.includes('api.rh.lighter.xyz')
+            ? LIGHTER_RH_ASSET_DETAILS_RESPONSE
+            : LIGHTER_ASSET_DETAILS_RESPONSE
+        )
       }
       throw new Error(`Unexpected request: ${url}`)
     })

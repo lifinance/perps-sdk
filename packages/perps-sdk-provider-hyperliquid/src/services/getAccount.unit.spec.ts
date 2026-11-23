@@ -1,5 +1,10 @@
 import { createPerpsClient, PerpsError } from '@lifi/perps-sdk'
-import { type Market, PerpsErrorCode } from '@lifi/perps-types'
+import {
+  AccountMode,
+  CrossMarginHealthStatus,
+  type Market,
+  PerpsErrorCode,
+} from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_CLEARINGHOUSE_STATE,
@@ -386,6 +391,67 @@ describe('getAccount', () => {
     )
     expect(venue?.valueUsd).toBe('1200')
     expect(result.marginUsed).toBe('300')
+  })
+
+  it('reports standard cross-margin health per dex from the cross-only summary', async () => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        ...defaultResponses(),
+        clearinghouseState: (body: { dex?: string }) =>
+          body.dex === 'xyz'
+            ? {
+                ...HL_CLEARINGHOUSE_STATE,
+                crossMaintenanceMarginUsed: '0.0',
+                assetPositions: [],
+              }
+            : {
+                ...HL_CLEARINGHOUSE_STATE,
+                marginSummary: { accountValue: '1200', totalMarginUsed: '300' },
+                crossMarginSummary: {
+                  accountValue: '1000',
+                  totalMarginUsed: '100',
+                },
+              },
+      },
+      [...HL_MARKETS, XYZ_MARKET]
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.STANDARD,
+        pool: { type: 'dex', categoryId: 'hyperliquid' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.MEASURED,
+        ratio: '0.47',
+      },
+      {
+        mode: AccountMode.STANDARD,
+        pool: { type: 'dex', categoryId: 'xyz' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.NO_EXPOSURE,
+      },
+    ])
+  })
+
+  it('reports the unified account ratio against the spot collateral total', async () => {
+    ;({ restore } = installInfoFetchMock(
+      unifiedResponses(HlAbstractionMode.UNIFIED_ACCOUNT),
+      HL_MARKETS
+    ))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.UNIFIED,
+        pool: { type: 'collateralAsset', assetId: '0' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.MEASURED,
+        ratio: '0.047',
+      },
+    ])
   })
 
   it('carries the positions array, deep-equal to getPositions output for identical fixtures', async () => {

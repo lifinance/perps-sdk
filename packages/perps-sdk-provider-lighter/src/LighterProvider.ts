@@ -128,6 +128,7 @@ import type {
   LtAccountLimits,
   LtAccountOrdersResponse,
   LtAccountPnL,
+  LtAssetDetailsResponse,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
   LtFastwithdrawInfoResponse,
@@ -162,6 +163,7 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
+import { buildLighterCrossMarginHealth } from './utils/crossMarginHealth.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   fetchDetailedAccount,
@@ -1159,25 +1161,42 @@ export const createLighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
-      const [{ providers }, , , { prices }, limitsResult, storedReadOnlyToken] =
-        await Promise.all([
-          getProviders(requireClient()),
-          registry.sync(),
-          assetRegistry.sync(),
-          getMarketsContext(requireClient(), { provider: providerKey }, opts),
-          token === undefined
-            ? Promise.resolve(undefined)
-            : retryWithStandardToken(
-                params.address,
-                localKey,
-                token,
-                (resolvedToken) =>
-                  fetchAccountLimits(client, account.index, resolvedToken)
-              ),
-          apiKeyRegistered
-            ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
-            : Promise.resolve(undefined),
-        ])
+      const [
+        { providers },
+        ,
+        ,
+        { prices },
+        limitsResult,
+        storedReadOnlyToken,
+        assetDetails,
+      ] = await Promise.all([
+        getProviders(requireClient()),
+        registry.sync(),
+        assetRegistry.sync(),
+        getMarketsContext(requireClient(), { provider: providerKey }, opts),
+        token === undefined
+          ? Promise.resolve(undefined)
+          : retryWithStandardToken(
+              params.address,
+              localKey,
+              token,
+              (resolvedToken) =>
+                fetchAccountLimits(client, account.index, resolvedToken)
+            ),
+        apiKeyRegistered
+          ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
+          : Promise.resolve(undefined),
+        client.get<LtAssetDetailsResponse>('/api/v1/assetDetails').then(
+          (response) => wireList(response.asset_details),
+          (err: unknown) => {
+            console.warn(
+              '[lighter] asset details read failed; cross-margin health is unavailable.',
+              err
+            )
+            return undefined
+          }
+        ),
+      ])
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
         toPerpsMarketDisplay(registry.require(String(id)))
       )
@@ -1376,6 +1395,13 @@ export const createLighterProvider = (
             ? ZERO_FEE_TIER
             : projectFeeTier(limitsResult),
         config,
+        crossMarginHealth: [
+          buildLighterCrossMarginHealth(
+            account,
+            assetDetails,
+            collateral.assetIndex
+          ),
+        ],
       }
     },
 

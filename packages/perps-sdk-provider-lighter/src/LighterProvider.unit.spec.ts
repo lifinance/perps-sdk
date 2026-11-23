@@ -16,9 +16,11 @@ import {
 } from '@lifi/perps-sdk'
 import {
   type AccountConfig,
+  AccountMode,
   ActionRelay,
   ActionType,
   ActivityType,
+  CrossMarginHealthStatus,
   type EvmTxActionStep,
   type LighterAccountConfig,
   type LiquidationActivity,
@@ -41,6 +43,10 @@ import { createWalletClient, custom } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum } from 'viem/chains'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  LIGHTER_ASSET_DETAILS_RESPONSE,
+  LIGHTER_RH_ASSET_DETAILS_RESPONSE,
+} from '../test/assetDetails.js'
 import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
@@ -69,6 +75,7 @@ import type {
 } from './types/index.js'
 import {
   LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_ACCOUNT_TRADING_MODE_UNIFIED,
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from './types/index.js'
@@ -443,6 +450,14 @@ const respond = (body: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
+/** Lighter `assetDetails` of the deployment that `url` addresses. */
+const respondAssetDetails = (url: string): Response =>
+  respond(
+    url.includes(LIGHTER_RH_REST_URL)
+      ? LIGHTER_RH_ASSET_DETAILS_RESPONSE
+      : LIGHTER_ASSET_DETAILS_RESPONSE
+  )
+
 /** Lighter's `tokens/create` success body for the seeded account. */
 const readOnlyTokenResponse = (apiToken: string) => ({
   api_token: apiToken,
@@ -489,6 +504,9 @@ beforeEach(() => {
     }
     if (u.includes('/api/v1/apikeys')) {
       return respond(APIKEYS_MATCHING_STORED_KEY)
+    }
+    if (u.includes('/api/v1/assetDetails')) {
+      return respondAssetDetails(u)
     }
     if (u.includes('/api/v1/accountLimits')) {
       return respond({
@@ -1139,6 +1157,9 @@ const stubAccount = (assets: unknown[]) => {
       if (u.includes('/api/v1/apikeys')) {
         return respond(APIKEYS_EMPTY)
       }
+      if (u.includes('/api/v1/assetDetails')) {
+        return respondAssetDetails(u)
+      }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
   )
@@ -1272,6 +1293,9 @@ describe('LighterProvider — getWithdrawableBalances', () => {
             accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], assets: LIVE_ASSETS }],
           })
         }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
+        }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
     )
@@ -1328,6 +1352,9 @@ describe('LighterProvider — getWithdrawableBalances', () => {
             ...ACCOUNT_PAYLOAD,
             accounts: [{ ...ACCOUNT_PAYLOAD.accounts[0], ...fields }],
           })
+        }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -1709,6 +1736,9 @@ describe('LighterProvider — getAccount balance asset identity', () => {
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -2408,6 +2438,131 @@ describe('LighterProvider — deployment-aware collateral display', () => {
   })
 })
 
+describe('LighterProvider — getAccount cross-margin health', () => {
+  const accountPayload = (account: Record<string, unknown>) => ({
+    ...ACCOUNT_PAYLOAD,
+    accounts: [{ ...SIMPLE_ACCOUNT, ...account }],
+  })
+
+  const stubFetch = (
+    account: Record<string, unknown>,
+    assetDetails: () => Response = () => respond(LIGHTER_ASSET_DETAILS_RESPONSE)
+  ) => {
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        return respond(accountPayload(account))
+      }
+      if (url.includes('/api/v1/assetDetails')) {
+        return url.includes(LIGHTER_RH_REST_URL)
+          ? respond(LIGHTER_RH_ASSET_DETAILS_RESPONSE)
+          : assetDetails()
+      }
+      return undefined
+    })
+  }
+
+  const accountFrom = (provider: LighterPerpsProvider) => {
+    provider.bind(STUB_CLIENT)
+    return provider.getAccount({ address: ADDRESS })
+  }
+
+  const usdc = (marginBalance: string) => ({
+    symbol: 'USDC',
+    asset_id: 3,
+    balance: '25',
+    locked_balance: '0',
+    margin_balance: marginBalance,
+    margin_mode: 'disabled',
+    multiplier: '1',
+  })
+
+  it('reports the simple account ratio from the venue maintenance margin and the mainnet asset details', async () => {
+    stubFetch({
+      assets: [usdc('500')],
+      cross_maintenance_margin_requirement: '100',
+    })
+
+    const account = await accountFrom(lighterProvider())
+
+    expect(account.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.SIMPLE,
+        pool: { type: 'account', accountId: '42' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.MEASURED,
+        ratio: '0.2',
+      },
+    ])
+    expect(
+      recorded.filter((r) => r.url.includes('/api/v1/assetDetails'))
+    ).toEqual([
+      expect.objectContaining({
+        url: expect.stringContaining(DEFAULT_LIGHTER_REST_URL),
+      }),
+    ])
+  })
+
+  it('values unified margin assets with the asset details of the RH deployment', async () => {
+    stubFetch({
+      account_trading_mode: LT_ACCOUNT_TRADING_MODE_UNIFIED,
+      assets: [
+        { ...usdc('10'), symbol: 'USDG', margin_mode: 'enabled' },
+        {
+          symbol: 'AAPL',
+          asset_id: 4,
+          balance: '0',
+          locked_balance: '0',
+          margin_balance: '2',
+          margin_mode: 'enabled',
+          multiplier: '1.001090616965388660',
+        },
+      ],
+      cross_maintenance_margin_requirement: '5',
+    })
+
+    const account = await accountFrom(lighterRhProvider())
+
+    // 5 ÷ (10 × 1 × 1 + 2 × 348.49466 × 0.75)
+    expect(account.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.UNIFIED,
+        pool: { type: 'account', accountId: '42' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.MEASURED,
+        ratio: '0.0093854062451506779107087091070106938633',
+      },
+    ])
+  })
+
+  it('keeps the account read and reports unavailable health when the asset details read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFetch(
+      {
+        assets: [usdc('500')],
+        cross_maintenance_margin_requirement: '100',
+      },
+      () => respond({ code: 29500, message: 'internal server error' }, 400)
+    )
+
+    const account = await accountFrom(lighterProvider())
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.SIMPLE,
+        pool: { type: 'account', accountId: '42' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.UNAVAILABLE,
+      },
+    ])
+    expect(warn).toHaveBeenCalledWith(
+      '[lighter] asset details read failed; cross-margin health is unavailable.',
+      expect.anything()
+    )
+    warn.mockRestore()
+  })
+})
+
 describe('LighterProvider — getAccount balance categoryId', () => {
   // The null-quote category id differs from SPOT_CATEGORY_ID, so the
   // spot assertion fails if getAccount reads the spot id from /providers.
@@ -2479,6 +2634,9 @@ describe('LighterProvider — getAccount balance categoryId', () => {
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })
@@ -3920,6 +4078,9 @@ describe('LighterProvider — getAccount carries positions', () => {
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
         }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
+        }
         throw new Error(`Unhandled URL in test: ${u}`)
       }
     )
@@ -4221,6 +4382,9 @@ describe('LighterProvider — getAccount margin and PnL totals', () => {
       }
       if (u.includes('/api/v1/apikeys')) {
         return respond(APIKEYS_EMPTY)
+      }
+      if (u.includes('/api/v1/assetDetails')) {
+        return respondAssetDetails(u)
       }
       throw new Error(`Unhandled URL in test: ${u}`)
     })
@@ -6735,6 +6899,9 @@ describe('LighterProvider — getAvailableToTrade', () => {
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond(APIKEYS_EMPTY)
+        }
+        if (u.includes('/api/v1/assetDetails')) {
+          return respondAssetDetails(u)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       }
