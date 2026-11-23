@@ -7,10 +7,6 @@ import {
   SigningMethod,
 } from '@lifi/perps-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  LIGHTER_ASSET_DETAILS_RESPONSE,
-  LIGHTER_RH_ASSET_DETAILS_RESPONSE,
-} from '../test/assetDetails.js'
 import { getAccountSummary } from './accountSummary.js'
 import { lighterProvider } from './LighterProvider.js'
 
@@ -231,13 +227,6 @@ function setup(live: LiveAccount) {
       }
       if (url.includes('/api/v1/apikeys')) {
         return respond({ code: 0, api_keys: [] })
-      }
-      if (url.includes('/api/v1/assetDetails')) {
-        return respond(
-          url.includes('api.rh.lighter.xyz')
-            ? LIGHTER_RH_ASSET_DETAILS_RESPONSE
-            : LIGHTER_ASSET_DETAILS_RESPONSE
-        )
       }
       throw new Error(`Unexpected request: ${url}`)
     })

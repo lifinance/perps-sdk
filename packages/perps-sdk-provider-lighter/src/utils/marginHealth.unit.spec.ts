@@ -1,4 +1,3 @@
-import { AccountMode, CrossMarginHealthStatus } from '@lifi/perps-types'
 import { describe, expect, it } from 'vitest'
 import { LIGHTER_ASSET_DETAILS_RESPONSE } from '../../test/assetDetails.js'
 import type {
@@ -12,7 +11,7 @@ import {
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from '../types/index.js'
-import { buildLighterCrossMarginHealth } from './crossMarginHealth.js'
+import { calculateMarginHealth } from './marginHealth.js'
 
 const USDC = 3
 const ETH = 1
@@ -81,49 +80,32 @@ const account = (overrides: Partial<LtAccount> = {}): LtAccount => ({
   ...overrides,
 })
 
-describe('buildLighterCrossMarginHealth', () => {
-  it('divides the venue maintenance margin by cross liquidation equity, without spot or isolated amounts', () => {
-    expect(
-      buildLighterCrossMarginHealth(account(), ASSET_DETAILS, USDC)
-    ).toEqual({
-      mode: AccountMode.SIMPLE,
-      pool: { type: 'account', accountId: '7684' },
-      liquidationThreshold: '1',
-      status: CrossMarginHealthStatus.MEASURED,
+describe('calculateMarginHealth', () => {
+  it('divides the venue maintenance margin by cross liquidation value, without spot or isolated amounts', () => {
+    expect(calculateMarginHealth(account(), ASSET_DETAILS, USDC)).toEqual({
       ratio: '0.2',
+      liquidationThreshold: '1',
     })
   })
 
   it('uses the maintenance margin requirement, not the initial one', () => {
     expect(
-      buildLighterCrossMarginHealth(
+      calculateMarginHealth(
         account({ cross_initial_margin_requirement: '950' }),
         ASSET_DETAILS,
         USDC
-      )
-    ).toMatchObject({ ratio: '0.2' })
+      )?.ratio
+    ).toBe('0.2')
   })
 
-  it('identifies each subaccount by its own index and reads only its own figures', () => {
-    const main = buildLighterCrossMarginHealth(account(), ASSET_DETAILS, USDC)
-    const sub = buildLighterCrossMarginHealth(
-      account({
-        index: 281474976710600,
-        account_type: 1,
-        cross_maintenance_margin_requirement: '95',
-      }),
-      ASSET_DETAILS,
-      USDC
-    )
+  it('reads only the figures of the given subaccount', () => {
+    const sub = account({
+      index: 281474976710600,
+      account_type: 1,
+      cross_maintenance_margin_requirement: '95',
+    })
 
-    expect(main).toMatchObject({
-      pool: { type: 'account', accountId: '7684' },
-      ratio: '0.2',
-    })
-    expect(sub).toMatchObject({
-      pool: { type: 'account', accountId: '281474976710600' },
-      ratio: '0.1',
-    })
+    expect(calculateMarginHealth(sub, ASSET_DETAILS, USDC)?.ratio).toBe('0.1')
   })
 
   it('weights unified margin assets by index price and liquidation threshold', () => {
@@ -140,52 +122,46 @@ describe('buildLighterCrossMarginHealth', () => {
       cross_maintenance_margin_requirement: '0.403158',
     })
 
-    expect(buildLighterCrossMarginHealth(unified, ASSET_DETAILS, USDC)).toEqual(
-      {
-        mode: AccountMode.UNIFIED,
-        pool: { type: 'account', accountId: '5' },
-        liquidationThreshold: '1',
-        status: CrossMarginHealthStatus.MEASURED,
-        ratio: '0.2946736631505017062445409501430297194743',
-      }
+    expect(calculateMarginHealth(unified, ASSET_DETAILS, USDC)?.ratio).toBe(
+      '0.2946736631505017062445409501430297194743'
     )
   })
 
-  it('gives a ratio equal to the threshold when liquidation equity equals the maintenance margin', () => {
+  it('gives a ratio equal to the threshold when the liquidation value equals the maintenance margin', () => {
     expect(
-      buildLighterCrossMarginHealth(
+      calculateMarginHealth(
         account({ cross_maintenance_margin_requirement: '950' }),
         ASSET_DETAILS,
         USDC
-      )
-    ).toMatchObject({ status: CrossMarginHealthStatus.MEASURED, ratio: '1' })
+      )?.ratio
+    ).toBe('1')
   })
 
-  it('reports no exposure without a maintenance margin requirement', () => {
+  it('gives a zero ratio without a maintenance margin requirement', () => {
     expect(
-      buildLighterCrossMarginHealth(
+      calculateMarginHealth(
         account({ cross_maintenance_margin_requirement: '0.000000' }),
         ASSET_DETAILS,
         USDC
       )
-    ).toMatchObject({ status: CrossMarginHealthStatus.NO_EXPOSURE })
+    ).toEqual({ ratio: '0', liquidationThreshold: '1' })
   })
 
-  it('reports non-positive equity when cross losses consume the collateral', () => {
+  it('gives no health when cross losses consume the collateral', () => {
     for (const pnl of ['-1000', '-1000.005', '-1500']) {
       expect(
-        buildLighterCrossMarginHealth(
+        calculateMarginHealth(
           account({ positions: [position(0, pnl)] }),
           ASSET_DETAILS,
           USDC
         )
-      ).toMatchObject({ status: CrossMarginHealthStatus.NON_POSITIVE_EQUITY })
+      ).toBeUndefined()
     }
   })
 
   it('ignores a zero margin row that has no asset detail', () => {
     expect(
-      buildLighterCrossMarginHealth(
+      calculateMarginHealth(
         account({
           assets: [
             asset(USDC, 'USDC', '1000'),
@@ -194,12 +170,11 @@ describe('buildLighterCrossMarginHealth', () => {
         }),
         ASSET_DETAILS,
         USDC
-      )
-    ).toMatchObject({ ratio: '0.2' })
+      )?.ratio
+    ).toBe('0.2')
   })
 
   it.each([
-    ['no asset details', account(), undefined],
     [
       'a margin asset without an asset detail',
       account({
@@ -209,7 +184,6 @@ describe('buildLighterCrossMarginHealth', () => {
           asset(99, 'XAUT', '2', { margin_mode: 'enabled' }),
         ],
       }),
-      ASSET_DETAILS,
     ],
     [
       'a non-settlement margin balance that the account has not enabled',
@@ -217,22 +191,8 @@ describe('buildLighterCrossMarginHealth', () => {
         account_trading_mode: LT_ACCOUNT_TRADING_MODE_UNIFIED,
         assets: [asset(USDC, 'USDC', '1000'), asset(ETH, 'ETH', '456')],
       }),
-      ASSET_DETAILS,
     ],
-    [
-      'a malformed index price',
-      account(),
-      [{ ...ASSET_DETAILS[1], index_price: 'n/a' }],
-    ],
-    [
-      'a malformed cross unrealized PnL',
-      account({ positions: [position(0, '')] }),
-      ASSET_DETAILS,
-    ],
-  ])('reports unavailable for %s', (_, input, details) => {
-    expect(buildLighterCrossMarginHealth(input, details, USDC)).toMatchObject({
-      status: CrossMarginHealthStatus.UNAVAILABLE,
-      liquidationThreshold: '1',
-    })
+  ])('gives no health for %s', (_, input) => {
+    expect(calculateMarginHealth(input, ASSET_DETAILS, USDC)).toBeUndefined()
   })
 })

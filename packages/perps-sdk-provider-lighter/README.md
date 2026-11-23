@@ -222,30 +222,6 @@ The maker fill of a forced trade carries no `liquidation`. A `trade` row and a
 `market-settlement` row also carry none. Lighter reports no mark price on a
 trade, so `markPrice` stays absent.
 
-## Cross-margin health
-
-`getAccount` sets one `crossMarginHealth` entry for the account that the read selects, on mainnet and on Robinhood chain.
-The `pool` is the account index, so each subaccount has its own entry.
-
-The `ratio` is the venue `cross_maintenance_margin_requirement` divided by the total account liquidation value.
-Lighter's client calculates its maintenance margin usage with the same division and multiplies it by 100. The SDK keeps the fraction.
-The threshold is `1`: Lighter starts a partial liquidation when the maintenance margin requirement is more than the liquidation value.
-
-The provider calculates the liquidation value in simple mode and in unified mode with the same steps:
-
-1. Multiply each margin balance by the index price and the liquidation threshold from `/api/v1/assetDetails` of the same deployment.
-2. Add the venue `unrealized_pnl` of each cross position.
-
-Spot balances and isolated positions do not count.
-The settlement asset always counts.
-
-The entry is `UNAVAILABLE` in these conditions:
-
-- The `assetDetails` read fails.
-- A margin asset has no asset details.
-- Another asset holds a margin balance without an enabled `margin_mode`.
-- An input is not a decimal.
-
 ## Market TP/SL slippage
 
 A Lighter market TP/SL order needs a slippage-adjusted limit price: the lowest fill for a sell, or the highest fill for a buy.

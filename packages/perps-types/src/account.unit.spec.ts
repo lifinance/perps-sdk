@@ -1,9 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   AccountConfig,
-  AccountResponse,
   ActivityItem,
-  CrossMarginHealth,
   DepositActivity,
   Fee,
   FeeActivity,
@@ -26,9 +24,7 @@ import type {
 } from './account.js'
 import type { Asset } from './asset.js'
 import {
-  AccountMode,
   ActivityType,
-  CrossMarginHealthStatus,
   FillClassification,
   LiquidationMethod,
   LiquidityRole,
@@ -764,40 +760,5 @@ describe('Fill liquidation', () => {
 
   it('omits liquidation on an ordinary fill', () => {
     expect(BASE_FILL.liquidation).toBeUndefined()
-  })
-})
-
-describe('CrossMarginHealth', () => {
-  it('carries a ratio only on a measured entry', () => {
-    const entries: CrossMarginHealth[] = [
-      {
-        mode: AccountMode.STANDARD,
-        pool: { type: 'dex', categoryId: 'xyz' },
-        liquidationThreshold: '1',
-        status: CrossMarginHealthStatus.MEASURED,
-        ratio: '0.25',
-      },
-      {
-        mode: AccountMode.PORTFOLIO_MARGIN,
-        pool: { type: 'account', accountId: '0xabc' },
-        liquidationThreshold: '0.95',
-        status: CrossMarginHealthStatus.UNAVAILABLE,
-      },
-    ]
-
-    const ratios = entries.flatMap((entry) =>
-      entry.status === CrossMarginHealthStatus.MEASURED ? [entry.ratio] : []
-    )
-
-    expect(ratios).toEqual(['0.25'])
-    expectTypeOf<
-      Exclude<CrossMarginHealth, { status: CrossMarginHealthStatus.MEASURED }>
-    >().not.toHaveProperty('ratio')
-  })
-
-  it('keeps the health optional on an account response', () => {
-    expectTypeOf<AccountResponse['crossMarginHealth']>().toEqualTypeOf<
-      CrossMarginHealth[] | undefined
-    >()
   })
 })

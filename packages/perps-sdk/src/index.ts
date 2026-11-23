@@ -82,8 +82,6 @@ export {
   PerpsExecutionError,
   rethrowWithKnownResults,
 } from './errors/PerpsExecutionError.js'
-export type { CrossMarginHealthInput } from './math/crossMargin.js'
-export { buildCrossMarginHealth } from './math/crossMargin.js'
 export {
   buildFill,
   calculateAverageFillPrice,
@@ -268,6 +266,7 @@ export type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
@@ -311,6 +310,7 @@ export type {
   ProviderGetAvailableToTradeParams,
   ProviderGetDepositFlowParams,
   ProviderGetFillsParams,
+  ProviderGetMarginHealthParams,
   ProviderGetMarketSettingsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,

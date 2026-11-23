@@ -274,6 +274,18 @@ export interface GetDepositFlowParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getMarginHealth}.
+ *
+ * @public
+ */
+export interface GetMarginHealthParams {
+  provider: string
+  address: Address
+  /** The `Balance.categoryId` of the cross pool, for a venue with one cross pool per category. */
+  categoryId?: string
+}
+
+/**
  * Parameters for {@link PerpsClient.getWithdrawFlow}.
  *
  * @public

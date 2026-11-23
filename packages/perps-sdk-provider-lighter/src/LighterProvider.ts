@@ -27,6 +27,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -69,6 +70,7 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   LiquidationActivity,
+  MarginHealth,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -163,7 +165,6 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
-import { buildLighterCrossMarginHealth } from './utils/crossMarginHealth.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   fetchDetailedAccount,
@@ -184,6 +185,7 @@ import {
   toIsoFromSeconds,
 } from './utils/index.js'
 import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
+import { calculateMarginHealth } from './utils/marginHealth.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -1161,42 +1163,25 @@ export const createLighterProvider = (
 
       const registry = getMarketRegistry(requireClient(), providerKey)
       const assetRegistry = getAssetRegistry(requireClient(), providerKey)
-      const [
-        { providers },
-        ,
-        ,
-        { prices },
-        limitsResult,
-        storedReadOnlyToken,
-        assetDetails,
-      ] = await Promise.all([
-        getProviders(requireClient()),
-        registry.sync(),
-        assetRegistry.sync(),
-        getMarketsContext(requireClient(), { provider: providerKey }, opts),
-        token === undefined
-          ? Promise.resolve(undefined)
-          : retryWithStandardToken(
-              params.address,
-              localKey,
-              token,
-              (resolvedToken) =>
-                fetchAccountLimits(client, account.index, resolvedToken)
-            ),
-        apiKeyRegistered
-          ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
-          : Promise.resolve(undefined),
-        client.get<LtAssetDetailsResponse>('/api/v1/assetDetails').then(
-          (response) => wireList(response.asset_details),
-          (err: unknown) => {
-            console.warn(
-              '[lighter] asset details read failed; cross-margin health is unavailable.',
-              err
-            )
-            return undefined
-          }
-        ),
-      ])
+      const [{ providers }, , , { prices }, limitsResult, storedReadOnlyToken] =
+        await Promise.all([
+          getProviders(requireClient()),
+          registry.sync(),
+          assetRegistry.sync(),
+          getMarketsContext(requireClient(), { provider: providerKey }, opts),
+          token === undefined
+            ? Promise.resolve(undefined)
+            : retryWithStandardToken(
+                params.address,
+                localKey,
+                token,
+                (resolvedToken) =>
+                  fetchAccountLimits(client, account.index, resolvedToken)
+              ),
+          apiKeyRegistered
+            ? readOnlyTokenManager.get(params.address, localKey.accountIndex)
+            : Promise.resolve(undefined),
+        ])
       const positions: Position[] = mapOpenPositions(account.positions, (id) =>
         toPerpsMarketDisplay(registry.require(String(id)))
       )
@@ -1395,13 +1380,6 @@ export const createLighterProvider = (
             ? ZERO_FEE_TIER
             : projectFeeTier(limitsResult),
         config,
-        crossMarginHealth: [
-          buildLighterCrossMarginHealth(
-            account,
-            assetDetails,
-            collateral.assetIndex
-          ),
-        ],
       }
     },
 
@@ -1521,6 +1499,20 @@ export const createLighterProvider = (
         ),
         account.positions
       )
+    },
+
+    async getMarginHealth(
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth | undefined> {
+      const client = apiClient(opts)
+      const [account, assetDetails] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        client
+          .get<LtAssetDetailsResponse>('/api/v1/assetDetails')
+          .then((response) => wireList(response.asset_details)),
+      ])
+      return calculateMarginHealth(account, assetDetails, collateral.assetIndex)
     },
 
     /**

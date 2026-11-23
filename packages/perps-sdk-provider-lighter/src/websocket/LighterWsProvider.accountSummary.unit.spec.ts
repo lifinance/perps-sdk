@@ -1,7 +1,6 @@
 import type { PerpsSDKClient } from '@lifi/perps-sdk'
 import type { AccountSummary } from '@lifi/perps-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LIGHTER_ASSET_DETAILS_RESPONSE } from '../../test/assetDetails.js'
 import { getAccountSummary } from '../accountSummary.js'
 import { lighterProvider } from '../LighterProvider.js'
 import { LighterWsProvider } from './LighterWsProvider.js'
@@ -141,9 +140,6 @@ const stubFetch = (totalAssetValue: string, providersSpotCategoryId = 'spot') =>
       }
       if (u.includes('/api/v1/account?')) {
         return respond(accountPayload(totalAssetValue))
-      }
-      if (u.includes('/api/v1/assetDetails')) {
-        return respond(LIGHTER_ASSET_DETAILS_RESPONSE)
       }
       throw new Error(`Unhandled URL in test: ${u}`)
     })

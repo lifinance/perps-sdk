@@ -12,6 +12,7 @@ import type {
   AvailableToTrade,
   DecimalString,
   FillsResponse,
+  MarginHealth,
   MarginMode,
   Market,
   MarketRef,
@@ -266,6 +267,20 @@ export interface ProviderGetMarketSettingsParams {
   /** The market's `id` and `categoryId`; the category identifies spot
    * markets, which carry no venue leverage state. */
   market: MarketRef
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getMarginHealth}.
+ *
+ * @public
+ */
+export interface ProviderGetMarginHealthParams {
+  address: Address
+  /**
+   * The `Balance.categoryId` of the cross pool, for a venue with one cross pool
+   * per category. A venue with one cross pool ignores it.
+   */
+  categoryId?: string
 }
 
 /**
@@ -550,6 +565,16 @@ export interface PerpsProviderPlugin {
     params: ProviderGetAvailableToTradeParams,
     options?: SDKRequestOptions
   ): Promise<AvailableToTrade | undefined>
+
+  /**
+   * Current cross-margin health of the account. Optional because each venue
+   * calculates it differently. `undefined` means the venue gives no health for
+   * the account in its current mode.
+   */
+  getMarginHealth?(
+    params: ProviderGetMarginHealthParams,
+    options?: SDKRequestOptions
+  ): Promise<MarginHealth | undefined>
 
   getOrders(
     params: ProviderGetOrdersParams,

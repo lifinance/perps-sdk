@@ -3,6 +3,7 @@
 "@lifi/perps-sdk": minor
 "@lifi/perps-sdk-provider-hyperliquid": minor
 "@lifi/perps-sdk-provider-lighter": minor
+"@lifi/perps-sdk-provider-ondo": minor
 ---
 
-Add `AccountResponse.crossMarginHealth`. Hyperliquid, Lighter, and Lighter RH report the current maintenance margin ratio of each cross collateral pool, with the account mode, the pool, and the venue liquidation threshold.
+Add `getMarginHealth` to the client and to the Hyperliquid, Lighter, Lighter RH, and Ondo providers. It gives the current cross-margin ratio and the venue liquidation threshold as a `MarginHealth`.

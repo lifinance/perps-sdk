@@ -320,33 +320,6 @@ with a backstop takeover.
 - A fill of the liquidated account has no `type`. A backstop takeover fills
   that account as the maker, but no resting limit order exists.
 
-## Cross-margin health
-
-`getAccount` sets `crossMarginHealth` from the account abstraction mode.
-The `ratio` is maintenance margin divided by equity, as a fraction.
-A `ratio` above `liquidationThreshold` is liquidatable.
-
-| Mode | Entries | Ratio |
-| --- | --- | --- |
-| Standard (`default`, `disabled`, or no mode) | One entry for each dex | `crossMaintenanceMarginUsed` ÷ `crossMarginSummary.accountValue` of that dex. Threshold `1`. |
-| Unified account | One entry: the collateral token with the largest ratio | The `computeUnifiedAccountRatio` calculation of the Hyperliquid docs. Threshold `1`. |
-| Portfolio margin | One `UNAVAILABLE` entry for the account | Threshold `0.95`. |
-| DEX abstraction | One `UNAVAILABLE` entry for the account | Threshold `1`. |
-
-Hyperliquid publishes no standard-mode ratio. The provider divides the two venue figures that the official liquidation-price example reads.
-The figures exclude spot and isolated collateral, and the provider does not combine dexes.
-
-For a unified account, the provider groups the dexes by collateral token.
-The ratio of a token is its cross maintenance margin divided by its spot total minus its isolated margin.
-Exposure with an available balance of zero or less gives `NON_POSITIVE_EQUITY`, not a skipped token.
-That token outranks every ratio. A token without a usable input gives `UNAVAILABLE`, because the largest ratio is then not known.
-
-The account read does not carry the portfolio margin inputs: borrow caps, borrowed amounts, and borrow oracle prices.
-Thus portfolio margin is `UNAVAILABLE`.
-
-The provider does not set `crossMarginHealth` for a venue mode that is not in this table.
-The provider knows no formula for such a mode, and it does not use the standard formula.
-
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API

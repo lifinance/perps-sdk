@@ -1,7 +1,6 @@
 import { isDecimalString, type PerpsSDKClient } from '@lifi/perps-sdk'
 import { PositionMarginAdjustment } from '@lifi/perps-types'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { LIGHTER_ASSET_DETAILS_RESPONSE } from '../test/assetDetails.js'
 import { lighterProvider } from './LighterProvider.js'
 import { storageWithReadOnlyToken } from './readOnlyTokenStorage.mock.js'
 import type { LtWsMarketStats } from './types/index.js'
@@ -418,9 +417,6 @@ describe('lighter emits a DecimalString on every typed field', () => {
         }
         if (u.includes('/api/v1/apikeys')) {
           return respond({ code: 200, api_keys: [] })
-        }
-        if (u.includes('/api/v1/assetDetails')) {
-          return respond(LIGHTER_ASSET_DETAILS_RESPONSE)
         }
         throw new Error(`Unhandled URL in test: ${u}`)
       })

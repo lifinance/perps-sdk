@@ -358,34 +358,36 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
-### Cross-margin health
+### Margin health
 
-`AccountResponse.crossMarginHealth` tells how close each cross collateral pool is to its maintenance margin boundary.
-It describes the current account. It does not estimate the effect of an order or of a leverage change.
-Hyperliquid, Lighter, and Lighter RH set it. Ondo leaves it absent.
+`getMarginHealth()` reads the current cross-margin health of an account as a
+`MarginHealth`. `ratio` is maintenance margin divided by equity, as a fraction.
+A higher ratio means a greater liquidation risk. The venue liquidates when
+`ratio` exceeds `liquidationThreshold`. The read gives `undefined` when the
+provider or the account mode has no health.
 
-Each `CrossMarginHealth` entry has these fields:
+Each provider calculates the ratio with its own venue formula:
 
-- `mode`: the venue `AccountMode` that selects the formula.
-- `pool`: the collateral pool. The pool is an account, a Hyperliquid dex, or a Hyperliquid collateral asset.
-- `liquidationThreshold`: the venue boundary. A `ratio` above it is liquidatable. A `ratio` equal to it is not.
-- `status`: a `CrossMarginHealthStatus`.
+- Hyperliquid Standard: the cross maintenance margin of one dex divided by the
+  cross account value of that dex. `categoryId` selects the dex. The default is
+  the main dex.
+- Hyperliquid Unified: the largest ratio over the collateral tokens, from the
+  venue `computeUnifiedAccountRatio`. `categoryId` has no effect.
+- Hyperliquid Portfolio Margin and DEX abstraction: `undefined`.
+- Lighter and Lighter RH: the venue `cross_maintenance_margin_requirement`
+  divided by the total account liquidation value.
+- Ondo: the venue `marginRatio` from `/v1/perps/balance`. It needs a session.
+  Ondo gives `9999` when the margin balance is zero or below.
 
-Only a `MEASURED` entry has a `ratio`: maintenance margin divided by equity, as a fraction. A higher ratio means a greater liquidation risk.
-`NO_EXPOSURE` means that the pool has no maintenance margin.
-`NON_POSITIVE_EQUITY` means that the pool has maintenance margin and its equity is zero or less.
-`UNAVAILABLE` means that the account read lacks an input of the venue formula for that mode.
-The provider READMEs give the formula for each venue and mode.
+Hyperliquid and Lighter give `undefined` when the account has maintenance
+margin but no positive equity.
 
 ```ts
-import { CrossMarginHealthStatus, isDecimalStringGreaterThan } from '@lifi/perps-sdk'
-
-for (const health of account.crossMarginHealth ?? []) {
-  if (health.status === CrossMarginHealthStatus.MEASURED) {
-    const atRisk = isDecimalStringGreaterThan(health.ratio, health.liquidationThreshold)
-    console.log(health.pool, health.ratio, atRisk)
-  }
-}
+const health = await client.getMarginHealth({
+  provider: 'hyperliquid',
+  address: '0xUser',
+})
+console.log(health?.ratio, health?.liquidationThreshold)
 ```
 
 ### Leverage confirmation

@@ -1,10 +1,8 @@
 import type { Asset, AssetDisplay } from './asset.js'
 import type { DecimalString } from './decimal.js'
 import type {
-  AccountMode,
   ActionType,
   ActivityType,
-  CrossMarginHealthStatus,
   FillClassification,
   LiquidationMethod,
   LiquidityRole,
@@ -196,49 +194,6 @@ export interface Balance {
 }
 
 /**
- * Collateral pool that one {@link CrossMarginHealth} entry measures.
- * `accountId` is the Lighter account index or the Hyperliquid address,
- * `categoryId` equals the dex's `Balance.categoryId`, and `assetId` equals
- * the collateral `Asset.id`.
- *
- * @public
- */
-export type CrossMarginPool =
-  | { type: 'account'; accountId: string }
-  | { type: 'dex'; categoryId: string }
-  | { type: 'collateralAsset'; assetId: string }
-
-/** Shared identity of a {@link CrossMarginHealth} entry. @public */
-export interface CrossMarginHealthBase {
-  mode: AccountMode
-  pool: CrossMarginPool
-  /**
-   * The venue liquidation boundary on the `ratio` scale. A `ratio` above it is
-   * liquidatable; a `ratio` equal to it is not.
-   */
-  liquidationThreshold: DecimalString
-}
-
-/**
- * Current cross-margin health of one collateral pool. `ratio` is a unitless
- * fraction, maintenance margin divided by equity, so a higher ratio means a
- * greater liquidation risk.
- *
- * @public
- */
-export type CrossMarginHealth =
-  | (CrossMarginHealthBase & {
-      status: CrossMarginHealthStatus.MEASURED
-      ratio: DecimalString
-    })
-  | (CrossMarginHealthBase & {
-      status:
-        | CrossMarginHealthStatus.NO_EXPOSURE
-        | CrossMarginHealthStatus.NON_POSITIVE_EQUITY
-        | CrossMarginHealthStatus.UNAVAILABLE
-    })
-
-/**
  * Account snapshot returned by a provider, including balances, positions,
  * aggregate margin/PnL, and provider-specific configuration.
  *
@@ -264,11 +219,6 @@ export interface AccountResponse {
   unrealizedPnl?: DecimalString
   feeTier: FeeTier
   config: AccountConfig
-  /**
-   * Current cross-margin health, one entry per collateral pool. Absent when
-   * the provider does not calculate it.
-   */
-  crossMarginHealth?: CrossMarginHealth[]
 }
 
 /**
@@ -305,6 +255,18 @@ export interface AvailableToTrade {
   buy: DecimalString
   /** Amount the account can still sell, represented as a decimal string. */
   sell: DecimalString
+}
+
+/**
+ * Cross-margin health of one collateral pool. `ratio` is maintenance margin
+ * divided by equity, as a fraction: a higher ratio means a greater liquidation
+ * risk, and the venue liquidates when `ratio` exceeds `liquidationThreshold`.
+ *
+ * @public
+ */
+export interface MarginHealth {
+  ratio: DecimalString
+  liquidationThreshold: DecimalString
 }
 
 /**
