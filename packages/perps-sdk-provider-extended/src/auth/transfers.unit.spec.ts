@@ -1,4 +1,4 @@
-import { createMemoryStorage } from '@lifi/perps-sdk'
+import { createMemoryStorage, PerpsExecutionError } from '@lifi/perps-sdk'
 import {
   ActionType,
   type EvmTxActionStep,
@@ -167,10 +167,34 @@ describe('Extended withdrawal', () => {
     '0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd'
   const withdrawalRoutes = {
     'GET /api/v1/user/account/info': { bridgeStarknetAddress: BRIDGE_ADDRESS },
-    'GET /api/v1/user/bridge/quote': { id: '6afd8157fc04af19fd7f2b66' },
+    'GET /api/v1/user/bridge/quote': {
+      id: '6afd8157fc04af19fd7f2b66',
+      fee: '0.011',
+    },
     'POST /api/v1/user/bridge/quote': null,
     'POST /api/v1/user/withdrawal': 1234,
   }
+
+  it.each([
+    ['above the limit', { id: '6afd8157fc04af19fd7f2b66', fee: '2.01' }],
+    ['missing', { id: '6afd8157fc04af19fd7f2b66' }],
+    ['not a decimal', { id: '6afd8157fc04af19fd7f2b66', fee: '1e1' }],
+  ])('refuses a quote whose fee is %s before it commits the quote', async (_label, quote) => {
+    const { fetchImpl, calls } = venue({
+      ...withdrawalRoutes,
+      'GET /api/v1/user/bridge/quote': quote,
+    })
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.STARK,
+        [withdrawalStep()],
+        ADDRESS
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(calls.map(({ method }) => method)).toEqual(['GET', 'GET'])
+  })
 
   it.each([
     ['an empty string', ''],
@@ -571,6 +595,34 @@ describe('Extended deposit', () => {
         errorCode: PerpsErrorCode.ExchangeRejected,
       }),
     ])
+    expect(sent).toHaveLength(1)
+  })
+
+  it('refuses a quote with a fee above the limit, keeping the approval in the error', async () => {
+    const { fetchImpl, calls } = venue({
+      ...bridgeRoutes,
+      'GET /api/v1/user/bridge/quote': { id: QUOTE_ID, fee: '2.5' },
+    })
+    const { client, sent } = wallet()
+
+    const error = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client }
+    ).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      response: {
+        results: [
+          expect.objectContaining({ status: UserActionStatus.Accepted }),
+        ],
+      },
+    })
+    expect(calls.map(({ method }) => method)).toEqual(['GET', 'GET'])
     expect(sent).toHaveLength(1)
   })
 
