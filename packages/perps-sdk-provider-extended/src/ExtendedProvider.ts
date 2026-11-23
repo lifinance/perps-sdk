@@ -813,7 +813,8 @@ export const extendedProvider = (
 
     /**
      * The backend writes the Stark key and the position into each settlement
-     * it builds, so every action except the two setup steps sends them.
+     * it builds, so every action except the two setup steps sends them. A
+     * withdrawal also sends the venue account id.
      */
     async resolveActionRequest(
       action: ActionType,
@@ -836,6 +837,9 @@ export const extendedProvider = (
         params: {
           starkKey: credentials.starkPublicKey,
           positionId: credentials.positionId,
+          ...(action === ActionType.WITHDRAWAL
+            ? { accountId: credentials.accountId }
+            : {}),
         },
       }
     },

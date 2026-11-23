@@ -94,7 +94,10 @@ import type {
   WithdrawalSourceTypes,
   WithdrawFlow,
 } from '../types/withdrawal.js'
-import { isSubmittedOrAccepted } from '../utils/actionResult.js'
+import {
+  isSubmittedOrAccepted,
+  sentBeforeExecuteResults,
+} from '../utils/actionResult.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -415,14 +418,16 @@ export class PerpsClient {
    * Ask the provider plugin for the signer-bearing wire fields of `action` —
    * the on-wire `signerAddress` and any signer-derived params (e.g.
    * Hyperliquid's `agentAddress` for `APPROVE_AGENT`). Forwards the descriptor's
-   * `signer` so the plugin can branch on signer role. Returns empty when the
-   * plugin signs as the user or with a non-EVM credential. Core constructs no
-   * `signerAddress` itself; signer identity is plugin-owned.
+   * `signer` so the plugin can branch on signer role, and the caller's `params`
+   * so the plugin can contribute a venue encoding of a caller value. Returns
+   * empty when the plugin signs as the user or with a non-EVM credential. Core
+   * constructs no `signerAddress` itself; signer identity is plugin-owned.
    */
   private async resolveActionRequest(
     provider: string,
     descriptor: ProviderAction,
-    address: Address
+    address: Address,
+    params?: ActionParamsMap[ActionType]
   ): Promise<ActionSignerContribution> {
     const plugin = this.requireProvider(provider)
     if (typeof plugin.resolveActionRequest !== 'function') {
@@ -431,7 +436,8 @@ export class PerpsClient {
     return plugin.resolveActionRequest(
       descriptor.type,
       address,
-      descriptor.signer
+      descriptor.signer,
+      params
     )
   }
 
@@ -499,7 +505,8 @@ export class PerpsClient {
    * empty report means nothing executed.
    *
    * @throws {PerpsExecutionError} When the submission or the plugin callback
-   *   throws after a result is known.
+   *   throws after a result is known. A failed submission reports the signed
+   *   steps that already moved funds as `Submitted`.
    */
   private async submitSignedActions(
     provider: string,
@@ -522,7 +529,10 @@ export class PerpsClient {
         })
         results = [...executed, ...response.results]
       } catch (error) {
-        rethrowWithKnownResults(executed, error)
+        rethrowWithKnownResults(
+          [...executed, ...sentBeforeExecuteResults(signed)],
+          error
+        )
       }
     }
     if (results.length === 0) {
@@ -723,7 +733,8 @@ export class PerpsClient {
       await this.resolveActionRequest(
         params.provider,
         descriptor,
-        params.address
+        params.address,
+        params.params
       )
     return createAction(this.sdkClient, {
       provider: params.provider,
@@ -1676,7 +1687,12 @@ export class PerpsClient {
     const descriptor = findActionDescriptor(metadata, action)
 
     const { signerAddress, params: signerParams } =
-      await this.resolveActionRequest(provider, descriptor, address)
+      await this.resolveActionRequest(
+        provider,
+        descriptor,
+        address,
+        params.params
+      )
 
     const { actions } = await createAction(this.sdkClient, {
       provider,

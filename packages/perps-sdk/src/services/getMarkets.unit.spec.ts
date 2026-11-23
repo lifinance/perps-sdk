@@ -1,3 +1,4 @@
+import type { Market, ProviderMarketRef } from '@lifi/perps-types'
 import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { mockMarkets, server } from '../../test/handlers.js'
@@ -29,6 +30,55 @@ describe('getMarkets', () => {
     // No marketIds filter supplied → param omitted entirely.
     expect(marketIds).toBeNull()
     expect(result).toEqual(mockMarkets)
+  })
+
+  it('returns market exclusions unchanged with the listing identity', async () => {
+    const template = mockMarkets.markets[0]
+    const lighterQuant: ProviderMarketRef = {
+      providerId: 'lighter',
+      marketId: '120',
+    }
+    const hyperliquidQuantinuum: Market = {
+      ...template,
+      id: 'xyz:QNT',
+      categoryId: 'xyz',
+      baseAsset: {
+        ...template.baseAsset,
+        id: 'xyz:QNT',
+        displaySymbol: 'QNT',
+      },
+      neverAliases: [lighterQuant],
+    }
+    const lighterQuantMarket: Market = {
+      ...template,
+      providerId: 'lighter',
+      id: '120',
+      categoryId: 'perps',
+      baseAsset: { ...template.baseAsset, providerId: 'lighter', id: 'QNT' },
+      quoteAsset: { ...template.quoteAsset, providerId: 'lighter' },
+    }
+    server.use(
+      http.get(`${DEFAULT_API_URL}/markets`, ({ request }) => {
+        const provider = new URL(request.url).searchParams.get('provider')
+        return HttpResponse.json({
+          markets: [
+            provider === 'lighter' ? lighterQuantMarket : hyperliquidQuantinuum,
+          ],
+        })
+      })
+    )
+
+    const hyperliquid = await getMarkets(client, { provider: 'hyperliquid' })
+    const lighter = await getMarkets(client, { provider: 'lighter' })
+
+    const [market] = hyperliquid.markets
+    expect(market?.id).toBe('xyz:QNT')
+    expect(market?.baseAsset.displaySymbol).toBe('QNT')
+    expect(market?.neverAliases).toEqual([lighterQuant])
+    const referenced = lighter.markets.find(
+      (candidate) => candidate.id === lighterQuant.marketId
+    )
+    expect(referenced?.providerId).toBe(lighterQuant.providerId)
   })
 
   it('excludes delisted markets from public selection', async () => {

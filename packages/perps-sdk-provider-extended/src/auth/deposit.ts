@@ -21,6 +21,7 @@ import {
   isAddress,
   isAddressEqual,
   parseAbi,
+  type ReplacementReturnType,
   WaitForTransactionReceiptTimeoutError,
 } from 'viem'
 import { waitForTransactionReceipt } from 'viem/actions'
@@ -84,8 +85,9 @@ const toWireArgs = (args: readonly unknown[]): unknown[] =>
  * SDK gets and commits a bridge quote with the stored API key and writes its
  * id as the commitment id, because a quote expires in about two minutes.
  * Each confirmed leg is a signed step with its `txHash` for `executeAction`,
- * where the backend records it. A reverted or unconfirmed leg stops the legs
- * and stays a local result.
+ * where the backend records it. A reverted, unconfirmed, cancelled or replaced
+ * leg stops the legs and stays a local result. A repriced leg counts under its
+ * replacement's hash.
  *
  * @internal
  */
@@ -189,8 +191,14 @@ export async function executeDeposit(
     }
 
     let reverted: boolean
+    let replacement: ReplacementReturnType | undefined
     try {
-      const receipt = await waitForTransactionReceipt(wallet, { hash: txHash })
+      const receipt = await waitForTransactionReceipt(wallet, {
+        hash: txHash,
+        onReplaced: (replaced) => {
+          replacement = replaced
+        },
+      })
       reverted = receipt.status === 'reverted'
     } catch (error) {
       return {
@@ -209,6 +217,24 @@ export async function executeDeposit(
           },
         ],
       }
+    }
+    if (replacement !== undefined && replacement.reason !== 'repriced') {
+      return {
+        signed: [],
+        executed: [
+          ...confirmed(),
+          {
+            action: step.action,
+            status: UserActionStatus.Failed,
+            txHash,
+            error: `The Extended deposit transaction ${txHash} was ${replacement.reason} by ${replacement.transaction.hash}.`,
+            errorCode: PerpsErrorCode.ExchangeRejected,
+          },
+        ],
+      }
+    }
+    if (replacement !== undefined) {
+      txHash = replacement.transaction.hash
     }
     if (reverted) {
       return {

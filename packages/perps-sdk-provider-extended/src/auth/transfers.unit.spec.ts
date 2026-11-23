@@ -1,4 +1,4 @@
-import { createMemoryStorage } from '@lifi/perps-sdk'
+import { createMemoryStorage, PerpsExecutionError } from '@lifi/perps-sdk'
 import {
   ActionType,
   type EvmTxActionStep,
@@ -167,10 +167,34 @@ describe('Extended withdrawal', () => {
     '0x022bc969fe217f91a32afe6dbd0c84bb3d1681377b38f928e5ce70555a2ca7dd'
   const withdrawalRoutes = {
     'GET /api/v1/user/account/info': { bridgeStarknetAddress: BRIDGE_ADDRESS },
-    'GET /api/v1/user/bridge/quote': { id: '6afd8157fc04af19fd7f2b66' },
+    'GET /api/v1/user/bridge/quote': {
+      id: '6afd8157fc04af19fd7f2b66',
+      fee: '0.011',
+    },
     'POST /api/v1/user/bridge/quote': null,
     'POST /api/v1/user/withdrawal': 1234,
   }
+
+  it.each([
+    ['above the limit', { id: '6afd8157fc04af19fd7f2b66', fee: '2.01' }],
+    ['missing', { id: '6afd8157fc04af19fd7f2b66' }],
+    ['not a decimal', { id: '6afd8157fc04af19fd7f2b66', fee: '1e1' }],
+  ])('refuses a quote whose fee is %s before it commits the quote', async (_label, quote) => {
+    const { fetchImpl, calls } = venue({
+      ...withdrawalRoutes,
+      'GET /api/v1/user/bridge/quote': quote,
+    })
+
+    await expect(
+      extendedSignActions(
+        await deps(fetchImpl),
+        SigningMethod.STARK,
+        [withdrawalStep()],
+        ADDRESS
+      )
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(calls.map(({ method }) => method)).toEqual(['GET', 'GET'])
+  })
 
   it.each([
     ['an empty string', ''],
@@ -365,9 +389,47 @@ describe('Extended deposit', () => {
     },
   ]
 
-  /** A wallet whose node accepts and mines every transaction. */
-  function wallet(chain: Chain = arbitrum) {
+  const REPLACEMENT_HASH: Hex = `0x${'ee'.repeat(32)}`
+
+  /**
+   * A wallet whose node accepts and mines every transaction. With `replaced`,
+   * the node mines another transaction with the deposit's nonce instead of
+   * the deposit; its fields make viem see it as `replaced.reason`.
+   */
+  function wallet(
+    chain: Chain = arbitrum,
+    replaced?: { reason: 'repriced' | 'cancelled' | 'replaced' }
+  ) {
     const sent: { to: string; data: Hex }[] = []
+    const depositHash = (): Hex | undefined => {
+      const index = sent.findIndex(
+        ({ to }) => to.toLowerCase() === ARB_BRIDGE.toLowerCase()
+      )
+      return index < 0
+        ? undefined
+        : `0x${(index + 1).toString(16).padStart(64, '0')}`
+    }
+    const rpcTransaction = (
+      hash: Hex,
+      fields: { to: string; input: Hex },
+      blockNumber: Hex | null
+    ) => ({
+      hash,
+      from: ADDRESS,
+      nonce: '0x7',
+      value: '0x0',
+      gas: '0x0',
+      gasPrice: '0x0',
+      type: '0x0',
+      chainId: `0x${arbitrum.id.toString(16)}`,
+      v: '0x0',
+      r: '0x0',
+      s: '0x0',
+      blockNumber,
+      blockHash: null,
+      transactionIndex: null,
+      ...fields,
+    })
     const request = async ({
       method,
       params,
@@ -383,8 +445,39 @@ describe('Extended deposit', () => {
           sent.push(tx)
           return `0x${sent.length.toString(16).padStart(64, '0')}`
         }
+        case 'eth_getTransactionByHash': {
+          const deposit = sent.find(
+            ({ to }) => to.toLowerCase() === ARB_BRIDGE.toLowerCase()
+          )
+          return deposit === undefined
+            ? null
+            : rpcTransaction(
+                depositHash() as Hex,
+                { to: deposit.to, input: deposit.data },
+                null
+              )
+        }
+        case 'eth_getBlockByNumber': {
+          const deposit = sent.find(
+            ({ to }) => to.toLowerCase() === ARB_BRIDGE.toLowerCase()
+          )
+          const fields =
+            replaced?.reason === 'repriced' && deposit !== undefined
+              ? { to: deposit.to, input: deposit.data }
+              : replaced?.reason === 'cancelled'
+                ? { to: ADDRESS, input: '0x' as Hex }
+                : { to: ARB_BRIDGE, input: '0x' as Hex }
+          return {
+            number: '0x10',
+            hash: `0x${'ab'.repeat(32)}`,
+            transactions: [rpcTransaction(REPLACEMENT_HASH, fields, '0x10')],
+          }
+        }
         case 'eth_getTransactionReceipt': {
           const [hash] = params as [Hex]
+          if (replaced !== undefined && hash === depositHash()) {
+            return null
+          }
           return {
             transactionHash: hash,
             status: '0x1',
@@ -571,6 +664,85 @@ describe('Extended deposit', () => {
         errorCode: PerpsErrorCode.ExchangeRejected,
       }),
     ])
+    expect(sent).toHaveLength(1)
+  })
+
+  it('reports the replacement hash of a repriced deposit', async () => {
+    const { fetchImpl } = venue(bridgeRoutes)
+    const { client } = wallet(arbitrum, { reason: 'repriced' })
+    const onProgress = vi.fn()
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client, onProgress }
+    )
+
+    expect(result.executed).toEqual([])
+    expect(result.signed.map((leg) => 'txHash' in leg && leg.txHash)).toEqual([
+      `0x${'1'.padStart(64, '0')}`,
+      REPLACEMENT_HASH,
+    ])
+    expect(onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'confirmed', txHash: REPLACEMENT_HASH })
+    )
+  })
+
+  it.each([
+    'cancelled',
+    'replaced',
+  ] as const)('reports a %s deposit as Failed, sending nothing to executeAction', async (reason) => {
+    const { fetchImpl } = venue(bridgeRoutes)
+    const { client } = wallet(arbitrum, { reason })
+
+    const result = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client }
+    )
+
+    expect(result).toEqual({
+      signed: [],
+      executed: [
+        expect.objectContaining({ status: UserActionStatus.Accepted }),
+        expect.objectContaining({
+          status: UserActionStatus.Failed,
+          txHash: `0x${'2'.padStart(64, '0')}`,
+          error: expect.stringContaining(`${reason} by ${REPLACEMENT_HASH}`),
+        }),
+      ],
+    })
+  })
+
+  it('refuses a quote with a fee above the limit, keeping the approval in the error', async () => {
+    const { fetchImpl, calls } = venue({
+      ...bridgeRoutes,
+      'GET /api/v1/user/bridge/quote': { id: QUOTE_ID, fee: '2.5' },
+    })
+    const { client, sent } = wallet()
+
+    const error = await extendedSignActions(
+      await deps(fetchImpl),
+      SigningMethod.EVM_TX,
+      legs(),
+      ADDRESS,
+      { userWallet: client }
+    ).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    expect(error).toMatchObject({
+      code: PerpsErrorCode.SDKError,
+      response: {
+        results: [
+          expect.objectContaining({ status: UserActionStatus.Accepted }),
+        ],
+      },
+    })
+    expect(calls.map(({ method }) => method)).toEqual(['GET', 'GET'])
     expect(sent).toHaveLength(1)
   })
 

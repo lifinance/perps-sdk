@@ -155,6 +155,13 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     expect(executeRequests).toHaveLength(1)
     expect(executeRequests[0].actions).toHaveLength(3)
     expect(onExecuteResults).toHaveBeenCalledWith(ADDRESS, response.results)
+    // The plugin reads the caller's own params when it prepares the request.
+    expect(resolveActionRequest).toHaveBeenCalledWith(
+      ActionType.PLACE_ORDER,
+      ADDRESS,
+      expect.any(String),
+      ORDER
+    )
   })
 
   it('keeps an uncertain first step as Indeterminate and submits nothing after it', async () => {
@@ -276,6 +283,61 @@ describe('PerpsClient execution report (public entrypoint)', () => {
     expect(executeRequests).toHaveLength(1)
     expect(error).toBeInstanceOf(PerpsError)
     expect(error).not.toBeInstanceOf(PerpsExecutionError)
+    expect(onExecuteResults).not.toHaveBeenCalled()
+  })
+
+  it('reports the steps that moved funds before a failed submission as Submitted', async () => {
+    const depositLeg = {
+      action: ActionType.DEPOSIT,
+      txParams: {
+        chainId: 42161,
+        to: ADDRESS,
+        functionName: 'depositWithId',
+        args: [],
+        abi: [],
+      },
+      txHash: TX_HASH,
+    } satisfies SignedActionStep
+    const sentWithdrawal = {
+      action: ActionType.WITHDRAWAL,
+      stark: {
+        request: { method: 'POST', path: '/api/v1/user/withdrawal' },
+        messages: [],
+      },
+      clientSent: { orderId: '1234' },
+    } satisfies SignedActionStep
+    const unsentStark = {
+      ...sentWithdrawal,
+      clientSent: undefined,
+    } satisfies SignedActionStep
+    signActions.mockResolvedValue({
+      signed: [signedOrderStep, depositLeg, sentWithdrawal, unsentStark],
+      executed: [],
+    })
+    respond(stagedSteps(1), () =>
+      HttpResponse.json(
+        { code: PerpsErrorCode.ServerError, message: 'upstream 503' },
+        { status: 503 }
+      )
+    )
+
+    const error = await client.placeOrder(ORDER).catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(PerpsExecutionError)
+    expect((error as PerpsExecutionError).response).toEqual({
+      results: [
+        {
+          action: ActionType.DEPOSIT,
+          status: UserActionStatus.Submitted,
+          txHash: TX_HASH,
+        },
+        {
+          action: ActionType.WITHDRAWAL,
+          status: UserActionStatus.Submitted,
+          orderId: '1234',
+        },
+      ],
+    })
     expect(onExecuteResults).not.toHaveBeenCalled()
   })
 

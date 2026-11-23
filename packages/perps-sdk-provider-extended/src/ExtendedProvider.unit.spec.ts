@@ -472,6 +472,25 @@ describe('extendedProvider', () => {
       })
     })
 
+    it('sends the venue account id with a withdrawal', async () => {
+      stubFetch({})
+      const { provider } = await setup()
+
+      expect(
+        await provider.resolveActionRequest?.(
+          ActionType.WITHDRAWAL,
+          ADDRESS,
+          PerpsSigner.SDK
+        )
+      ).toEqual({
+        params: {
+          starkKey: signingKey.starkPublicKey,
+          positionId: '430876',
+          accountId: '330870',
+        },
+      })
+    })
+
     it.each([
       ActionType.CREATE_ACCOUNT,
       ActionType.REGISTER_API_KEY,
