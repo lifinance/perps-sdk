@@ -14,6 +14,7 @@ import type {
   OnboardParams,
   OrderSide,
   OrderType,
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   SetupAction,
   SetupOption,
@@ -312,6 +313,11 @@ export interface GetPortfolioHistoryParams {
   provider: string
   address: Address
   range: PortfolioHistoryRange
+  /**
+   * Cut the read to `start` through `end` and ask for the opening sample at
+   * or before `start`. Absent bounds keep the preset `range` read.
+   */
+  bounds?: PortfolioHistoryBounds
 }
 
 /**

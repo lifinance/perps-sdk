@@ -1815,17 +1815,28 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const account = await plugin.getAccount({ address: params.address }, opts)
       const window = PNL_WINDOWS[params.range]
-      const endTimestampSeconds = Math.floor(Date.now() / 1_000)
+      const { bounds } = params
+      const endTimestampSeconds = Math.floor(
+        (bounds?.end ?? Date.now()) / 1_000
+      )
+      // A bounded read starts one bucket early, so the opening snapshot at or
+      // before `start` is in the response.
+      const startTimestampSeconds =
+        bounds !== undefined
+          ? Math.floor(bounds.start / 1_000) - window.bucketSeconds
+          : params.range === 'all'
+            ? 0
+            : endTimestampSeconds - window.countBack * window.bucketSeconds
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
         value: String(lighterConfig(account).accountIndex),
         resolution: window.resolution,
-        start_timestamp:
-          params.range === 'all'
-            ? 0
-            : endTimestampSeconds - window.countBack * window.bucketSeconds,
+        start_timestamp: startTimestampSeconds,
         end_timestamp: endTimestampSeconds,
-        count_back: window.countBack,
+        count_back:
+          bounds !== undefined && params.range !== 'all'
+            ? window.countBack + 1
+            : window.countBack,
         ignore_transfers: false,
       }
       const read = (tok: string) =>
@@ -1842,7 +1853,8 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        getAccountSummary(account, account.positions).portfolioValue
+        getAccountSummary(account, account.positions).portfolioValue,
+        bounds
       )
     },
 

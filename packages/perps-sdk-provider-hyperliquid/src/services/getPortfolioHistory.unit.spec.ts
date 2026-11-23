@@ -418,4 +418,302 @@ describe('Hyperliquid getPortfolioHistory', () => {
       code: PerpsErrorCode.ThirdPartyError,
     })
   })
+
+  describe('with bounds', () => {
+    const HOUR_MS = 60 * 60 * 1_000
+    const T0 = 1_741_042_800_000
+    const T1 = T0 + HOUR_MS
+    const T2 = T0 + 2 * HOUR_MS
+    const T3 = T0 + 3 * HOUR_MS
+    /** Native presets start at `T2`; the week presets reach back to `T0`. */
+    const STAGGERED_PORTFOLIO: HlPortfolio = [
+      [
+        'perpDay',
+        {
+          accountValueHistory: [
+            [T2, '1020.0'],
+            [T3, '1030.0'],
+          ],
+          pnlHistory: [
+            [T2, '0.0'],
+            [T3, '10.0'],
+          ],
+          vlm: '100.0',
+        },
+      ],
+      [
+        'perpWeek',
+        {
+          accountValueHistory: [
+            [T0, '1000.0'],
+            [T2, '1020.0'],
+            [T3, '1030.0'],
+          ],
+          pnlHistory: [
+            [T0, '-5.0'],
+            [T2, '5.0'],
+            [T3, '15.0'],
+          ],
+          vlm: '700.0',
+        },
+      ],
+      [
+        'day',
+        {
+          accountValueHistory: [
+            [T2, '2020.0'],
+            [T3, '2030.0'],
+          ],
+          pnlHistory: [
+            [T2, '0.0'],
+            [T3, '10.0'],
+          ],
+          vlm: '200.0',
+        },
+      ],
+      [
+        'week',
+        {
+          accountValueHistory: [
+            [T0, '2000.0'],
+            [T2, '2020.0'],
+            [T3, '2030.0'],
+          ],
+          pnlHistory: [
+            [T0, '-5.0'],
+            [T2, '5.0'],
+            [T3, '15.0'],
+          ],
+          vlm: '1400.0',
+        },
+      ],
+    ]
+
+    it('returns a native sample at the exact start as the opening and rebases the points', async () => {
+      const installed = installInfoFetchMock({
+        portfolio: PORTFOLIO,
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: 1_741_046_400_000, end: 1_741_050_000_000 },
+      })
+
+      expect(result).toEqual({
+        range: '24h',
+        opening: {
+          timestamp: 1_741_046_400_000,
+          accountValue: '1005.5',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: 1_741_050_000_000,
+            accountValue: '1015.25',
+            pnl: '5.75',
+            netTransfers: '0',
+          },
+        ],
+        volume: '500.0',
+        totalPnl: '5.75',
+      })
+    })
+
+    it.each([
+      [null, 'perps-only', '1000.0', '1020.0', '1030.0', '100.0'],
+      [
+        HlAbstractionMode.UNIFIED_ACCOUNT,
+        'combined',
+        '2000.0',
+        '2020.0',
+        '2030.0',
+        '200.0',
+      ],
+    ])('takes the opening from the wider %s preset of the same scope and reads the ledger from it', async (abstraction, _scope, opening, second, third, volume) => {
+      const installed = installInfoFetchMock({
+        portfolio: STAGGERED_PORTFOLIO,
+        userAbstraction: abstraction,
+        userNonFundingLedgerUpdates: [
+          {
+            time: T0,
+            hash: 'at-opening',
+            delta: { type: 'deposit', usdc: '100' },
+          },
+          {
+            time: T1 + 1,
+            hash: 'inside',
+            delta: { type: 'deposit', usdc: '10' },
+          },
+        ],
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T1, end: T3 },
+      })
+
+      expect(result).toEqual({
+        range: '24h',
+        opening: {
+          timestamp: T0,
+          accountValue: opening,
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: T2,
+            accountValue: second,
+            pnl: '10',
+            netTransfers: '10',
+          },
+          { timestamp: T3, accountValue: third, pnl: '20', netTransfers: '10' },
+        ],
+        volume,
+        totalPnl: '20',
+      })
+      expect(
+        installed.requests.find(
+          (r) => r.body.type === 'userNonFundingLedgerUpdates'
+        )?.body
+      ).toEqual({
+        type: 'userNonFundingLedgerUpdates',
+        user: ADDRESS,
+        startTime: T0,
+        endTime: T3,
+      })
+    })
+
+    it('returns the native samples without an opening when no preset reaches the start', async () => {
+      const installed = installInfoFetchMock({
+        portfolio: STAGGERED_PORTFOLIO,
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T0 - 1, end: T3 },
+      })
+
+      expect(result).toEqual({
+        range: '24h',
+        points: [
+          {
+            timestamp: T2,
+            accountValue: '1020.0',
+            pnl: '0',
+            netTransfers: '0',
+          },
+          {
+            timestamp: T3,
+            accountValue: '1030.0',
+            pnl: '10',
+            netTransfers: '0',
+          },
+        ],
+        volume: '100.0',
+        totalPnl: '10',
+      })
+      expect(result.opening).toBeUndefined()
+    })
+
+    it('skips a wider preset the venue did not send', async () => {
+      const installed = installInfoFetchMock({
+        portfolio: STAGGERED_PORTFOLIO.filter(([key]) => key !== 'perpWeek'),
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T1, end: T3 },
+      })
+
+      expect(result.opening).toBeUndefined()
+      expect(result.points.map((p) => p.timestamp)).toEqual([T2, T3])
+    })
+
+    it('excludes samples after the end and skips the ledger read for an opening alone', async () => {
+      const installed = installFetchMock({
+        portfolio: STAGGERED_PORTFOLIO,
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T1, end: T1 + 1 },
+      })
+
+      expect(result).toEqual({
+        range: '24h',
+        opening: {
+          timestamp: T0,
+          accountValue: '1000.0',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [],
+        volume: '100.0',
+        totalPnl: undefined,
+      })
+      expect(requestBodies(installed.requests)).toEqual([
+        'portfolio',
+        'preTransferCheck',
+        'userAbstraction',
+      ])
+    })
+
+    it('skips a sample with a non-decimal value, so it cannot be the opening', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const portfolio: HlPortfolio = [
+        [
+          'perpDay',
+          {
+            accountValueHistory: [
+              [T0, '1000.0'],
+              [T1, 'n/a'],
+              [T2, '1020.0'],
+            ],
+            pnlHistory: [
+              [T0, '0.0'],
+              [T1, '1.0'],
+              [T2, '2.0'],
+            ],
+            vlm: '100.0',
+          },
+        ],
+      ]
+      const installed = installInfoFetchMock({
+        portfolio,
+        userAbstraction: null,
+      })
+      restore = installed.restore
+
+      const result = await getPortfolioHistory(ctx, {
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: T1, end: T3 },
+      })
+
+      expect(result.opening?.timestamp).toBe(T0)
+      expect(result.points.map((p) => p.timestamp)).toEqual([T2])
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '[hyperliquid] skipping portfolio history row: `accountValue`'
+        )
+      )
+      warn.mockRestore()
+    })
+  })
 })

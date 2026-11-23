@@ -4415,6 +4415,99 @@ describe('LighterProvider — getPortfolioHistory', () => {
     })
   })
 
+  describe.each([
+    ['lighter', lighterProvider, STORED_API_KEY],
+    ['lighter-rh', lighterRhProvider, RH_STORED_API_KEY],
+  ] as const)('bounded read on %s', (_key, makeProvider, record) => {
+    const DAY_SECONDS = 24 * HOUR_SECONDS
+    const START_SECONDS = NOW_SECONDS - 30 * DAY_SECONDS + 71_040
+    const START_MS = START_SECONDS * 1_000
+
+    it.each<[PortfolioHistoryRange, string, number, number]>([
+      ['24h', '1h', 25, START_SECONDS - HOUR_SECONDS],
+      ['7d', '1h', 169, START_SECONDS - HOUR_SECONDS],
+      ['30d', '1d', 31, START_SECONDS - DAY_SECONDS],
+      ['all', '1d', 1000, START_SECONDS - DAY_SECONDS],
+    ])('requests %s at resolution %s from one bucket before the start through the end, with count_back %s', async (range, resolution, countBack, startTimestamp) => {
+      overrideFetch((url) =>
+        url.includes('/api/v1/pnl') ? respond(PNL_PAYLOAD) : undefined
+      )
+      const provider = makeProvider({
+        storage: await storageWithReadOnlyToken('pre-created-token', record),
+      })
+      provider.bind(STUB_CLIENT)
+
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range,
+        bounds: { start: START_MS, end: NOW_MS },
+      })
+
+      expect(history.opening).toBeUndefined()
+      expect(history.points).toEqual(EXPECTED_HISTORY.points)
+      const [call] = pnlCalls()
+      expect(pnlCalls()).toHaveLength(1)
+      expect(Object.fromEntries(new URL(call.url).searchParams)).toEqual({
+        by: 'index',
+        value: '42',
+        resolution,
+        start_timestamp: String(startTimestamp),
+        end_timestamp: String(NOW_SECONDS),
+        count_back: String(countBack),
+        ignore_transfers: 'false',
+      })
+    })
+
+    it('returns the latest snapshot at or before the start as the opening', async () => {
+      overrideFetch((url) =>
+        url.includes('/api/v1/pnl')
+          ? respond({
+              code: 200,
+              resolution: '1d',
+              pnl: [
+                pnlSnapshot({ timestamp: START_SECONDS - 71_040, inflow: 100 }),
+                pnlSnapshot({
+                  timestamp: START_SECONDS - 71_040 + DAY_SECONDS,
+                  trade_pnl: 20,
+                  inflow: 100,
+                }),
+              ],
+            })
+          : undefined
+      )
+      const provider = makeProvider({
+        storage: await storageWithReadOnlyToken('pre-created-token', record),
+      })
+      provider.bind(STUB_CLIENT)
+
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '30d',
+        bounds: { start: START_MS, end: NOW_MS },
+      })
+
+      expect(history).toEqual({
+        range: '30d',
+        opening: {
+          timestamp: (START_SECONDS - 71_040) * 1_000,
+          accountValue: '480',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: (START_SECONDS - 71_040 + DAY_SECONDS) * 1_000,
+            accountValue: '500',
+            pnl: '20',
+            netTransfers: '0',
+          },
+        ],
+        volume: '0',
+        totalPnl: '20',
+      })
+    })
+  })
+
   it('falls back to the standard token when /api/v1/pnl rejects the read-only token', async () => {
     overrideFetch((url, init) => {
       if (!url.includes('/api/v1/pnl')) {

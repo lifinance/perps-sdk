@@ -2180,6 +2180,145 @@ describe('OndoProvider — getPortfolioHistory', () => {
     expect(authHeaderOf(graphCall)).toBe('Bearer ondo-jwt-token')
     expect(authHeaderOf(summaryCall)).toBe('Bearer ondo-jwt-token')
   })
+
+  describe('with bounds', () => {
+    const graphPoint = (
+      time: string,
+      marginBalance: string,
+      totalPnL: string,
+      allTimeDeposits: string
+    ): OndoPortfolioGraphPoint => ({
+      ...PORTFOLIO_GRAPH_RESULT[0],
+      time,
+      marginBalance,
+      totalPnL,
+      allTimeDeposits,
+    })
+    /** Each preset starts at its own first day; the venue has no point before 03-03. */
+    const GRAPH_BY_RANGE: Record<
+      string,
+      OndoPortfolioGraphPoint[] | undefined
+    > = {
+      '24h': [
+        graphPoint('2025-03-05T00:00:00Z', '4950.00', '52.00', '5000.00'),
+      ],
+      '7d': [
+        graphPoint('2025-03-03T00:00:00Z', '4700.00', '0.00', '4900.00'),
+        graphPoint('2025-03-04T00:00:00Z', '4800.00', '100.00', '5000.00'),
+        graphPoint('2025-03-05T00:00:00Z', '4950.00', '250.00', '5000.00'),
+        graphPoint('2025-03-06T00:00:00Z', '4990.00', '290.00', '5000.00'),
+      ],
+    }
+    const START = Date.parse('2025-03-04T12:00:00Z')
+    const END = Date.parse('2025-03-05T12:00:00Z')
+    const graphRanges = () =>
+      recorded
+        .filter((r) => r.url.includes('/v1/portfolio/summary/graph'))
+        .map((r) => new URL(r.url).searchParams.get('range'))
+
+    beforeEach(() => {
+      fetchMock.mockImplementation(async (url: string | URL, init) => {
+        const u = String(url)
+        recorded.push({ url: u, init })
+        if (u.includes('/v1/portfolio/summary/graph')) {
+          const range = new URL(u).searchParams.get('range') ?? ''
+          return respond(envelope(GRAPH_BY_RANGE[range] ?? null))
+        }
+        if (u.includes('/v1/portfolio/summary')) {
+          return respond(envelope(PORTFOLIO_SUMMARY_RESULT))
+        }
+        return respond(envelope([]))
+      })
+    })
+
+    it('reads one graph when the native preset holds the opening point, and drops points after the end', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '7d',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history).toEqual({
+        range: '7d',
+        opening: {
+          timestamp: Date.parse('2025-03-04T00:00:00Z'),
+          accountValue: '4800.00',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '150',
+            netTransfers: '0',
+          },
+        ],
+        volume: '15000.00',
+        totalPnl: '150',
+      })
+      expect(graphRanges()).toEqual(['7d'])
+    })
+
+    it('reads the next wider preset when the native preset starts after the bounds start', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history).toEqual({
+        range: '24h',
+        opening: {
+          timestamp: Date.parse('2025-03-04T00:00:00Z'),
+          accountValue: '4800.00',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '150',
+            netTransfers: '0',
+          },
+        ],
+        volume: undefined,
+        totalPnl: '150',
+      })
+      expect(graphRanges()).toEqual(['24h', '7d'])
+    })
+
+    it('returns the native points without an opening when no preset reaches the bounds start', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: {
+          start: Date.parse('2025-03-01T00:00:00Z'),
+          end: Date.parse('2025-03-05T12:00:00Z'),
+        },
+      })
+
+      expect(history).toEqual({
+        range: '24h',
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '0',
+            netTransfers: '0',
+          },
+        ],
+        volume: undefined,
+        totalPnl: '0',
+      })
+      expect(history.opening).toBeUndefined()
+      expect(graphRanges()).toEqual(['24h', '7d', '30d', 'all'])
+    })
+  })
 })
 
 describe('OndoProvider — getActivity', () => {

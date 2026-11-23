@@ -21,6 +21,7 @@ import type {
   OrdersResponse,
   PerpsMarket,
   PerpsSigner,
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
@@ -350,6 +351,8 @@ export interface ProviderGetActivityParams {
 export interface ProviderGetPortfolioHistoryParams {
   address: Address
   range: PortfolioHistoryRange
+  /** Valid bounds: the client checks them before the provider read. */
+  bounds?: PortfolioHistoryBounds
 }
 
 /**

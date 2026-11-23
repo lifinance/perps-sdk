@@ -37,6 +37,12 @@ Account summaries and the current portfolio-history anchor include Lighter's set
 
 WebSocket account summaries retain spot and margin quantities from account snapshots and balance updates, and revalue non-settlement holdings on spot-market price updates. Assets without a matching spot price retain a zero USD value. These holdings do not change available margin or trading capacity.
 
+## Bounded portfolio history
+
+`getPortfolioHistory` with `bounds` keeps the resolution of `range` (`1h` for `24h` and `7d`, `1d` for `30d` and `all`) and reads `/api/v1/pnl` with `start_timestamp` one bucket before `bounds.start` and `end_timestamp` at `bounds.end`, both in Unix seconds. The standard finite ranges send `count_back` plus one (`25`, `169`, `31`), so the snapshot before the start is in the response. `all` keeps `count_back` 1000. Both deployments (`lighterProvider` and `lighterRhProvider`) share this read.
+
+The latest valid snapshot at or before `bounds.start` is the `opening`. For a 30D start after midnight, the daily snapshot of that midnight is the opening, and the next midnight snapshot is the first point. `volume` is the venue volume between the first and the last retained snapshot. The account values keep their anchor: the last fetched snapshot equals the current `portfolioValue`, so an `end` in the past shifts every account value by the change since that snapshot. The `@lifi/perps-sdk` README § Portfolio history describes the common contract.
+
 ## API key storage
 
 Setup registers an API key user-side; the bundled WASM signer uses it to sign orders locally. Key material is persisted through a `StorageAdapter` — the default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass `storage` to use another backend:

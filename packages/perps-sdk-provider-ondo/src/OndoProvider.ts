@@ -66,6 +66,7 @@ import type {
   Order,
   OrdersResponse,
   PerpsMarketDisplay,
+  PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
   PositionsResponse,
@@ -157,6 +158,14 @@ import {
   type OndoOrderCursor,
   type OrderSource,
 } from './utils/orderCursor.js'
+
+/** The venue graph presets, narrowest first. */
+const PORTFOLIO_GRAPH_RANGES: readonly PortfolioHistoryRange[] = [
+  '24h',
+  '7d',
+  '30d',
+  'all',
+]
 
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
@@ -1149,16 +1158,40 @@ export const ondoProvider = (
         dataRead('portfolio history read'),
         async (token) => {
           const client = apiClient(opts)
-          const [graph, summary] = await Promise.all([
+          const readGraph = (range: PortfolioHistoryRange) =>
             client.get<OndoPortfolioGraphPoint[] | null>(
               '/v1/portfolio/summary/graph',
-              { params: { range: params.range }, authToken: token.token }
-            ),
+              { params: { range }, authToken: token.token }
+            )
+          const [graph, summary] = await Promise.all([
+            readGraph(params.range),
             client.get<OndoPortfolioSummary>('/v1/portfolio/summary', {
               authToken: token.token,
             }),
           ])
-          return mapPortfolioHistory(params.range, graph ?? [], summary)
+          const { bounds } = params
+          const native = mapPortfolioHistory(
+            params.range,
+            graph ?? [],
+            summary,
+            bounds
+          )
+          if (bounds === undefined || native.opening !== undefined) {
+            return native
+          }
+          const nativeIndex = PORTFOLIO_GRAPH_RANGES.indexOf(params.range)
+          for (const range of PORTFOLIO_GRAPH_RANGES.slice(nativeIndex + 1)) {
+            const wider = mapPortfolioHistory(
+              params.range,
+              (await readGraph(range)) ?? [],
+              summary,
+              bounds
+            )
+            if (wider.opening !== undefined) {
+              return wider
+            }
+          }
+          return native
         }
       )
     },

@@ -2889,6 +2889,41 @@ describe('PerpsClient', () => {
       )
     })
 
+    it('delegates the bounds unchanged', async () => {
+      const getPortfolioHistory = vi.fn(async () => history)
+      const bounds = { start: 1_741_046_400_000, end: 1_741_050_000_000 }
+
+      await clientWith({ getPortfolioHistory }).getPortfolioHistory({
+        provider,
+        address: userAddress,
+        range: '7d',
+        bounds,
+      })
+
+      expect(getPortfolioHistory).toHaveBeenCalledWith(
+        { address: userAddress, range: '7d', bounds },
+        undefined
+      )
+    })
+
+    it.each([
+      ['a start after the end', { start: 2, end: 1 }],
+      ['a non-finite start', { start: Number.NaN, end: 1 }],
+      ['a non-finite end', { start: 1, end: Number.POSITIVE_INFINITY }],
+    ])('throws a ValidationError for %s without a provider read', async (_name, bounds) => {
+      const getPortfolioHistory = vi.fn(async () => history)
+
+      await expect(
+        clientWith({ getPortfolioHistory }).getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: '7d',
+          bounds,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+      expect(getPortfolioHistory).not.toHaveBeenCalled()
+    })
+
     it('throws an SDKError when the plugin has no portfolio history read', async () => {
       await expect(
         clientWith({}).getPortfolioHistory({
