@@ -182,12 +182,14 @@ export const extendedProvider = (
 
   const apiClient = (opts?: SDKRequestOptions): ExtendedApiClient => {
     const client = requireClient()
-    const requestUrl =
+    const requestUrl = (
       options.requestUrl ??
       options.apiUrl ??
       `${client.config.apiUrl.replace(/\/$/, '')}/extended`
+    ).replace(/\/$/, '')
     return new ExtendedApiClient(requestUrl, {
       signal: opts?.signal,
+      proxied: requestUrl !== apiUrl,
       policy: resolveRetryPolicy(
         EXTENDED_RETRY_DEFAULTS,
         client.config.retry,

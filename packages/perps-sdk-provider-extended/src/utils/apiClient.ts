@@ -63,7 +63,26 @@ export interface ExtendedApiClientOptions {
   signal?: AbortSignal
   policy?: ResolvedRetryPolicy
   fetchImpl?: typeof fetch
+  /** `baseUrl` is a proxy, so headers with an underscore get a proxy-safe name. */
+  proxied?: boolean
 }
+
+// Proxies such as nginx drop header names with an underscore by default. The
+// LI.FI proxy renames these back before it calls Extended.
+const PROXY_HEADER_NAMES: Readonly<Record<string, string>> = {
+  L1_SIGNATURE: 'X-L1-Signature',
+  L1_MESSAGE_TIME: 'X-L1-Message-Time',
+}
+
+const renameForProxy = (
+  headers: Record<string, string>
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      PROXY_HEADER_NAMES[name] ?? name,
+      value,
+    ])
+  )
 
 /** @internal */
 export interface ExtendedRequestOptions {
@@ -116,12 +135,14 @@ export class ExtendedApiClient {
   private readonly signal: AbortSignal | undefined
   private readonly policy: ResolvedRetryPolicy
   private readonly fetchImpl: typeof fetch | undefined
+  private readonly proxied: boolean
 
   constructor(baseUrl: string, options?: ExtendedApiClientOptions) {
     this.baseUrl = baseUrl.replace(/\/$/, '')
     this.signal = options?.signal
     this.policy = options?.policy ?? EXTENDED_RETRY_DEFAULTS
     this.fetchImpl = options?.fetchImpl
+    this.proxied = options?.proxied ?? false
   }
 
   async send<T>(
@@ -166,7 +187,8 @@ export class ExtendedApiClient {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'User-Agent': EXTENDED_USER_AGENT,
-      ...options?.headers,
+      ...(options?.headers !== undefined &&
+        (this.proxied ? renameForProxy(options.headers) : options.headers)),
     }
     if (options?.apiKey !== undefined) {
       headers['X-Api-Key'] = options.apiKey
