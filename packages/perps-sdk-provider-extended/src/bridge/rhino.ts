@@ -3,11 +3,16 @@ import { type Address, PerpsErrorCode } from '@lifi/perps-types'
 import { isAddress } from 'viem'
 import type { ExtendedApiClient } from '../utils/apiClient.js'
 
+/** The highest Rhino.fi bridge fee, in USDC, that the SDK commits to. */
+export const MAX_BRIDGE_FEE_USDC = 2
+
 /**
  * Get a Rhino.fi bridge quote from Extended and commit it, and give its id.
  * Extended ties the quote to the account of `apiKey`. A quote expires about
  * two minutes after it is created, so the caller uses the id at once.
  *
+ * @throws {PerpsError} `SDKError` when the quote's fee is missing or above
+ *   `MAX_BRIDGE_FEE_USDC`. The quote is then not committed.
  * @internal
  */
 export async function commitBridgeQuote(
@@ -16,11 +21,21 @@ export async function commitBridgeQuote(
   route: { chainIn: string; chainOut: string; amount: string }
 ): Promise<string> {
   const query = new URLSearchParams(route).toString()
-  const quote = await client.send<{ id: string }>(
+  const quote = await client.send<{ id: string; fee?: unknown }>(
     'GET',
     `/api/v1/user/bridge/quote?${query}`,
     { apiKey }
   )
+  const fee =
+    typeof quote.fee === 'string' && /^\d+(\.\d+)?$/.test(quote.fee)
+      ? Number(quote.fee)
+      : Number.NaN
+  if (!(fee <= MAX_BRIDGE_FEE_USDC)) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `The Rhino.fi bridge quote has a fee of ${String(quote.fee)} USDC, above the ${MAX_BRIDGE_FEE_USDC} USDC limit or unreadable.`
+    )
+  }
   await client.send(
     'POST',
     `/api/v1/user/bridge/quote?id=${encodeURIComponent(quote.id)}`,
