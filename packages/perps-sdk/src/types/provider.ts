@@ -3,6 +3,7 @@ import type {
   AccountConfigSetting,
   AccountResponse,
   AccountSummary,
+  ActionParamsMap,
   ActionResult,
   ActionStep,
   ActionType,
@@ -153,9 +154,10 @@ export interface ActionSignerContribution {
    */
   signerAddress?: Address
   /**
-   * Extra action params the plugin injects from its own signer state — e.g.
-   * Hyperliquid's `agentAddress` for `APPROVE_AGENT`. Merged over the caller's
-   * params.
+   * Extra action params the plugin injects from its own signer state (e.g.
+   * Hyperliquid's `agentAddress` for `APPROVE_AGENT`) or from the caller's
+   * params (Lighter's `initialMarginFractionBps` for a leverage action).
+   * Merged over the caller's params.
    */
   params?: Record<string, unknown>
 }
@@ -439,7 +441,9 @@ export interface PerpsProviderPlugin {
    * own existence signal: Hyperliquid probes `preTransferCheck.userExists` (an
    * account exists once it has been funded, paying the one-time creation fee),
    * whereas Lighter resolves it from its `getAccount` → `AccountNotFound`
-   * semantics. Used by `PerpsClient.checkSetup` to gate the deposit-first flow.
+   * semantics. Used by `PerpsClient.checkSetup` to gate the deposit-first flow,
+   * except for a venue that opens the account in setup (SIWE or
+   * `CREATE_ACCOUNT`), where `checkSetup` does not call it.
    */
   accountExists(
     params: ProviderAccountExistsParams,
@@ -526,8 +530,15 @@ export interface PerpsProviderPlugin {
   ): Promise<MarketSettings>
 
   /** Compare a requested leverage with the venue setting, without I/O.
+   * `requestedInitialMarginFractionBps` is the exact native source that the
+   * request carried, when the caller sent one; a venue that stores an IMF
+   * compares it instead of encoding `requested`.
    * Throw `ValidationError` for unusable or unsupported values or missing required source data. */
-  isLeverageEqual(requested: DecimalString, reported: MarketSettings): boolean
+  isLeverageEqual(
+    requested: DecimalString,
+    reported: MarketSettings,
+    requestedInitialMarginFractionBps?: DecimalString
+  ): boolean
 
   /**
    * The amounts the account can still buy and sell on one market, in that
@@ -729,15 +740,19 @@ export interface PerpsProviderPlugin {
    * `agentAddress` param. The agent address must be known pre-build so the
    * backend builds the right typed data, so core calls this before
    * `createAction` and threads the same result into `executeAction`.
+   * The caller's `params` are forwarded so a plugin can contribute a venue
+   * encoding of a caller value (Lighter's `initialMarginFractionBps`). A setup
+   * step runs with the backend-staged params and forwards none.
    *
    * Optional: providers that sign as the user or with a non-EVM session
-   * credential (Lighter's API key) omit it — core then sends no `signerAddress`
-   * and no injected params.
+   * credential and contribute no params omit it — core then sends no
+   * `signerAddress` and no injected params.
    */
   resolveActionRequest?(
     action: ActionType,
     address: Address,
-    signer: PerpsSigner
+    signer: PerpsSigner,
+    params?: ActionParamsMap[ActionType]
   ): Promise<ActionSignerContribution>
 
   /**

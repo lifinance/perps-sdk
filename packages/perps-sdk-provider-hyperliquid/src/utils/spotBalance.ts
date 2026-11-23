@@ -39,7 +39,7 @@ export const spotPriceById = (
  * Convert a Hyperliquid spot balance's numeric token index into an SDK asset.
  * The balance payload has no `fullName`, so logo resolution uses the base
  * `_spot` URI rule rather than Unit-underlying lookup.
- * @param registered - The registry `Asset` with the same `id`; only its `decimals` is copied.
+ * @param registered - The registry `Asset` with the same `id`; only its `decimals` and a non-empty `displayName` are copied.
  * @public
  */
 export const spotAssetFromToken = (
@@ -52,6 +52,7 @@ export const spotAssetFromToken = (
   ...(registered?.decimals === undefined
     ? {}
     : { decimals: registered.decimals }),
+  ...(registered?.displayName ? { displayName: registered.displayName } : {}),
 })
 
 /** Assemble a typed spot {@link Balance}; `total` is native token units and its unit price and USD value use `priceById`. @public */

@@ -22,6 +22,7 @@ import {
 import { parseUnits } from 'viem'
 import { commitBridgeQuote, readBridgeRecipient } from '../bridge/rhino.js'
 import {
+  EXTENDED_BRIDGE_CHAINS,
   EXTENDED_SETTLEMENT_DECIMALS,
   EXTENDED_VENUE_BRIDGE_CHAIN,
 } from '../constants.js'
@@ -62,17 +63,24 @@ const spendingPositionOf = (message: StarkMessage): string => {
   }
 }
 
-async function calculateMessageHash(
+function assertOwnPosition(
   message: StarkMessage,
-  domain: StarkDomain,
   credentials: ExtendedCredentials
-): Promise<Hex> {
+): void {
   if (BigInt(spendingPositionOf(message)) !== BigInt(credentials.positionId)) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
       `Extended ${message.type} message spends from position ${spendingPositionOf(message)}, not from the account position ${credentials.positionId}.`
     )
   }
+}
+
+async function calculateMessageHash(
+  message: StarkMessage,
+  domain: StarkDomain,
+  credentials: ExtendedCredentials
+): Promise<Hex> {
+  assertOwnPosition(message, credentials)
   switch (message.type) {
     case 'order':
       return calculateStarkOrderHash(
@@ -174,6 +182,29 @@ export async function buildSignedBody(
 const isEvmTxStep = (step: ActionStep): step is EvmTxActionStep =>
   'txParams' in step
 
+const DECIMAL_AMOUNT = new RegExp(
+  `^\\d+(\\.\\d{1,${EXTENDED_SETTLEMENT_DECIMALS}})?$`
+)
+
+/** Settlement units of a request amount, or `undefined` past the settlement precision. */
+const requestUnits = (amount: string): bigint | undefined =>
+  DECIMAL_AMOUNT.test(amount)
+    ? parseUnits(amount, EXTENDED_SETTLEMENT_DECIMALS)
+    : undefined
+
+/** An integer amount in settlement units, or `undefined` when it is not one. */
+const settlementUnits = (value: unknown): bigint | undefined => {
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    return BigInt(value)
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value)
+  }
+  return undefined
+}
+
+const WITHDRAWAL_CHAINS = new Set(Object.values(EXTENDED_BRIDGE_CHAINS))
+
 /**
  * Complete a withdrawal step with the parts that need the API key: the
  * account's bridge address as the recipient, in the signed message and in the
@@ -213,28 +244,35 @@ async function prepareWithdrawal(
       'Extended withdrawal step must carry one withdrawal message and a settlement.'
     )
   }
+  if (!WITHDRAWAL_CHAINS.has(chainOut)) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended does not bridge withdrawals to chain ${chainOut}.`
+    )
+  }
   const settlementAmount =
     'amount' in settlement ? settlement.amount : undefined
-  const signedAmount = BigInt(message.fields.amount)
+  const signedAmount = settlementUnits(message.fields.amount)
   if (
-    signedAmount !== parseUnits(amount, EXTENDED_SETTLEMENT_DECIMALS) ||
-    (typeof settlementAmount !== 'string' &&
-      typeof settlementAmount !== 'number') ||
-    BigInt(settlementAmount) !== signedAmount
+    signedAmount === undefined ||
+    requestUnits(amount) !== signedAmount ||
+    settlementUnits(settlementAmount) !== signedAmount
   ) {
     throw new PerpsError(
       PerpsErrorCode.SDKError,
-      `Extended withdrawal amounts do not agree: ${amount} in the request, ${message.fields.amount} in the signed message, ${String(settlementAmount)} in the settlement.`
+      `Extended withdrawal amounts do not agree: ${amount} in the request, ${String(message.fields.amount)} in the signed message, ${String(settlementAmount)} in the settlement.`
     )
   }
-  const [bridgeAddress, quoteId] = await Promise.all([
-    readBridgeRecipient(deps.client, credentials.apiKey),
-    commitBridgeQuote(deps.client, credentials.apiKey, {
-      chainIn: EXTENDED_VENUE_BRIDGE_CHAIN,
-      chainOut,
-      amount,
-    }),
-  ])
+  assertOwnPosition(message, credentials)
+  const bridgeAddress = await readBridgeRecipient(
+    deps.client,
+    credentials.apiKey
+  )
+  const quoteId = await commitBridgeQuote(deps.client, credentials.apiKey, {
+    chainIn: EXTENDED_VENUE_BRIDGE_CHAIN,
+    chainOut,
+    amount,
+  })
   // Written as Extended's own SDK writes it: the integer in hex.
   const recipient = toStarkHex(bridgeAddress)
   return {
@@ -260,10 +298,25 @@ async function executeStarkStep(
   unprepared: StarkActionStep,
   credentials: ExtendedCredentials
 ): Promise<{ sent: StarkSignedActionStep } | { result: ActionResult }> {
-  const step =
-    unprepared.action === ActionType.WITHDRAWAL
-      ? await prepareWithdrawal(deps, unprepared, credentials)
-      : unprepared
+  let step = unprepared
+  if (unprepared.action === ActionType.WITHDRAWAL) {
+    try {
+      step = await prepareWithdrawal(deps, unprepared, credentials)
+    } catch (error) {
+      // Nothing is sent yet, so any venue answer leaves the withdrawal undone.
+      if (error instanceof ExtendedApiError) {
+        return {
+          result: {
+            action: unprepared.action,
+            status: UserActionStatus.Failed,
+            error: error.message,
+            errorCode: error.code,
+          },
+        }
+      }
+      throw error
+    }
+  }
   const body = await buildSignedBody(step, deps.starkDomain, credentials)
   const { method, path } = step.stark.request
   let data: unknown
@@ -296,7 +349,11 @@ async function executeStarkStep(
       },
     }
   }
-  const orderId = (data as { id?: unknown } | undefined)?.id
+  // An order answers `{ id }`; a withdrawal answers its id as the bare value.
+  const orderId =
+    typeof data === 'string' || typeof data === 'number'
+      ? data
+      : (data as { id?: unknown } | undefined)?.id
   return {
     sent: {
       action: step.action,

@@ -7,6 +7,7 @@ import {
 } from '@lifi/perps-sdk'
 import {
   type ActionResult,
+  ActionType,
   CHECK_ACCOUNT_BEFORE_RETRY_TEXT,
   type EvmTxActionStep,
   type EvmTxSignedActionStep,
@@ -29,7 +30,7 @@ import {
   EXTENDED_DEPOSIT_COLLATERAL,
   EXTENDED_VENUE_BRIDGE_CHAIN,
 } from '../constants.js'
-import type { ExtendedApiClient } from '../utils/apiClient.js'
+import { type ExtendedApiClient, ExtendedApiError } from '../utils/apiClient.js'
 
 const refuse = (message: string): never => {
   throw new PerpsError(PerpsErrorCode.SDKError, message)
@@ -65,6 +66,14 @@ function validateDepositLegs(steps: EvmTxActionStep[], bridge: Address): void {
   }
 }
 
+/** Extended answered a bridge read before the deposit leg was sent. */
+const venueRefusal = (error: ExtendedApiError): ActionResult => ({
+  action: ActionType.DEPOSIT,
+  status: UserActionStatus.Failed,
+  error: error.message,
+  errorCode: error.code,
+})
+
 /** The arguments as JSON carries them to the backend: integers as decimal strings. */
 const toWireArgs = (args: readonly unknown[]): unknown[] =>
   args.map((arg) => (typeof arg === 'bigint' ? arg.toString() : arg))
@@ -94,7 +103,15 @@ export async function executeDeposit(
   const chainIn =
     EXTENDED_BRIDGE_CHAINS[EXTENDED_DEPOSIT_COLLATERAL.chainId] ??
     refuse('Extended has no bridge chain for the deposit chain.')
-  const bridge = await readBridgeContract(client, apiKey, chainIn)
+  let bridge: Address
+  try {
+    bridge = await readBridgeContract(client, apiKey, chainIn)
+  } catch (error) {
+    if (error instanceof ExtendedApiError) {
+      return { signed: [], executed: [venueRefusal(error)] }
+    }
+    throw error
+  }
   validateDepositLegs(steps, bridge)
 
   const signed: EvmTxSignedActionStep[] = []
@@ -122,11 +139,22 @@ export async function executeDeposit(
       }
       if (txParams.functionName === 'depositWithId') {
         const amount = BigInt(String(args[1]))
-        const quoteId = await commitBridgeQuote(client, apiKey, {
-          chainIn,
-          chainOut: EXTENDED_VENUE_BRIDGE_CHAIN,
-          amount: formatUnits(amount, EXTENDED_DEPOSIT_COLLATERAL.decimals),
-        })
+        let quoteId: string
+        try {
+          quoteId = await commitBridgeQuote(client, apiKey, {
+            chainIn,
+            chainOut: EXTENDED_VENUE_BRIDGE_CHAIN,
+            amount: formatUnits(amount, EXTENDED_DEPOSIT_COLLATERAL.decimals),
+          })
+        } catch (error) {
+          if (error instanceof ExtendedApiError) {
+            return {
+              signed: [],
+              executed: [...confirmed(), venueRefusal(error)],
+            }
+          }
+          throw error
+        }
         args = [args[0], amount, BigInt(`0x${quoteId}`)]
       }
       txHash = await wallet.writeContract({
