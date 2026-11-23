@@ -42,6 +42,10 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { arbitrum } from 'viem/chains'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  LIGHTER_ASSET_DETAILS_RESPONSE,
+  LIGHTER_RH_ASSET_DETAILS_RESPONSE,
+} from '../test/assetDetails.js'
+import {
   DEFAULT_LIGHTER_EXPLORER_TX_BASE_URL,
   DEFAULT_LIGHTER_REST_URL,
   LIGHTER_ALL_MARKETS_WILDCARD,
@@ -69,6 +73,7 @@ import type {
 } from './types/index.js'
 import {
   LT_ACCOUNT_TRADING_MODE_SIMPLE,
+  LT_ACCOUNT_TRADING_MODE_UNIFIED,
   LT_MARGIN_MODE_CROSS,
   LT_MARGIN_MODE_ISOLATED,
 } from './types/index.js'
@@ -7703,5 +7708,105 @@ describe('LighterProvider — transfer type variants', () => {
       type: ActivityType.TRANSFER,
       meta: expect.objectContaining({ transferType }),
     })
+  })
+})
+
+describe('LighterProvider — getMarginHealth', () => {
+  const stubFetch = (
+    account: Record<string, unknown>,
+    assetDetails: (url: string) => Response = (url) =>
+      respond(
+        url.includes(LIGHTER_RH_REST_URL)
+          ? LIGHTER_RH_ASSET_DETAILS_RESPONSE
+          : LIGHTER_ASSET_DETAILS_RESPONSE
+      )
+  ) => {
+    overrideFetch((url) => {
+      if (url.includes('/api/v1/account?')) {
+        return respond({
+          ...ACCOUNT_PAYLOAD,
+          accounts: [{ ...SIMPLE_ACCOUNT, ...account }],
+        })
+      }
+      if (url.includes('/api/v1/assetDetails')) {
+        return assetDetails(url)
+      }
+      return undefined
+    })
+  }
+
+  const usdc = (marginBalance: string) => ({
+    symbol: 'USDC',
+    asset_id: 3,
+    balance: '25',
+    locked_balance: '0',
+    margin_balance: marginBalance,
+    margin_mode: 'disabled',
+    multiplier: '1',
+  })
+
+  it('divides the venue maintenance margin by the liquidation value from the mainnet asset details', async () => {
+    stubFetch({
+      assets: [usdc('500')],
+      cross_maintenance_margin_requirement: '100',
+    })
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    expect(await provider.getMarginHealth!({ address: ADDRESS })).toEqual({
+      ratio: '0.2',
+      liquidationThreshold: '1',
+    })
+    expect(
+      recorded.filter((r) => r.url.includes('/api/v1/assetDetails'))
+    ).toEqual([
+      expect.objectContaining({
+        url: expect.stringContaining(DEFAULT_LIGHTER_REST_URL),
+      }),
+    ])
+  })
+
+  it('values unified margin assets with the asset details of the RH deployment', async () => {
+    stubFetch({
+      account_trading_mode: LT_ACCOUNT_TRADING_MODE_UNIFIED,
+      assets: [
+        { ...usdc('10'), symbol: 'USDG', margin_mode: 'enabled' },
+        {
+          symbol: 'AAPL',
+          asset_id: 4,
+          balance: '0',
+          locked_balance: '0',
+          margin_balance: '2',
+          margin_mode: 'enabled',
+          multiplier: '1.001090616965388660',
+        },
+      ],
+      cross_maintenance_margin_requirement: '5',
+    })
+    const provider = lighterRhProvider()
+    provider.bind(STUB_CLIENT)
+
+    // 5 ÷ (10 × 1 × 1 + 2 × 348.49466 × 0.75)
+    expect((await provider.getMarginHealth!({ address: ADDRESS }))?.ratio).toBe(
+      '0.0093854062451506779107087091070106938633'
+    )
+  })
+
+  it('rejects when the asset details read fails', async () => {
+    stubFetch(
+      {
+        assets: [usdc('500')],
+        cross_maintenance_margin_requirement: '100',
+      },
+      () => respond({ code: 29500, message: 'internal server error' }, 400)
+    )
+    const provider = lighterProvider()
+    provider.bind({
+      config: { ...STUB_CLIENT.config, retry: false },
+    } as PerpsSDKClient)
+
+    await expect(
+      provider.getMarginHealth!({ address: ADDRESS })
+    ).rejects.toThrow()
   })
 })

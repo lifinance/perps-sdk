@@ -434,6 +434,38 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Margin health
+
+`getMarginHealth()` reads the current cross-margin health of an account as a
+`MarginHealth`. `ratio` is maintenance margin divided by equity, as a fraction.
+A higher ratio means a greater liquidation risk. The venue liquidates when
+`ratio` exceeds `liquidationThreshold`. The read gives `undefined` when the
+provider or the account mode has no health.
+
+Each provider calculates the ratio with its own venue formula:
+
+- Hyperliquid Standard: the cross maintenance margin of one dex divided by the
+  cross account value of that dex. `categoryId` selects the dex. The default is
+  the main dex.
+- Hyperliquid Unified: the largest ratio over the collateral tokens, from the
+  venue `computeUnifiedAccountRatio`. `categoryId` has no effect.
+- Hyperliquid Portfolio Margin and DEX abstraction: `undefined`.
+- Lighter and Lighter RH: the venue `cross_maintenance_margin_requirement`
+  divided by the total account liquidation value.
+- Ondo: the venue `marginRatio` from `/v1/perps/balance`. It needs a session.
+  Ondo gives `9999` when the margin balance is zero or below.
+
+Hyperliquid and Lighter give `undefined` when the account has maintenance
+margin but no positive equity.
+
+```ts
+const health = await client.getMarginHealth({
+  provider: 'hyperliquid',
+  address: '0xUser',
+})
+console.log(health?.ratio, health?.liquidationThreshold)
+```
+
 ### Leverage confirmation
 
 `provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.

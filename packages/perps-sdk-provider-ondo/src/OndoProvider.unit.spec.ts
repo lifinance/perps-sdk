@@ -717,6 +717,12 @@ const SESSION_GATED_READS: ReadonlyArray<
     { resolves: [] },
   ],
   [
+    'getMarginHealth',
+    'margin health read',
+    (p) => p.getMarginHealth!({ address: ADDRESS }),
+    { resolves: { liquidationThreshold: '1' } },
+  ],
+  [
     'getAvailableToTrade',
     'available-to-trade read',
     (p) => p.getAvailableToTrade!({ address: ADDRESS, marketId: 'AAPL-USD.P' }),
@@ -956,6 +962,20 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         "ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
       tool: 'ondo',
     })
+  })
+})
+
+describe('OndoProvider — getMarginHealth (logged in)', () => {
+  it.each([
+    ['the venue margin ratio', '0.039'],
+    ['the venue value for a margin balance of zero or below', '9999'],
+  ])('returns %s', async (_, marginRatio) => {
+    balanceResult = { ...BALANCE_RESULT, marginRatio }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getMarginHealth!({ address: ADDRESS })
+    ).resolves.toEqual({ ratio: marginRatio, liquidationThreshold: '1' })
   })
 })
 

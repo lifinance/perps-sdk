@@ -24,6 +24,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -61,6 +62,7 @@ import type {
   FillsResponse,
   FundingActivity,
   LiquidationActivity,
+  MarginHealth,
   MarketDisplay,
   MarketSettings,
   OndoAccountConfig,
@@ -179,6 +181,9 @@ export interface OndoProviderOptions {
   /** Session-token persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
+
+// `marginRatio` above 1 triggers liquidation (docs.ondoperps.xyz/risk-measures).
+const LIQUIDATION_THRESHOLD = '1'
 
 /**
  * Ondo provider plugin factory. Returns an object implementing
@@ -543,6 +548,27 @@ export const ondoProvider = (
           return {
             marginMode: MarginMode.CROSS,
             leverage,
+          }
+        }
+      )
+    },
+
+    async getMarginHealth(
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth> {
+      return withSession(
+        params.address,
+        dataRead('margin health read'),
+        async (token) => {
+          const balance = await apiClient(opts).get<OndoBalanceSummary>(
+            '/v1/perps/balance',
+            { authToken: token.token }
+          )
+          // Ondo reports 9999 when the margin balance is zero or below.
+          return {
+            ratio: balance.marginRatio,
+            liquidationThreshold: LIQUIDATION_THRESHOLD,
           }
         }
       )

@@ -10,6 +10,7 @@ import type {
   CreateActionResponse,
   DecimalString,
   ExecuteActionResponse,
+  MarginHealth,
   MarketRef,
   MarketSettings,
   MetaActionType,
@@ -59,6 +60,7 @@ import type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
@@ -921,6 +923,27 @@ export class PerpsClient {
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getDepositFlow?.({ address: params.address }, options)
+  }
+
+  /**
+   * Current cross-margin health of `params.address` at `params.provider`,
+   * calculated by the provider plugin.
+   *
+   * @returns `undefined` when the plugin declares no margin health read, or
+   *   when the venue gives no health for the account in its current mode.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   venue read fails.
+   * @public
+   */
+  async getMarginHealth(
+    params: GetMarginHealthParams,
+    options?: SDKRequestOptions
+  ): Promise<MarginHealth | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getMarginHealth?.(
+      { address: params.address, categoryId: params.categoryId },
+      options
+    )
   }
 
   /**

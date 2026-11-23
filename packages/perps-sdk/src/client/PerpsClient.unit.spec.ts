@@ -1815,6 +1815,45 @@ describe('PerpsClient', () => {
   // getDepositFlow — optional plugin method, undefined when unimplemented
   // ---------------------------------------------------------------------------
 
+  describe('getMarginHealth', () => {
+    const health = { ratio: '0.47', liquidationThreshold: '1' }
+
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: 'hyperliquid',
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates the address and categoryId to the plugin and returns its health', async () => {
+      const getMarginHealth = vi.fn(async () => health)
+      await expect(
+        clientWith({ getMarginHealth }).getMarginHealth({
+          provider,
+          address: userAddress,
+          categoryId: 'xyz',
+        })
+      ).resolves.toEqual(health)
+      expect(getMarginHealth).toHaveBeenCalledWith(
+        { address: userAddress, categoryId: 'xyz' },
+        undefined
+      )
+    })
+
+    it('resolves undefined when the plugin does not implement the read', async () => {
+      await expect(
+        clientWith({}).getMarginHealth({ provider, address: userAddress })
+      ).resolves.toBeUndefined()
+    })
+  })
+
   describe('getDepositFlow', () => {
     const flow = {
       kind: 'lifiSwap',

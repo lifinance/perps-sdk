@@ -27,6 +27,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -69,6 +70,7 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   LiquidationActivity,
+  MarginHealth,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -128,6 +130,7 @@ import type {
   LtAccountLimits,
   LtAccountOrdersResponse,
   LtAccountPnL,
+  LtAssetDetailsResponse,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
   LtFastwithdrawInfoResponse,
@@ -182,6 +185,7 @@ import {
   toIsoFromSeconds,
 } from './utils/index.js'
 import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
+import { calculateMarginHealth } from './utils/marginHealth.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -1495,6 +1499,20 @@ export const createLighterProvider = (
         ),
         account.positions
       )
+    },
+
+    async getMarginHealth(
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth | undefined> {
+      const client = apiClient(opts)
+      const [account, assetDetails] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        client
+          .get<LtAssetDetailsResponse>('/api/v1/assetDetails')
+          .then((response) => wireList(response.asset_details)),
+      ])
+      return calculateMarginHealth(account, assetDetails, collateral.assetIndex)
     },
 
     /**
