@@ -185,6 +185,29 @@ describe('buildHyperliquidCrossMarginHealth', () => {
       ])
     })
 
+    it('keeps the largest token ratio when a smaller one follows it', () => {
+      // Token 200: 5 ÷ 20 = 0.25. Token 0: 10 ÷ 100 = 0.1.
+      expect(
+        healthFor(
+          UNIFIED,
+          new Map([
+            ['xyz', dexState('5')],
+            ['', dexState('10')],
+          ]),
+          spotState([
+            [0, '100'],
+            [200, '20'],
+          ])
+        )
+      ).toMatchObject([
+        {
+          pool: { type: 'collateralAsset', assetId: '200' },
+          status: CrossMarginHealthStatus.MEASURED,
+          ratio: '0.25',
+        },
+      ])
+    })
+
     it('gives a ratio equal to the threshold when available collateral equals maintenance margin', () => {
       expect(
         healthFor(

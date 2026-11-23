@@ -454,6 +454,52 @@ describe('getAccount', () => {
     ])
   })
 
+  it.each([
+    {
+      responses: unifiedResponses(HlAbstractionMode.PORTFOLIO_MARGIN),
+      mode: AccountMode.PORTFOLIO_MARGIN,
+      liquidationThreshold: '0.95',
+    },
+    {
+      responses: defaultResponses(HlAbstractionMode.DEX_ABSTRACTION),
+      mode: AccountMode.DEX_ABSTRACTION,
+      liquidationThreshold: '1',
+    },
+  ])('reports $mode cross-margin health as unavailable for the account', async ({
+    responses,
+    mode,
+    liquidationThreshold,
+  }) => {
+    ;({ restore } = installInfoFetchMock(responses, HL_MARKETS))
+
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result.crossMarginHealth).toEqual([
+      {
+        mode,
+        pool: { type: 'account', accountId: ADDRESS },
+        liquidationThreshold,
+        status: CrossMarginHealthStatus.UNAVAILABLE,
+      },
+    ])
+  })
+
+  it('omits cross-margin health for an abstraction mode outside the known venue modes', async () => {
+    ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
+    const standard = await getAccount(ctx, { address: ADDRESS })
+    restore()
+
+    ;({ restore } = installInfoFetchMock(
+      { ...defaultResponses(), userAbstraction: 'futureMode' },
+      HL_MARKETS
+    ))
+    const result = await getAccount(ctx, { address: ADDRESS })
+
+    expect(result).not.toHaveProperty('crossMarginHealth')
+    expect(result.collateralBalances).toEqual(standard.collateralBalances)
+    expect(result.positions).toEqual(standard.positions)
+  })
+
   it('carries the positions array, deep-equal to getPositions output for identical fixtures', async () => {
     ;({ restore } = installInfoFetchMock(defaultResponses(), HL_MARKETS))
     const account = await getAccount(ctx, { address: ADDRESS })

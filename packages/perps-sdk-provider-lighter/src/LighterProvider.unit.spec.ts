@@ -2534,17 +2534,35 @@ describe('LighterProvider — getAccount cross-margin health', () => {
     ])
   })
 
-  it('keeps the account read and reports unavailable health when the asset details read fails', async () => {
+  it.each([
+    {
+      failure: 'an HTTP error',
+      assetDetails: () =>
+        respond({ code: 29500, message: 'internal server error' }, 400),
+    },
+    {
+      failure: 'a transport error',
+      assetDetails: () => {
+        throw new TypeError('fetch failed')
+      },
+    },
+  ])('keeps the account read and reports unavailable health when the asset details read fails with $failure', async ({
+    assetDetails,
+  }) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     stubFetch(
       {
         assets: [usdc('500')],
         cross_maintenance_margin_requirement: '100',
       },
-      () => respond({ code: 29500, message: 'internal server error' }, 400)
+      assetDetails
     )
+    const provider = lighterProvider()
+    provider.bind({
+      config: { ...STUB_CLIENT.config, retry: false },
+    } as PerpsSDKClient)
 
-    const account = await accountFrom(lighterProvider())
+    const account = await provider.getAccount({ address: ADDRESS })
 
     expect(account.collateralBalances).toHaveLength(1)
     expect(account.crossMarginHealth).toEqual([
@@ -2560,6 +2578,28 @@ describe('LighterProvider — getAccount cross-margin health', () => {
       expect.anything()
     )
     warn.mockRestore()
+  })
+
+  it('reports unavailable health when the asset details response has no asset list', async () => {
+    stubFetch(
+      {
+        assets: [usdc('500')],
+        cross_maintenance_margin_requirement: '100',
+      },
+      () => respond({ code: 200 })
+    )
+
+    const account = await accountFrom(lighterProvider())
+
+    expect(account.collateralBalances).toHaveLength(1)
+    expect(account.crossMarginHealth).toEqual([
+      {
+        mode: AccountMode.SIMPLE,
+        pool: { type: 'account', accountId: '42' },
+        liquidationThreshold: '1',
+        status: CrossMarginHealthStatus.UNAVAILABLE,
+      },
+    ])
   })
 })
 

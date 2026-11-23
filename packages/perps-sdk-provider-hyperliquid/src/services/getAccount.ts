@@ -293,6 +293,13 @@ export const getAccount = async (
   const unrealizedPnl = safeAddDecimalStrings(
     positions.map((position) => position.unrealizedPnl)
   )
+  const crossMarginHealth = buildHyperliquidCrossMarginHealth(
+    params.address,
+    abstractionResult,
+    stateByDex,
+    spotState,
+    quoteAssetByCategory
+  )
 
   return {
     provider: PROVIDER_KEY,
@@ -307,12 +314,6 @@ export const getAccount = async (
       taker: feesResult.userCrossRate ?? '0',
     },
     config,
-    crossMarginHealth: buildHyperliquidCrossMarginHealth(
-      params.address,
-      abstractionResult,
-      stateByDex,
-      spotState,
-      quoteAssetByCategory
-    ),
+    ...(crossMarginHealth === undefined ? {} : { crossMarginHealth }),
   }
 }

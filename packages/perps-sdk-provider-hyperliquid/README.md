@@ -344,6 +344,9 @@ That token outranks every ratio. A token without a usable input gives `UNAVAILAB
 The account read does not carry the portfolio margin inputs: borrow caps, borrowed amounts, and borrow oracle prices.
 Thus portfolio margin is `UNAVAILABLE`.
 
+The provider does not set `crossMarginHealth` for a venue mode that is not in this table.
+The provider knows no formula for such a mode, and it does not use the standard formula.
+
 ## Documentation
 
 - [`@lifi/perps-sdk` README](https://www.npmjs.com/package/@lifi/perps-sdk) — client setup, options, and the WebSocket API

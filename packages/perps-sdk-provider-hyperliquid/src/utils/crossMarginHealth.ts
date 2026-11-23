@@ -130,7 +130,9 @@ const resolveUnifiedHealth = (
 /**
  * Cross-margin health of a Hyperliquid account for its abstraction mode.
  * Portfolio margin and DEX abstraction report `UNAVAILABLE`, because the
- * account read carries no authoritative input for their venue metric.
+ * account read carries no authoritative input for their venue metric. A
+ * venue mode outside `HlAbstractionMode` gives `undefined`: no formula is
+ * known for it.
  */
 export const buildHyperliquidCrossMarginHealth = (
   address: Address,
@@ -138,7 +140,7 @@ export const buildHyperliquidCrossMarginHealth = (
   stateByDex: ReadonlyMap<string, HlClearinghouseState>,
   spotState: HlSpotClearinghouseState,
   quoteAssetByCategory: ReadonlyMap<string, Asset>
-): CrossMarginHealth[] => {
+): CrossMarginHealth[] | undefined => {
   const accountPool = { type: 'account', accountId: address } as const
   switch (abstraction) {
     case HlAbstractionMode.UNIFIED_ACCOUNT:
@@ -166,7 +168,9 @@ export const buildHyperliquidCrossMarginHealth = (
           status: CrossMarginHealthStatus.UNAVAILABLE,
         },
       ]
-    default:
+    case null:
+    case HlAbstractionMode.DEFAULT:
+    case HlAbstractionMode.DISABLED:
       // Hyperliquid publishes no standard ratio: this divides the two venue
       // figures that hyperliquid-dex/ts-examples LiquidationPx.tsx reads.
       return [...stateByDex].map(([dex, state]) =>
@@ -178,5 +182,7 @@ export const buildHyperliquidCrossMarginHealth = (
           equity: state.crossMarginSummary.accountValue,
         })
       )
+    default:
+      return undefined
   }
 }
