@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-ondo
 
+## 39.0.1
+
+### Patch Changes
+
+- [#747](https://github.com/lifinance/perps-sdk/pull/747) [`c7fd241`](https://github.com/lifinance/perps-sdk/commit/c7fd2414397243aee857e1b6b4f9266df145d867) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Publish the Hyperliquid and Ondo providers against the `@lifi/perps-sdk` plugin contract that forwards caller params to `resolveActionRequest` and accepts a requested native IMF in `isLeverageEqual`. Both providers ignore the new arguments, so their behavior does not change.
+
+- Updated dependencies [[`a113ae9`](https://github.com/lifinance/perps-sdk/commit/a113ae94d35627995a4d49211e81034cea56844c)]:
+  - @lifi/perps-types@30.2.0
+
 ## 39.0.0
 
 ### Major Changes
