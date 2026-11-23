@@ -94,7 +94,10 @@ import type {
   WithdrawalSourceTypes,
   WithdrawFlow,
 } from '../types/withdrawal.js'
-import { isSubmittedOrAccepted } from '../utils/actionResult.js'
+import {
+  isSubmittedOrAccepted,
+  sentBeforeExecuteResults,
+} from '../utils/actionResult.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -502,7 +505,8 @@ export class PerpsClient {
    * empty report means nothing executed.
    *
    * @throws {PerpsExecutionError} When the submission or the plugin callback
-   *   throws after a result is known.
+   *   throws after a result is known. A failed submission reports the signed
+   *   steps that already moved funds as `Submitted`.
    */
   private async submitSignedActions(
     provider: string,
@@ -525,7 +529,10 @@ export class PerpsClient {
         })
         results = [...executed, ...response.results]
       } catch (error) {
-        rethrowWithKnownResults(executed, error)
+        rethrowWithKnownResults(
+          [...executed, ...sentBeforeExecuteResults(signed)],
+          error
+        )
       }
     }
     if (results.length === 0) {
