@@ -158,6 +158,82 @@ rate as a signed fraction: `rate × (365 × 24 × 60 × 60 ÷ ratePeriodSeconds)
 It does not compound. Use `Provider.funding.ratePeriodSeconds` for the live
 rate and for the settled rates, because they have the same unit.
 
+## Portfolio history
+
+`getPortfolioHistory(client, { provider, address, range, bounds? })` returns
+the account value, the cumulative PnL, and the cumulative net transfers of
+one venue account, oldest point first. `range` is a venue preset: `24h`,
+`7d`, `30d`, or `all`. Each venue starts its preset at its own first sample,
+so two venues can answer the same preset with different first timestamps.
+A request without `bounds` keeps this preset read.
+
+`bounds` is an opt-in `PortfolioHistoryBounds`: an inclusive `start` and
+`end` in Unix milliseconds, with `start` at or before `end`. The client
+throws `PerpsError(ValidationError)` for other values. `range` still selects
+the preset or the sample resolution. A bounded response has this contract:
+
+- `opening` is the latest valid sample at or before `start`. It is absent
+  when the venue has no such sample. An absent `opening` never means a zero
+  balance: the caller must not infer a balance from a missing sample.
+- `points` holds only the valid samples after `start` through `end`. A
+  sample at `start` is the `opening`, not a point. A sample after `end` is
+  never a point.
+- `pnl` and `netTransfers` are relative to the first returned sample: the
+  `opening` when present, else the first point. That sample carries `'0'`
+  for both. An opening balance is never a transfer.
+- `netTransfers` keeps its unavailable semantics: when the first returned
+  sample has no value, no sample has one.
+- `totalPnl` is the `pnl` of the last point, or absent without points.
+- `volume` keeps each venue's own span, described below.
+
+Each venue reads its samples in its own way:
+
+- Lighter and Lighter RH keep the resolution of `range` and read
+  `/api/v1/pnl` from one bucket before `start` through `end`. The standard
+  finite ranges ask for one more bucket (`count_back` plus one). `all` keeps
+  its 1000 daily buckets. Lighter documents `count_back` as a sizing hint,
+  so bounds wider than `range` are not cut. `volume` spans the retained
+  samples. Lighter anchors its last fetched snapshot to the current account
+  value, so an `end` in the past shifts every account value by the change
+  since then.
+- Hyperliquid reads its presets from one `portfolio` request and keeps the
+  account scope: perps-only presets for a per-dex collateral account, and
+  combined presets for a unified or portfolio-margin account. When the
+  native preset has no sample at or before `start`, the read takes the
+  samples of the narrowest wider preset of the same scope that has one.
+  Without such a preset, the read returns the native samples without an
+  `opening`. A wider preset the SDK cannot join is skipped with a warning.
+  The ledger read starts at the first returned sample. `volume` stays the
+  native preset total.
+- Ondo reads the native `/v1/portfolio/summary/graph` preset first. When it
+  has no point at or before `start`, the read requests the next wider
+  preset, one at a time, until one has an opening point. Without such a
+  preset, the read returns the native points without an `opening`. A wider
+  graph read that fails is skipped with a warning. `volume` stays the native
+  preset total from `/v1/portfolio/summary`.
+
+A preset has limits. The `24h` and `7d` presets can start after `start`, so
+a bounded `24h` read often takes its opening from a wider preset. The `all`
+preset has no wider preset. A venue sample cadence sets the gap between the
+`opening` and `start`: a daily snapshot at midnight is the opening of a
+start at 19:44 on the same day, and a later snapshot does not replace it.
+
+```ts
+const end = Date.now()
+const history = await client.getPortfolioHistory({
+  provider: 'lighter',
+  address: '0xUser',
+  range: '30d',
+  bounds: { start: end - 30 * 24 * 60 * 60 * 1_000, end },
+})
+if (history.opening === undefined) {
+  // No balance is known at the start. Do not use zero.
+}
+```
+
+Provider plugins call the exported `buildPortfolioHistoryWindow(provider,
+points, bounds)` for the cut and the rebase. See `src/math/README.md`.
+
 ## High-level client
 
 `PerpsClient` owns the end-to-end action pipeline. Its trade wrappers include
@@ -358,6 +434,38 @@ const availableToTrade = await client.getAvailableToTrade({
 console.log(availableToTrade.buy, availableToTrade.sell)
 ```
 
+### Margin health
+
+`getMarginHealth()` reads the current cross-margin health of an account as a
+`MarginHealth`. `ratio` is maintenance margin divided by equity, as a fraction.
+A higher ratio means a greater liquidation risk. The venue liquidates when
+`ratio` exceeds `liquidationThreshold`. The read gives `undefined` when the
+provider or the account mode has no health.
+
+Each provider calculates the ratio with its own venue formula:
+
+- Hyperliquid Standard: the cross maintenance margin of one dex divided by the
+  cross account value of that dex. `categoryId` selects the dex. The default is
+  the main dex.
+- Hyperliquid Unified: the largest ratio over the collateral tokens, from the
+  venue `computeUnifiedAccountRatio`. `categoryId` has no effect.
+- Hyperliquid Portfolio Margin and DEX abstraction: `undefined`.
+- Lighter and Lighter RH: the venue `cross_maintenance_margin_requirement`
+  divided by the total account liquidation value.
+- Ondo: the venue `marginRatio` from `/v1/perps/balance`. It needs a session.
+  Ondo gives `9999` when the margin balance is zero or below.
+
+Hyperliquid and Lighter give `undefined` when the account has maintenance
+margin but no positive equity.
+
+```ts
+const health = await client.getMarginHealth({
+  provider: 'hyperliquid',
+  address: '0xUser',
+})
+console.log(health?.ratio, health?.liquidationThreshold)
+```
+
 ### Leverage confirmation
 
 `provider.isLeverageEqual(requested, reportedSettings)` compares a positive decimal request with the complete `MarketSettings` read.
@@ -415,8 +523,15 @@ are display and comparison values. No quote grid applies to them.
 - A held margin comes back byte-identical to the input string.
 - `notional` is always the snapped size times the price, so it describes the
   order that the venue opens, not the input before the snap.
-- A derived margin is exact SDK division: 40 decimal places, rounded half-up,
-  with no trailing zeros.
+- A derived margin is SDK division: 40 decimal places, rounded up, with no
+  trailing zeros. Pass it back as a held margin, with the same price and
+  margin rate, and the call gives the same size.
+- A derived margin is the smallest value of 40 decimal places at or above
+  the exact margin. Thus, a comparison value of at most 40 decimal places
+  that is at or above the exact margin is also at or above the derived
+  margin. A comparison value with more than 40 places can fall between the
+  two: when the exact margin does not terminate, a decimal string at or
+  above it is always strictly above it.
 - A derived size truncates onto the lot grid, so a held margin always funds
   its size: `size × price ≤ margin × leverage`.
 

@@ -192,4 +192,84 @@ describe('mapPortfolioHistory', () => {
     expect(result.points.every((p) => !('netTransfers' in p))).toBe(true)
     expect(result.totalPnl).toBe('232.00')
   })
+
+  describe('with bounds', () => {
+    const BOUNDED_GRAPH = [
+      point({
+        time: '2025-03-03T00:00:00Z',
+        marginBalance: '4700.00',
+        totalPnL: '0.00',
+        allTimeDeposits: '4900.00',
+      }),
+      point({ allTimeDeposits: '5000.00' }),
+      GRAPH[1],
+      point({
+        time: '2025-03-06T00:00:00Z',
+        marginBalance: '4990.00',
+        totalPnL: '300.00',
+      }),
+    ]
+    const BOUNDS = {
+      start: Date.parse('2025-03-04T12:00:00Z'),
+      end: Date.parse('2025-03-05T12:00:00Z'),
+    }
+
+    it('returns the latest point at or before the start as the opening, rebased, and drops points after the end', () => {
+      expect(mapPortfolioHistory('7d', BOUNDED_GRAPH, SUMMARY, BOUNDS)).toEqual(
+        {
+          range: '7d',
+          opening: {
+            timestamp: Date.parse('2025-03-04T00:00:00Z'),
+            accountValue: '4800.00',
+            pnl: '0',
+            netTransfers: '0',
+          },
+          points: [
+            {
+              timestamp: Date.parse('2025-03-05T00:00:00Z'),
+              accountValue: '4950.00',
+              pnl: '52',
+              netTransfers: '0',
+            },
+          ],
+          volume: '15000.00',
+          totalPnl: '52',
+        }
+      )
+    })
+
+    it('returns no opening when every point is after the start', () => {
+      const result = mapPortfolioHistory(
+        '7d',
+        BOUNDED_GRAPH.slice(2),
+        SUMMARY,
+        BOUNDS
+      )
+
+      expect(result.opening).toBeUndefined()
+      expect(result.points).toEqual([
+        {
+          timestamp: Date.parse('2025-03-05T00:00:00Z'),
+          accountValue: '4950.00',
+          pnl: '0',
+          netTransfers: '0',
+        },
+      ])
+    })
+
+    it('keeps transfers unavailable after an invalid first baseline', () => {
+      const result = mapPortfolioHistory(
+        '7d',
+        [
+          point({ time: '2025-03-03T00:00:00Z', allTimeDeposits: 'NaN' }),
+          ...BOUNDED_GRAPH.slice(1),
+        ],
+        SUMMARY,
+        BOUNDS
+      )
+
+      expect(result.opening?.netTransfers).toBeUndefined()
+      expect(result.points.every((p) => !('netTransfers' in p))).toBe(true)
+    })
+  })
 })
