@@ -396,6 +396,64 @@ describe('extendedProvider', () => {
     ])
   })
 
+  it('getActivity maps funding payments with the venue sign', async () => {
+    const calls = stubFetch({
+      '/api/v1/user/funding/history': {
+        body: venueBody([
+          {
+            id: 8342,
+            accountId: 3137,
+            market: 'BTC-USD',
+            side: 'SHORT',
+            value: '600',
+            markPrice: '60000',
+            fundingFee: '0.0078',
+            fundingRate: '0.000013',
+            paidTime: 1723150800000,
+          },
+          {
+            id: 8341,
+            accountId: 3137,
+            market: 'BTC-USD',
+            side: 'LONG',
+            size: '0.01',
+            value: '600',
+            markPrice: '60000',
+            fundingFee: '-0.0078',
+            fundingRate: '0.000013',
+            paidTime: 1723147200000,
+          },
+          { id: 8340, market: 'UNKNOWN-USD', side: 'LONG' },
+        ]),
+      },
+    })
+    const { provider } = await setup()
+
+    const { items } = await provider.getActivity({
+      address: ADDRESS,
+      type: [ActivityType.FUNDING],
+    })
+
+    expect(
+      calls.map((call) => call.path).filter((path) => path.includes('funding'))
+    ).toEqual(['/api/v1/user/funding/history?startTime=0&limit=100'])
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: '8342',
+        type: ActivityType.FUNDING,
+        amount: '0.0078',
+        positionSize: '-0.01',
+        fundingRate: '0.000013',
+        timestamp: '2024-08-08T21:00:00.000Z',
+      }),
+      expect.objectContaining({
+        id: '8341',
+        amount: '-0.0078',
+        positionSize: '0.01',
+      }),
+    ])
+  })
+
   it('getMarketSettings reads the recorded leverage as cross', async () => {
     stubFetch({ '/api/v1/user/leverage': { body: recordedBody('leverage') } })
     const { provider } = await setup()
