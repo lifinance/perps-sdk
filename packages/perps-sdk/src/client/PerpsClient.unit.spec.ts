@@ -1815,6 +1815,45 @@ describe('PerpsClient', () => {
   // getDepositFlow — optional plugin method, undefined when unimplemented
   // ---------------------------------------------------------------------------
 
+  describe('getMarginHealth', () => {
+    const health = { ratio: '0.47', liquidationThreshold: '1' }
+
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: 'hyperliquid',
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates the address and categoryId to the plugin and returns its health', async () => {
+      const getMarginHealth = vi.fn(async () => health)
+      await expect(
+        clientWith({ getMarginHealth }).getMarginHealth({
+          provider,
+          address: userAddress,
+          categoryId: 'xyz',
+        })
+      ).resolves.toEqual(health)
+      expect(getMarginHealth).toHaveBeenCalledWith(
+        { address: userAddress, categoryId: 'xyz' },
+        undefined
+      )
+    })
+
+    it('resolves undefined when the plugin does not implement the read', async () => {
+      await expect(
+        clientWith({}).getMarginHealth({ provider, address: userAddress })
+      ).resolves.toBeUndefined()
+    })
+  })
+
   describe('getDepositFlow', () => {
     const flow = {
       kind: 'lifiSwap',
@@ -2887,6 +2926,41 @@ describe('PerpsClient', () => {
         { address: userAddress, range: '7d' },
         options
       )
+    })
+
+    it('delegates the bounds unchanged', async () => {
+      const getPortfolioHistory = vi.fn(async () => history)
+      const bounds = { start: 1_741_046_400_000, end: 1_741_050_000_000 }
+
+      await clientWith({ getPortfolioHistory }).getPortfolioHistory({
+        provider,
+        address: userAddress,
+        range: '7d',
+        bounds,
+      })
+
+      expect(getPortfolioHistory).toHaveBeenCalledWith(
+        { address: userAddress, range: '7d', bounds },
+        undefined
+      )
+    })
+
+    it.each([
+      ['a start after the end', { start: 2, end: 1 }],
+      ['a non-finite start', { start: Number.NaN, end: 1 }],
+      ['a non-finite end', { start: 1, end: Number.POSITIVE_INFINITY }],
+    ])('throws a ValidationError for %s without a provider read', async (_name, bounds) => {
+      const getPortfolioHistory = vi.fn(async () => history)
+
+      await expect(
+        clientWith({ getPortfolioHistory }).getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: '7d',
+          bounds,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+      expect(getPortfolioHistory).not.toHaveBeenCalled()
     })
 
     it('throws an SDKError when the plugin has no portfolio history read', async () => {

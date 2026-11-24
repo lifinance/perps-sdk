@@ -208,6 +208,21 @@ rejection returns `"0"` on both sides. Without a session the method throws
 stream this figure, so the `availableToTrade` WebSocket channel stays
 unsupported.
 
+## Bounded portfolio history
+
+`getPortfolioHistory` with `bounds` reads the `/v1/portfolio/summary/graph`
+preset of `range` first. When that graph has no valid point at or before
+`bounds.start`, the read requests the next wider preset (`7d`, then `30d`,
+then `all`), one request at a time, until a preset has one. Every preset
+reports `marginBalance` and the all-time deposit and withdrawal totals on the
+same basis, so a wider preset gives comparable equity and transfer data.
+Without such a preset, the read returns the native points without an
+`opening`. A wider graph read that fails is skipped with a warning, because
+the native points are already usable. A rejected session and a caller abort
+still reject the read. `volume` stays the `/v1/portfolio/summary` total of
+`range`, and a point after `bounds.end` is never returned. The
+`@lifi/perps-sdk` README § Portfolio history describes the common contract.
+
 ## Reads without a session
 
 A data read throws the session state as a `PerpsError`. A status read returns

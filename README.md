@@ -29,8 +29,11 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 
 `getPortfolioHistory()` returns optional `PortfolioHistoryPoint.netTransfers` values.
 Each value is cumulative net capital in USD, relative to the first returned sample.
+On a bounded read (`bounds`), the first returned sample is the `opening` sample when present.
+An opening balance is never a transfer.
 Positive values mean inflow. Reliable coverage starts at `'0'`.
 An absent value means unavailable, not zero. Other history fields keep their existing meaning.
+The `@lifi/perps-sdk` README § Portfolio history describes the bounded read.
 
 - Lighter subtracts the first retained cumulative flow from each snapshot.
   Flow includes perps and spot inflow minus their outflow.

@@ -10,6 +10,7 @@ import {
   getAssetRegistry,
   getMarketRegistry,
   getProviders,
+  isAbortRejection,
   isDecimalStringEqual,
   isDecimalStringGreaterThan,
   localStorageAdapter,
@@ -23,6 +24,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -60,12 +62,14 @@ import type {
   FillsResponse,
   FundingActivity,
   LiquidationActivity,
+  MarginHealth,
   MarketDisplay,
   MarketSettings,
   OndoAccountConfig,
   Order,
   OrdersResponse,
   PerpsMarketDisplay,
+  PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
   PositionsResponse,
@@ -158,6 +162,14 @@ import {
   type OrderSource,
 } from './utils/orderCursor.js'
 
+/** The venue graph presets, narrowest first. */
+const PORTFOLIO_GRAPH_RANGES: readonly PortfolioHistoryRange[] = [
+  '24h',
+  '7d',
+  '30d',
+  'all',
+]
+
 /**
  * Construction options for the Ondo {@link PerpsProviderPlugin}.
  *
@@ -169,6 +181,9 @@ export interface OndoProviderOptions {
   /** Session-token persistence backend. Defaults to browser `localStorage`. */
   storage?: StorageAdapter
 }
+
+// `marginRatio` above 1 triggers liquidation (docs.ondoperps.xyz/risk-measures).
+const LIQUIDATION_THRESHOLD = '1'
 
 /**
  * Ondo provider plugin factory. Returns an object implementing
@@ -232,6 +247,7 @@ export const ondoProvider = (
     getMarketRegistry(requireClient(), ONDO_PROVIDER_KEY)
 
   const warnDroppedOrder = createWarnOnce()
+  const warnWiderGraphReadOnce = createWarnOnce()
 
   /**
    * Map one venue row, or drop it. A row the mapper rejects, such as a
@@ -532,6 +548,27 @@ export const ondoProvider = (
           return {
             marginMode: MarginMode.CROSS,
             leverage,
+          }
+        }
+      )
+    },
+
+    async getMarginHealth(
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth> {
+      return withSession(
+        params.address,
+        dataRead('margin health read'),
+        async (token) => {
+          const balance = await apiClient(opts).get<OndoBalanceSummary>(
+            '/v1/perps/balance',
+            { authToken: token.token }
+          )
+          // Ondo reports 9999 when the margin balance is zero or below.
+          return {
+            ratio: balance.marginRatio,
+            liquidationThreshold: LIQUIDATION_THRESHOLD,
           }
         }
       )
@@ -1149,16 +1186,60 @@ export const ondoProvider = (
         dataRead('portfolio history read'),
         async (token) => {
           const client = apiClient(opts)
-          const [graph, summary] = await Promise.all([
+          const readGraph = (range: PortfolioHistoryRange) =>
             client.get<OndoPortfolioGraphPoint[] | null>(
               '/v1/portfolio/summary/graph',
-              { params: { range: params.range }, authToken: token.token }
-            ),
+              { params: { range }, authToken: token.token }
+            )
+          const [graph, summary] = await Promise.all([
+            readGraph(params.range),
             client.get<OndoPortfolioSummary>('/v1/portfolio/summary', {
               authToken: token.token,
             }),
           ])
-          return mapPortfolioHistory(params.range, graph ?? [], summary)
+          const { bounds } = params
+          const native = mapPortfolioHistory(
+            params.range,
+            graph ?? [],
+            summary,
+            bounds
+          )
+          if (bounds === undefined || native.opening !== undefined) {
+            return native
+          }
+          const nativeIndex = PORTFOLIO_GRAPH_RANGES.indexOf(params.range)
+          for (const range of PORTFOLIO_GRAPH_RANGES.slice(nativeIndex + 1)) {
+            let widerGraph: OndoPortfolioGraphPoint[] | null
+            try {
+              widerGraph = await readGraph(range)
+            } catch (error) {
+              // The native points are already usable, so a failed wider read
+              // only costs the opening. A session rejection and a caller
+              // abort still reject.
+              if (
+                error instanceof OndoSessionExpiredError ||
+                isAbortRejection(error, opts?.signal) ||
+                !(error instanceof PerpsError)
+              ) {
+                throw error
+              }
+              warnWiderGraphReadOnce(
+                range,
+                `[${ONDO_PROVIDER_KEY}] portfolio graph '${range}' read failed, so it gives no opening sample: ${error.message}`
+              )
+              continue
+            }
+            const wider = mapPortfolioHistory(
+              params.range,
+              widerGraph ?? [],
+              summary,
+              bounds
+            )
+            if (wider.opening !== undefined) {
+              return wider
+            }
+          }
+          return native
         }
       )
     },
