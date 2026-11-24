@@ -1,12 +1,21 @@
-import { absDecimalString, timestampToIsoString } from '@lifi/perps-sdk'
+import {
+  absDecimalString,
+  divideDecimalString,
+  timestampToIsoString,
+} from '@lifi/perps-sdk'
 import {
   ActivityType,
   type Asset,
   type DepositActivity,
+  type FundingActivity,
+  type MarketDisplay,
   type WithdrawalActivity,
 } from '@lifi/perps-types'
 import { EXTENDED_PROVIDER_KEY } from '../constants.js'
-import type { ExtendedAssetOperation } from '../types/wire.js'
+import type {
+  ExtendedAssetOperation,
+  ExtendedFundingPayment,
+} from '../types/wire.js'
 
 /**
  * Map a completed Extended deposit or withdrawal to an activity, or `null`
@@ -41,5 +50,31 @@ export const mapAssetOperation = (
       }
     default:
       return null
+  }
+}
+
+/**
+ * Map an Extended funding payment to a funding activity. Extended signs
+ * `fundingFee` as the activity does: negative when the account paid. The
+ * position size is signed by side; without `size`, it is `value / markPrice`.
+ *
+ * @public
+ */
+export const mapFundingPayment = (
+  payment: ExtendedFundingPayment,
+  market: MarketDisplay
+): FundingActivity => {
+  const size = absDecimalString(
+    payment.size ?? divideDecimalString(payment.value, payment.markPrice)
+  )
+  return {
+    id: String(payment.id),
+    provider: EXTENDED_PROVIDER_KEY,
+    timestamp: timestampToIsoString(payment.paidTime),
+    type: ActivityType.FUNDING,
+    market,
+    amount: payment.fundingFee,
+    positionSize: payment.side === 'SHORT' ? `-${size}` : size,
+    fundingRate: payment.fundingRate,
   }
 }
