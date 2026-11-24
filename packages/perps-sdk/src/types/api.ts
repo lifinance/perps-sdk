@@ -14,6 +14,7 @@ import type {
   OnboardParams,
   OrderSide,
   OrderType,
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   SetupAction,
   SetupOption,
@@ -274,6 +275,18 @@ export interface GetDepositFlowParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getMarginHealth}.
+ *
+ * @public
+ */
+export interface GetMarginHealthParams {
+  provider: string
+  address: Address
+  /** The `Balance.categoryId` of the cross pool, for a venue with one cross pool per category. */
+  categoryId?: string
+}
+
+/**
  * Parameters for {@link PerpsClient.getWithdrawFlow}.
  *
  * @public
@@ -312,6 +325,11 @@ export interface GetPortfolioHistoryParams {
   provider: string
   address: Address
   range: PortfolioHistoryRange
+  /**
+   * Cut the read to `start` through `end` and ask for the opening sample at
+   * or before `start`. Absent bounds keep the preset `range` read.
+   */
+  bounds?: PortfolioHistoryBounds
 }
 
 /**

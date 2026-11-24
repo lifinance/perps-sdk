@@ -16,6 +16,7 @@ import {
   type ProviderGetActivityParams,
   type ProviderGetAvailableToTradeParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -42,6 +43,7 @@ import {
   type AvailableToTrade,
   type DecimalString,
   type FillsResponse,
+  type MarginHealth,
   type Market,
   type MarketSettings,
   type Order,
@@ -70,6 +72,7 @@ import { getAccountExists } from './services/getAccountExists.js'
 import { getActivity } from './services/getActivity.js'
 import { getAvailableToTrade } from './services/getAvailableToTrade.js'
 import { getFills } from './services/getFills.js'
+import { getMarginHealth } from './services/getMarginHealth.js'
 import { getMarketSettings } from './services/getMarketSettings.js'
 import { getOrder } from './services/getOrder.js'
 import { getOrders } from './services/getOrders.js'
@@ -395,6 +398,16 @@ export function hyperliquidProvider(
         opts
       ),
 
+    getMarginHealth: (
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth | undefined> =>
+      getMarginHealth(
+        contextRef.require(),
+        { address: params.address, categoryId: params.categoryId },
+        opts
+      ),
+
     getOrders: (
       params: ProviderGetOrdersParams,
       opts?: SDKRequestOptions
@@ -457,11 +470,7 @@ export function hyperliquidProvider(
       params: ProviderGetPortfolioHistoryParams,
       opts?: SDKRequestOptions
     ): Promise<PortfolioHistoryResponse> =>
-      getPortfolioHistory(
-        contextRef.require(),
-        { address: params.address, range: params.range },
-        opts
-      ),
+      getPortfolioHistory(contextRef.require(), params, opts),
 
     getQuote: (
       params: ProviderGetQuoteParams,

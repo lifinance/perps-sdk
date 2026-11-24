@@ -44,6 +44,27 @@ Public market reads and the deposit flow remain available before account
 creation. Existing accounts with no positions, orders, fills, or activity
 return their normal empty data.
 
+## Bounded portfolio history
+
+`getPortfolioHistory` with `bounds` reads the same one `portfolio` request
+and keeps the account scope: `perpDay`, `perpWeek`, `perpMonth`, and
+`perpAllTime` for a per-dex collateral account, and `day`, `week`, `month`,
+and `allTime` for a unified or portfolio-margin account. The native preset of
+`range` supplies the samples when it has a valid sample at or before
+`bounds.start`. Otherwise the read takes the samples of the narrowest wider
+preset of the same scope that has one. The account values of every preset
+share one basis, and the ledger read covers the retained samples, so a wider
+preset gives comparable equity and transfer data. Without such a preset, the
+read returns the native samples without an `opening`. A wider preset that
+the venue did not send is skipped. A wider preset whose PnL samples match no
+account-value timestamp is skipped with a warning, because the native
+samples are already usable.
+
+The ledger read starts at the first returned sample, the `opening` when
+present, and movements at that timestamp do not count. `volume` stays the
+native preset total. A sample after `bounds.end` is never a point. The
+`@lifi/perps-sdk` README § Portfolio history describes the common contract.
+
 ## Agent key storage
 
 Setup registers an agent keypair whose private key signs orders locally, so trading needs no per-order wallet popups. The agent key authorizes trading only — it cannot withdraw funds.

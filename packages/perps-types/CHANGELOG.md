@@ -1,5 +1,13 @@
 # @lifi/perps-types
 
+## 30.4.0
+
+### Minor Changes
+
+- [#767](https://github.com/lifinance/perps-sdk/pull/767) [`7126499`](https://github.com/lifinance/perps-sdk/commit/7126499044def1ef0d822e05be77aee6f23a865a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `getMarginHealth` to the client and to the Hyperliquid, Lighter, Lighter RH, and Ondo providers. It gives the current cross-margin ratio and the venue liquidation threshold as a `MarginHealth`.
+
+- [#768](https://github.com/lifinance/perps-sdk/pull/768) [`c1e1cf9`](https://github.com/lifinance/perps-sdk/commit/c1e1cf96f5d825c68f18dd8599e67a65a20ac1e7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the opt-in `bounds` to `getPortfolioHistory`: an inclusive `start` and `end` in Unix milliseconds. A bounded read returns the latest valid sample at or before `start` as `PortfolioHistoryResponse.opening`, when the venue has one, and only the samples after `start` through `end` as `points`. `pnl` and `netTransfers` are relative to the first returned sample, and an absent `opening` never means a zero balance. Lighter and Lighter RH read `/api/v1/pnl` from one bucket before `start` through `end`, at the earliest from 0, with `count_back` plus one for the finite ranges. Hyperliquid and Ondo take the opening from the native preset, or from the narrowest wider preset of the same scope that has one. A wider preset the SDK cannot join or read is skipped with a warning. `@lifi/perps-types` adds `PortfolioHistoryBounds`, and `@lifi/perps-sdk` exports `buildPortfolioHistoryWindow`. A request without `bounds` keeps its behavior.
+
 ## 30.3.0
 
 ### Minor Changes
