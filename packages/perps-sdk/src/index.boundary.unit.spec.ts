@@ -22,6 +22,7 @@ import { venueClient, venueMarket } from './wire/venueProvider.mock.js'
 /** Internals that must never reach the public entry point. */
 const NEVER_EXPORTED: readonly string[] = [
   'DivBig',
+  'RoundUpBig',
   'TruncBig',
   'areFinite',
   'bigToDecimalString',

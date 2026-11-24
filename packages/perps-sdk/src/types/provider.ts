@@ -12,6 +12,7 @@ import type {
   AvailableToTrade,
   DecimalString,
   FillsResponse,
+  MarginHealth,
   MarginMode,
   Market,
   MarketRef,
@@ -21,6 +22,7 @@ import type {
   OrdersResponse,
   PerpsMarket,
   PerpsSigner,
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
@@ -269,6 +271,20 @@ export interface ProviderGetMarketSettingsParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getMarginHealth}.
+ *
+ * @public
+ */
+export interface ProviderGetMarginHealthParams {
+  address: Address
+  /**
+   * The `Balance.categoryId` of the cross pool, for a venue with one cross pool
+   * per category. A venue with one cross pool ignores it.
+   */
+  categoryId?: string
+}
+
+/**
  * Read params for {@link PerpsProviderPlugin.getAvailableToTrade}.
  *
  * @public
@@ -350,6 +366,8 @@ export interface ProviderGetActivityParams {
 export interface ProviderGetPortfolioHistoryParams {
   address: Address
   range: PortfolioHistoryRange
+  /** Valid bounds: the client checks them before the provider read. */
+  bounds?: PortfolioHistoryBounds
 }
 
 /**
@@ -550,6 +568,16 @@ export interface PerpsProviderPlugin {
     params: ProviderGetAvailableToTradeParams,
     options?: SDKRequestOptions
   ): Promise<AvailableToTrade | undefined>
+
+  /**
+   * Current cross-margin health of the account. Optional because each venue
+   * calculates it differently. `undefined` means the venue gives no health for
+   * the account in its current mode.
+   */
+  getMarginHealth?(
+    params: ProviderGetMarginHealthParams,
+    options?: SDKRequestOptions
+  ): Promise<MarginHealth | undefined>
 
   getOrders(
     params: ProviderGetOrdersParams,
