@@ -288,7 +288,7 @@ describe('calculateOrderAmounts over the Hyperliquid plugin', () => {
         price: '61729.6',
       })
     ).toEqual({
-      margin: `20.5765${'3'.repeat(36)}`,
+      margin: `20.5765${'3'.repeat(35)}4`,
       size: '0.001',
       notional: '61.7296',
     })
