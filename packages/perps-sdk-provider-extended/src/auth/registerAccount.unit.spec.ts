@@ -163,6 +163,53 @@ describe('Extended account setup', () => {
     expect(await credentialStore.get(ethAddress)).toEqual(credentials)
   })
 
+  it('attaches the account to the onboarding referral code after the API key', async () => {
+    const { deps, requests } = setup([
+      okAnswer({ key: 'test-api-key' }),
+      accountInfoAnswer(signingKey.starkPublicKey),
+      okAnswer({}),
+    ])
+
+    await signOnboardingRequest(deps, wallet, ethAddress, onboardingStep())
+    await registerExtendedApiKey(deps, wallet, ethAddress)
+
+    const referral = requests[2]
+    expect(referral.url).toBe(
+      `${DEFAULT_EXTENDED_API_URL}/api/v1/referrals/use`
+    )
+    expect(referral.headers['x-api-key']).toBe('test-api-key')
+    expect(referral.body).toEqual({ code: 'LIFI' })
+  })
+
+  it('keeps the setup when Extended refuses the referral code', async () => {
+    const { deps, credentialStore } = setup([
+      okAnswer({ key: 'test-api-key' }),
+      accountInfoAnswer(signingKey.starkPublicKey),
+      {
+        status: 400,
+        body: '{"status":"ERROR","error":{"code":1,"message":"Already referred"}}',
+      },
+    ])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await signOnboardingRequest(deps, wallet, ethAddress, onboardingStep())
+    const credentials = await registerExtendedApiKey(deps, wallet, ethAddress)
+
+    expect(await credentialStore.get(ethAddress)).toEqual(credentials)
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('sends no referral request without an onboarding step', async () => {
+    const { deps, requests } = setup([
+      okAnswer({ key: 'test-api-key' }),
+      accountInfoAnswer(signingKey.starkPublicKey),
+    ])
+
+    await registerExtendedApiKey(deps, wallet, ethAddress)
+
+    expect(requests).toHaveLength(2)
+  })
+
   it('signs the key seed once for the account step and the API-key step', async () => {
     const { deps } = setup([
       okAnswer({ key: 'test-api-key' }),
