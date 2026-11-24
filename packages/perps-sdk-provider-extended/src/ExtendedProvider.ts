@@ -75,6 +75,7 @@ import { EXTENDED_MAINNET_STARK_DOMAIN } from './signing/starkMessageHash.js'
 import type {
   ExtendedAssetOperation,
   ExtendedBalance,
+  ExtendedFundingPayment,
   ExtendedLeverage,
   ExtendedOrder,
   ExtendedPosition,
@@ -86,7 +87,7 @@ import {
   ExtendedApiError,
 } from './utils/apiClient.js'
 import { requireExtendedCollateralAsset } from './utils/collateralAsset.js'
-import { mapAssetOperation } from './utils/mapActivity.js'
+import { mapAssetOperation, mapFundingPayment } from './utils/mapActivity.js'
 import { mapFill } from './utils/mapFill.js'
 import { mapOrder } from './utils/mapOrder.js'
 import {
@@ -602,7 +603,7 @@ export const extendedProvider = (
       )
     },
 
-    /** Deposits and withdrawals. Other activity types give an empty page. */
+    /** Deposits and withdrawals, or funding payments when asked without them. Other activity types give an empty page. */
     getActivity(
       params: ProviderGetActivityParams,
       opts?: SDKRequestOptions
@@ -613,14 +614,52 @@ export const extendedProvider = (
         async ({ apiKey }) => {
           const wanted = (type: ActivityType) =>
             params.type === undefined || params.type.includes(type)
+          const inRange = (timestamp: string) => {
+            const time = Date.parse(timestamp)
+            return (
+              (params.startTime === undefined || time >= params.startTime) &&
+              (params.endTime === undefined || time <= params.endTime)
+            )
+          }
           if (
             !wanted(ActivityType.DEPOSIT) &&
             !wanted(ActivityType.WITHDRAWAL)
           ) {
+            if (!wanted(ActivityType.FUNDING)) {
+              return {
+                provider: EXTENDED_PROVIDER_KEY,
+                items: [],
+                pagination: { limit: params.limit ?? 0, hasMore: false },
+              }
+            }
+            const [page] = await Promise.all([
+              apiClient(opts).getPage<ExtendedFundingPayment>(
+                '/api/v1/user/funding/history',
+                apiKey,
+                {
+                  startTime: params.startTime ?? 0,
+                  cursor: params.cursor,
+                  limit: params.limit,
+                }
+              ),
+              marketRegistry().sync(),
+            ])
+            const items = page.data.flatMap((payment): ActivityItem[] => {
+              const market = marketDisplay(payment.market)
+              if (market === undefined) {
+                return []
+              }
+              const activity = mapFundingPayment(payment, market)
+              return inRange(activity.timestamp) ? [activity] : []
+            })
             return {
               provider: EXTENDED_PROVIDER_KEY,
-              items: [],
-              pagination: { limit: params.limit ?? 0, hasMore: false },
+              items,
+              pagination: {
+                limit: params.limit ?? items.length,
+                hasMore: page.cursor !== undefined,
+                ...(page.cursor === undefined ? {} : { cursor: page.cursor }),
+              },
             }
           }
           const [{ providers }, page] = await Promise.all([
@@ -637,11 +676,7 @@ export const extendedProvider = (
             if (activity === null || !wanted(activity.type)) {
               return []
             }
-            const time = Date.parse(activity.timestamp)
-            const inRange =
-              (params.startTime === undefined || time >= params.startTime) &&
-              (params.endTime === undefined || time <= params.endTime)
-            return inRange ? [activity] : []
+            return inRange(activity.timestamp) ? [activity] : []
           })
           return {
             provider: EXTENDED_PROVIDER_KEY,
