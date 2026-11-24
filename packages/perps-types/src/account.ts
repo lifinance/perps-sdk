@@ -862,7 +862,7 @@ export interface OndoAccountConfig {
   referralSet: boolean
   /**
    * Current fraction of eligible trading fees Ondo credits back under the applied referral (`0.1` is 10%).
-   * Absent when logged out, when no referral applies, or when Ondo omits the rate. Not a historical fill amount.
+   * Absent when logged out, when no referral applies, or when Ondo omits the rate or sends a non-finite value. Not a historical fill amount.
    */
   referralRebateRate?: number
   /** Canonical Ethereum USDC deposit address, or `null` when none is provisioned. */

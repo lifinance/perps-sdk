@@ -220,7 +220,7 @@ The field is absent in these cases:
 
 - No session is stored, or Ondo rejects the session.
 - No referral applies to the account.
-- Ondo omits `rebate` from the referral.
+- Ondo omits `rebate` from the referral, or `rebate` is not a finite number.
 
 The rate is not the builder fee. It is also not the amount that Ondo credited
 on a past fill. Fills give that amount as `fee.rebate`.

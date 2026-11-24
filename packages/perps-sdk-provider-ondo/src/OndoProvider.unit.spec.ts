@@ -397,7 +397,7 @@ let fetchMock: Mock<
   (url: string | URL, init?: RequestInit) => Promise<Response>
 >
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
-let referralResult: { code: string; rebate?: number } | null
+let referralResult: { code: string; rebate?: unknown } | null
 /** `GET /v1/account` result; its versions drive `termsAccepted`. */
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
@@ -1466,6 +1466,9 @@ describe('OndoProvider — getAccount (logged in)', () => {
 
   it.each([
     ['a referral without a rate', { code: 'K04HBJ' }, true],
+    ['a null rate', { code: 'K04HBJ', rebate: null }, true],
+    ['a string rate', { code: 'K04HBJ', rebate: '0.1' }, true],
+    ['a non-finite rate', { code: 'K04HBJ', rebate: Number.NaN }, true],
     ['no referral', null, false],
   ])('omits referralRebateRate for %s', async (_case, referral, referralSet) => {
     referralResult = referral

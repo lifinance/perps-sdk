@@ -357,10 +357,10 @@ describe('OndoAccountConfig', () => {
     }
   })
 
-  it('keeps the referral rebate rate an optional fraction', () => {
-    expectTypeOf<OndoAccountConfig['referralRebateRate']>().toEqualTypeOf<
-      number | undefined
-    >()
+  it('types referralRebateRate as an optional number', () => {
+    expectTypeOf<
+      Pick<OndoAccountConfig, 'referralRebateRate'>
+    >().toEqualTypeOf<{ referralRebateRate?: number }>()
   })
 
   it('rejects credential material on the config object', () => {
