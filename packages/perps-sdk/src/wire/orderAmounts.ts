@@ -49,8 +49,9 @@ export interface OrderAmounts {
   /**
    * The held `amount`, byte-identical, when the user holds the margin;
    * otherwise `notional ÷ leverage` or `notional × IMF ÷ 10000`, rounded up at
-   * 40 places so that, held, it sizes the same order. A display and comparison
-   * value that never reaches a venue.
+   * 40 places so that, held, it sizes the same order. A value of at most 40
+   * places at or above the exact margin is at or above it too. A display and
+   * comparison value that never reaches a venue.
    */
   margin: DecimalString
   /** Snapped onto the venue lot grid; the one amount an order sends. */
@@ -111,7 +112,8 @@ function resolveMarginRate(
  * `notional` is the snapped size × price, and a derived margin is
  * `notional ÷ leverage`, or `notional × initialMarginFractionBps ÷ 10000`
  * from a native IMF, rounded up at 40 places. Held back as `'margin'` with the
- * same price and margin rate, a derived margin sizes the same order.
+ * same price and margin rate, a derived margin sizes the same order. A value
+ * of at most 40 places at or above the exact margin is at or above it too.
  *
  * @throws {PerpsError} `ValidationError` that names `amount` or `price` when
  *   it is not a positive decimal, `initialMarginFractionBps` when it is

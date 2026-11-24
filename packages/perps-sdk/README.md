@@ -526,6 +526,12 @@ are display and comparison values. No quote grid applies to them.
 - A derived margin is SDK division: 40 decimal places, rounded up, with no
   trailing zeros. Pass it back as a held margin, with the same price and
   margin rate, and the call gives the same size.
+- A derived margin is the smallest value of 40 decimal places at or above
+  the exact margin. Thus, a comparison value of at most 40 decimal places
+  that is at or above the exact margin is also at or above the derived
+  margin. A comparison value with more than 40 places can fall between the
+  two: when the exact margin does not terminate, a decimal string at or
+  above it is always strictly above it.
 - A derived size truncates onto the lot grid, so a held margin always funds
   its size: `size × price ≤ margin × leverage`.
 

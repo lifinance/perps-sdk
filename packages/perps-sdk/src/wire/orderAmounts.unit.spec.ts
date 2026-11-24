@@ -5,6 +5,7 @@ import {
 } from '@lifi/perps-types'
 import Big from 'big.js'
 import { describe, expect, it, vi } from 'vitest'
+import { isDecimalStringGreaterThan } from '../decimal/compare.js'
 import {
   calculateOrderAmounts,
   safeCalculateOrderAmounts,
@@ -207,8 +208,8 @@ describe('calculateOrderAmounts', () => {
     })
 
     expect(reheld).toEqual(derived)
-    // The smallest 40-place value at or above the exact margin, so any
-    // comparison value at or above the exact margin is at or above it too.
+    // The smallest 40-place value at or above the exact margin, so a value of
+    // at most 40 places at or above the exact margin is at or above it too.
     const [numerator, denominator] =
       'leverage' in rate
         ? [1, rate.leverage]
@@ -217,6 +218,36 @@ describe('calculateOrderAmounts', () => {
     const margin = new Big(derived.margin)
     expect(margin.times(denominator).gte(exact)).toBe(true)
     expect(margin.minus(ULP).times(denominator).lt(exact)).toBe(true)
+  })
+
+  it.each([
+    [{ leverage: 3 }, '1', `0.${'3'.repeat(39)}4`, false],
+    [{ leverage: 3 }, '1', `0.${'3'.repeat(40)}`, true],
+    [{ leverage: 4 }, `0.${'0'.repeat(37)}1`, `0.${'0'.repeat(38)}25`, false],
+    [{ leverage: 4 }, '1', '0.25', false],
+    [{ leverage: 7 }, '2', '0.2857142858', false],
+    [{ leverage: 7 }, '2', '0.2857142857', true],
+    [{ initialMarginFractionBps: '667' }, '3', '0.20010', false],
+    [{ initialMarginFractionBps: '667' }, '3', '0.2', true],
+  ] as const)('compares a margin derived at %o on price %s with an available margin of %s as the exact margin does (exceeds: %s)', (rate, price, available, exceeds) => {
+    const derived = calculateOrderAmounts({
+      sdk,
+      market: market({ szDecimals: 0 }),
+      held: 'size',
+      amount: '1',
+      price,
+      ...rate,
+    })
+    const [numerator, denominator] =
+      'leverage' in rate
+        ? [1, rate.leverage]
+        : [rate.initialMarginFractionBps, 10000]
+    const exactExceeds = new Big(derived.notional)
+      .times(numerator)
+      .gt(new Big(available).times(denominator))
+
+    expect(exactExceeds).toBe(exceeds)
+    expect(isDecimalStringGreaterThan(derived.margin, available)).toBe(exceeds)
   })
 
   it('derives the margin of a held size at a non-integer leverage', () => {
