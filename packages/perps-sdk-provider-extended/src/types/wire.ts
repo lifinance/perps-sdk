@@ -100,6 +100,23 @@ export interface ExtendedAssetOperation {
   chain?: string
 }
 
+/**
+ * A row of `GET /api/v1/user/funding/history`. `fundingFee` is negative when
+ * the account paid and positive when it received. `size` is in the example
+ * of the API docs but not in their field table. @public
+ */
+export interface ExtendedFundingPayment {
+  id: VenueId
+  market: string
+  side: 'LONG' | 'SHORT'
+  size?: string
+  value: string
+  markPrice: string
+  fundingFee: string
+  fundingRate: string
+  paidTime: number
+}
+
 /** `GET /api/v1/user/leverage`. @public */
 export interface ExtendedLeverage {
   market: string
