@@ -65,6 +65,13 @@ export interface BaseMarket {
    */
   sizeIncrement?: DecimalString
   /**
+   * Minimum order size in base units, as a plain decimal string (e.g.
+   * `'0.0001'`). Present when the venue refuses an order below a size that is
+   * larger than one lot, for every order type. Absent means the minimum size
+   * is one lot.
+   */
+  minOrderSize?: DecimalString
+  /**
    * Listings that must never share a group with this market. One declaration
    * excludes the pair in both directions. The pair never shares a group, even
    * through an intermediate listing. An absent list adds no exclusions.
