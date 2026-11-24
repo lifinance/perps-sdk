@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 36.3.1
+
+### Patch Changes
+
+- [#772](https://github.com/lifinance/perps-sdk/pull/772) [`e3cd6d9`](https://github.com/lifinance/perps-sdk/commit/e3cd6d92714b05740117016991640e5ddee0cd73) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `calculateOrderAmounts` rounds a derived margin up at 40 decimal places, so a caller that holds this margin gets the same order size.
+
 ## 36.3.0
 
 ### Minor Changes
