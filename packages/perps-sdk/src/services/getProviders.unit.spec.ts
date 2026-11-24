@@ -1,6 +1,11 @@
+import type { ProviderCategory, ProvidersResponse } from '@lifi/perps-types'
+import { HttpResponse, http } from 'msw'
 import { describe, expect, it } from 'vitest'
-import { mockProviders } from '../../test/handlers.js'
-import { createPerpsClient } from '../client/createPerpsClient.js'
+import { mockProviders, server } from '../../test/handlers.js'
+import {
+  createPerpsClient,
+  DEFAULT_API_URL,
+} from '../client/createPerpsClient.js'
 import { getProviders } from './getProviders.js'
 
 describe('getProviders', () => {
@@ -30,6 +35,50 @@ describe('getProviders', () => {
       false,
       true,
     ])
+  })
+
+  describe('collateralLedgerDecimals', () => {
+    const usdc = {
+      providerId: 'hyperliquid',
+      id: '0',
+      displaySymbol: 'USDC',
+      logoURI: 'https://example.com/usdc.png',
+      decimals: 8,
+    }
+
+    const serveCategories = (categories: ProviderCategory[]) => {
+      const served: ProvidersResponse = {
+        providers: [{ ...mockProviders.providers[0], categories }],
+      }
+      server.use(
+        http.get(`${DEFAULT_API_URL}/providers`, () =>
+          HttpResponse.json(served)
+        )
+      )
+    }
+
+    it('keeps the ledger precision that the backend returns', async () => {
+      serveCategories([
+        { id: 'hyperliquid', quoteAsset: usdc, collateralLedgerDecimals: 6 },
+        { id: 'spot', quoteAsset: null },
+      ])
+
+      const [category, spot] = (await getProviders(client)).providers[0]
+        .categories
+
+      expect(category.collateralLedgerDecimals).toBe(6)
+      expect(category.quoteAsset?.decimals).toBe(8)
+      expect(spot).toEqual({ id: 'spot', quoteAsset: null })
+    })
+
+    it('does not take a value from quoteAsset.decimals when the field is absent', async () => {
+      serveCategories([{ id: 'hyperliquid', quoteAsset: usdc }])
+
+      const [category] = (await getProviders(client)).providers[0].categories
+
+      expect(category).toEqual({ id: 'hyperliquid', quoteAsset: usdc })
+      expect(category).not.toHaveProperty('collateralLedgerDecimals')
+    })
   })
 
   it('should support AbortSignal', async () => {
