@@ -82,6 +82,7 @@ pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnp
 | `pnpm build` | Build every package (CJS + ESM + types) |
 | `pnpm test` | Run all package tests (vitest) |
 | `pnpm test:unit` | Unit tests only (`*.unit.spec.ts`) |
+| `pnpm test:affected` | Tests that Vitest finds affected since the last run |
 | `pnpm test:changed` | Unit tests that import a file changed since `origin/main` |
 | `pnpm test:cov` | Tests with coverage |
 | `pnpm check` | Biome lint/format check |
@@ -95,7 +96,7 @@ pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnp
 | `pnpm clean` | Delete the build output of every package |
 | `pnpm clean:modules` | Delete every `node_modules` directory |
 
-`pnpm build` for `@lifi/perps-sdk-provider-lighter` also generates the Go WASM runtime initializer and copies the WASM signer into `dist/`. That package has one more script, `pnpm --filter @lifi/perps-sdk-provider-lighter test:consumers`, which checks the package against consumer bundlers.
+`pnpm build` for `@lifi/perps-sdk-provider-lighter` also generates the Go WASM runtime initializer, copies the WASM signer into `dist/`, and verifies the package assets. That package has one more script, `pnpm --filter @lifi/perps-sdk-provider-lighter test:consumers`, which checks the package against consumer bundlers.
 
 ### Git hooks and CI
 
@@ -149,7 +150,7 @@ The bump level never selects a channel — the channel is whole-repo state, not 
 | Channel | npm dist-tag | How |
 | --- | --- | --- |
 | Stable | `latest` | default; merge changesets as above |
-| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` for each package that has a changeset, then comments the install command on the PR and removes the label |
+| Preview | `preview` | label a PR `release-preview` → publishes a throwaway `0.0.0-preview-<sha>` for each package that has a changeset, then comments the install command on the PR. After a successful run, CI removes the label |
 | Alpha / Beta | `alpha` / `beta` | enter pre-release mode (below) |
 
 For a sustained pre-release line, enter pre mode on `main`:
@@ -175,7 +176,7 @@ Scripts:
 | [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
 | [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes |
 | [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
-| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket prices, orderbook, multi-listener dedup, status |
+| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket markets context, orderbook, multi-listener dedup, connection status |
 
 ## Documentation
 
