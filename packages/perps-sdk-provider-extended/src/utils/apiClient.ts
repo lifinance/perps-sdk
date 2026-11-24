@@ -177,7 +177,7 @@ export class ExtendedApiClient {
       headers['Content-Type'] = 'application/json'
       init.body = JSON.stringify(options.body)
     }
-    const response = await fetchWithRetry(`${this.baseUrl}${path}`, init, {
+    const response = await fetchWithRetry(this.urlOf(path), init, {
       policy: method === 'GET' ? this.policy : DISABLED_RETRY,
       fetchImpl: this.fetchImpl,
       signal: this.signal,
@@ -189,6 +189,22 @@ export class ExtendedApiClient {
       parseBody(text),
       options?.secretResponse === true ? undefined : text
     )
+  }
+
+  /** A path that does not start with one `/` could name another host. */
+  private urlOf(path: string): string {
+    const url = `${this.baseUrl}${path}`
+    if (
+      !path.startsWith('/') ||
+      path.startsWith('//') ||
+      new URL(url).origin !== new URL(this.baseUrl).origin
+    ) {
+      throw new PerpsError(
+        PerpsErrorCode.SDKError,
+        `Extended request path '${path}' leaves the Extended host.`
+      )
+    }
+    return url
   }
 }
 
