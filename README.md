@@ -25,6 +25,8 @@ Published packages live under [`packages/`](./packages). `@lifi/perps-types` sit
 | [`@lifi/perps-sdk-provider-ondo`](./packages/perps-sdk-provider-ondo/README.md) | Ondo | Ondo provider plugin |
 | [`@lifi/perps-types`](./packages/perps-types/README.md) | (transitive) | Shared types; re-exported from `@lifi/perps-sdk` |
 
+Each package has one entry point, `.`, in its `exports` field. `@lifi/perps-sdk-provider-hyperliquid` also has the `./utils` entry point, which exports its utility helpers.
+
 ## Portfolio transfer history
 
 `getPortfolioHistory()` returns optional `PortfolioHistoryPoint.netTransfers` values.
