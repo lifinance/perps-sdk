@@ -523,8 +523,9 @@ are display and comparison values. No quote grid applies to them.
 - A held margin comes back byte-identical to the input string.
 - `notional` is always the snapped size times the price, so it describes the
   order that the venue opens, not the input before the snap.
-- A derived margin is exact SDK division: 40 decimal places, rounded half-up,
-  with no trailing zeros.
+- A derived margin is SDK division: 40 decimal places, rounded up, with no
+  trailing zeros. Pass it back as a held margin, with the same price and
+  margin rate, and the call gives the same size.
 - A derived size truncates onto the lot grid, so a held margin always funds
   its size: `size × price ≤ margin × leverage`.
 

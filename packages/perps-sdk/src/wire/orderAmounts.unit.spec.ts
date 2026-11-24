@@ -14,6 +14,9 @@ import { venueMarket as market, venueClient } from './venueProvider.mock.js'
 
 const sdk = venueClient()
 
+/** One unit in the 40th decimal place: the most a derived margin rounds up. */
+const ULP = new Big('1e-40')
+
 describe('calculateOrderAmounts', () => {
   it('derives size and notional from a held margin', () => {
     const amounts = calculateOrderAmounts({
@@ -147,9 +150,9 @@ describe('calculateOrderAmounts', () => {
   })
 
   it.each([
-    [3, `3.${'3'.repeat(40)}`],
+    [3, `3.${'3'.repeat(39)}4`],
     [4, '2.5'],
-  ] as const)('divides a derived margin at %ix to 40 places half-up, with no trailing zeros', (leverage, margin) => {
+  ] as const)('rounds a derived margin at %ix up at the 40th place, with no trailing zeros', (leverage, margin) => {
     const amounts = calculateOrderAmounts({
       sdk,
       market: market({ szDecimals: 6 }),
@@ -162,17 +165,58 @@ describe('calculateOrderAmounts', () => {
     expect(amounts).toEqual({ margin, size: '1', notional: '10' })
   })
 
-  it('rounds a derived margin half-up at the 40th place', () => {
+  it('rounds a derived margin up at the 40th place where half-up rounds down', () => {
     const amounts = calculateOrderAmounts({
       sdk,
       market: market({ szDecimals: 0 }),
       held: 'size',
-      amount: '2',
+      amount: '1',
       leverage: 3,
       price: '1',
     })
 
-    expect(amounts?.margin).toBe(`0.${'6'.repeat(39)}7`)
+    expect(amounts?.margin).toBe(`0.${'3'.repeat(39)}4`)
+  })
+
+  it.each([
+    ['size', '1', { leverage: 3 }, '1', 0],
+    ['size', '2', { leverage: 6 }, '1', 0],
+    ['size', '2', { leverage: 7 }, '1', 0],
+    ['notional', '20', { leverage: 3 }, '10', 2],
+    ['notional', '5', { leverage: 6 }, '0.7', 3],
+    ['notional', '1', { leverage: 7 }, '0.3', 2],
+    ['size', '3', { initialMarginFractionBps: '667' }, '17', 2],
+    ['notional', '1000', { initialMarginFractionBps: '333' }, '3', 4],
+  ] as const)('sizes the same order from a margin derived from a held %s of %s at %o on price %s (szDecimals %i)', (held, amount, rate, price, szDecimals) => {
+    const target = market({ szDecimals })
+    const derived = calculateOrderAmounts({
+      sdk,
+      market: target,
+      held,
+      amount,
+      price,
+      ...rate,
+    })
+    const reheld = calculateOrderAmounts({
+      sdk,
+      market: target,
+      held: 'margin',
+      amount: derived.margin,
+      price,
+      ...rate,
+    })
+
+    expect(reheld).toEqual(derived)
+    // The smallest 40-place value at or above the exact margin, so any
+    // comparison value at or above the exact margin is at or above it too.
+    const [numerator, denominator] =
+      'leverage' in rate
+        ? [1, rate.leverage]
+        : [rate.initialMarginFractionBps, 10000]
+    const exact = new Big(derived.notional).times(numerator)
+    const margin = new Big(derived.margin)
+    expect(margin.times(denominator).gte(exact)).toBe(true)
+    expect(margin.minus(ULP).times(denominator).lt(exact)).toBe(true)
   })
 
   it('derives the margin of a held size at a non-integer leverage', () => {
@@ -509,9 +553,6 @@ const INVARIANT_ROWS: ReadonlyArray<
   ['250.5', 2.5, '19.99', 3],
 ]
 
-/** Half a unit in the 40th decimal place: the most a `DivBig` quotient moves. */
-const HALF_ULP = new Big('5e-41')
-
 describe('calculateOrderAmounts invariants', () => {
   it.each(
     INVARIANT_ROWS
@@ -541,7 +582,7 @@ describe('calculateOrderAmounts invariants', () => {
 
   it.each(
     INVARIANT_ROWS
-  )('a held size of %s at %ix on price %s (szDecimals %i) stays on the grid and prices its margin', (amount, leverage, price, szDecimals) => {
+  )('a held size of %s at %ix on price %s (szDecimals %i) stays on the grid, prices its margin and sizes the same order from it', (amount, leverage, price, szDecimals) => {
     const target = market({ szDecimals })
     const amounts = calculateOrderAmounts({
       sdk,
@@ -555,11 +596,19 @@ describe('calculateOrderAmounts invariants', () => {
     expect(
       new Big(amounts.notional).eq(new Big(amounts.size).times(price))
     ).toBe(true)
-    const gap = new Big(amounts.margin)
-      .times(leverage)
-      .minus(amounts.notional)
-      .abs()
-    expect(gap.lte(HALF_ULP.times(leverage))).toBe(true)
+    const margin = new Big(amounts.margin)
+    expect(margin.times(leverage).gte(amounts.notional)).toBe(true)
+    expect(margin.minus(ULP).times(leverage).lt(amounts.notional)).toBe(true)
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: target,
+        held: 'margin',
+        amount: amounts.margin,
+        leverage,
+        price,
+      })
+    ).toEqual(amounts)
     expect(amounts.margin).toMatch(DECIMAL_PATTERN)
     expect(amounts.size).toMatch(DECIMAL_PATTERN)
     expect(amounts.notional).toMatch(DECIMAL_PATTERN)
@@ -567,7 +616,7 @@ describe('calculateOrderAmounts invariants', () => {
 
   it.each(
     INVARIANT_ROWS
-  )('a held notional of %s at %ix on price %s (szDecimals %i) caps the size and prices it exactly', (amount, leverage, price, szDecimals) => {
+  )('a held notional of %s at %ix on price %s (szDecimals %i) caps the size, prices it exactly and sizes the same order from its margin', (amount, leverage, price, szDecimals) => {
     const target = market({ szDecimals })
     const amounts = calculateOrderAmounts({
       sdk,
@@ -582,6 +631,16 @@ describe('calculateOrderAmounts invariants', () => {
       new Big(amounts.notional).eq(new Big(amounts.size).times(price))
     ).toBe(true)
     expect(new Big(amounts.notional).lte(amount)).toBe(true)
+    expect(
+      calculateOrderAmounts({
+        sdk,
+        market: target,
+        held: 'margin',
+        amount: amounts.margin,
+        leverage,
+        price,
+      })
+    ).toEqual(amounts)
     expect(amounts.margin).toMatch(DECIMAL_PATTERN)
     expect(amounts.size).toMatch(DECIMAL_PATTERN)
     expect(amounts.notional).toMatch(DECIMAL_PATTERN)

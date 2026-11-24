@@ -4,7 +4,7 @@ import {
   PerpsErrorCode,
 } from '@lifi/perps-types'
 import type Big from 'big.js'
-import { DivBig, TruncBig } from '../decimal/big.js'
+import { RoundUpBig, TruncBig } from '../decimal/big.js'
 import { isDecimalStringZero } from '../decimal/compare.js'
 import { isDecimalString } from '../decimal/parse.js'
 import { invalidInput } from '../errors/invalidInput.js'
@@ -48,8 +48,9 @@ export type OrderAmountsInput = OrderAmountsInputBase &
 export interface OrderAmounts {
   /**
    * The held `amount`, byte-identical, when the user holds the margin;
-   * otherwise `notional ÷ leverage` or `notional × IMF ÷ 10000`, a display
-   * and comparison value that never reaches a venue.
+   * otherwise `notional ÷ leverage` or `notional × IMF ÷ 10000`, rounded up at
+   * 40 places so that, held, it sizes the same order. A display and comparison
+   * value that never reaches a venue.
    */
   margin: DecimalString
   /** Snapped onto the venue lot grid; the one amount an order sends. */
@@ -109,7 +110,8 @@ function resolveMarginRate(
  * size alone; no quote amount has a grid. A held margin returns byte-identical,
  * `notional` is the snapped size × price, and a derived margin is
  * `notional ÷ leverage`, or `notional × initialMarginFractionBps ÷ 10000`
- * from a native IMF, in `DivBig` (40 places, half-up).
+ * from a native IMF, rounded up at 40 places. Held back as `'margin'` with the
+ * same price and margin rate, a derived margin sizes the same order.
  *
  * @throws {PerpsError} `ValidationError` that names `amount` or `price` when
  *   it is not a positive decimal, `initialMarginFractionBps` when it is
@@ -147,7 +149,7 @@ export function calculateOrderAmounts(input: OrderAmountsInput): OrderAmounts {
     margin:
       held === 'margin'
         ? input.amount
-        : new DivBig(notional)
+        : new RoundUpBig(notional)
             .times(rateNumerator)
             .div(rateDenominator)
             .toFixed(),
