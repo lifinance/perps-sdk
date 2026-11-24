@@ -254,4 +254,136 @@ describe('mapPortfolioHistory', () => {
       totalPnl: undefined,
     })
   })
+
+  describe('with bounds', () => {
+    const DAY_SECONDS = 24 * 60 * 60
+    /** A midnight, in Unix seconds. */
+    const DAY_0 = 1_699_920_000
+    /** 19:44 after `DAY_0`, in Unix milliseconds. */
+    const START_MS = (DAY_0 + 19 * 60 * 60 + 44 * 60) * 1_000
+    const END_MS = START_MS + 30 * DAY_SECONDS * 1_000
+    const DAILY_SNAPSHOTS = [
+      snapshot({ timestamp: DAY_0 - DAY_SECONDS, inflow: 100 }),
+      snapshot({ timestamp: DAY_0, trade_pnl: 5, inflow: 100, volume: 1_000 }),
+      snapshot({
+        timestamp: DAY_0 + DAY_SECONDS,
+        trade_pnl: 8,
+        inflow: 150,
+        volume: 1_500,
+      }),
+      snapshot({
+        timestamp: DAY_0 + 2 * DAY_SECONDS,
+        trade_pnl: 6,
+        inflow: 150,
+        outflow: 20,
+        volume: 1_800,
+      }),
+      snapshot({
+        timestamp: DAY_0 + 31 * DAY_SECONDS,
+        trade_pnl: 10,
+        inflow: 150,
+        outflow: 20,
+        volume: 2_000,
+      }),
+    ]
+
+    it('keeps the midnight snapshot before a 30D start as the opening and drops samples after the end', () => {
+      expect(
+        mapPortfolioHistory('30d', DAILY_SNAPSHOTS, '300', {
+          start: START_MS,
+          end: END_MS,
+        })
+      ).toEqual({
+        range: '30d',
+        opening: {
+          timestamp: DAY_0 * 1_000,
+          accountValue: '265',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: (DAY_0 + DAY_SECONDS) * 1_000,
+            accountValue: '318',
+            pnl: '3',
+            netTransfers: '50',
+          },
+          {
+            timestamp: (DAY_0 + 2 * DAY_SECONDS) * 1_000,
+            accountValue: '296',
+            pnl: '1',
+            netTransfers: '30',
+          },
+        ],
+        volume: '800',
+        totalPnl: '1',
+      })
+    })
+
+    it('takes a snapshot at the exact start as the opening', () => {
+      const result = mapPortfolioHistory('30d', DAILY_SNAPSHOTS, '300', {
+        start: DAY_0 * 1_000,
+        end: END_MS,
+      })
+
+      expect(result.opening?.timestamp).toBe(DAY_0 * 1_000)
+      expect(result.points.map((p) => p.timestamp)).toEqual([
+        (DAY_0 + DAY_SECONDS) * 1_000,
+        (DAY_0 + 2 * DAY_SECONDS) * 1_000,
+      ])
+    })
+
+    it('returns no opening and rebases on the first point when no snapshot is at or before the start', () => {
+      const result = mapPortfolioHistory(
+        '30d',
+        DAILY_SNAPSHOTS.slice(2),
+        '300',
+        { start: START_MS, end: END_MS }
+      )
+
+      expect(result.opening).toBeUndefined()
+      expect(result.points).toEqual([
+        {
+          timestamp: (DAY_0 + DAY_SECONDS) * 1_000,
+          accountValue: '318',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        {
+          timestamp: (DAY_0 + 2 * DAY_SECONDS) * 1_000,
+          accountValue: '296',
+          pnl: '-2',
+          netTransfers: '-20',
+        },
+      ])
+      expect(result.volume).toBe('300')
+      expect(result.totalPnl).toBe('-2')
+    })
+
+    it('returns the opening alone, with zero volume, when every later snapshot is after the end', () => {
+      expect(
+        mapPortfolioHistory('30d', DAILY_SNAPSHOTS, '300', {
+          start: START_MS,
+          end: START_MS + 1,
+        })
+      ).toEqual({
+        range: '30d',
+        opening: {
+          timestamp: DAY_0 * 1_000,
+          accountValue: '265',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [],
+        volume: '0',
+        totalPnl: undefined,
+      })
+    })
+
+    it('returns no samples without snapshots', () => {
+      expect(
+        mapPortfolioHistory('30d', [], '300', { start: START_MS, end: END_MS })
+      ).toEqual({ range: '30d', points: [], volume: '0', totalPnl: undefined })
+    })
+  })
 })

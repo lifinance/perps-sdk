@@ -147,6 +147,8 @@ export interface LtDetailedAccount {
   /** Initial margin locked by cross positions; isolated positions carry
    * their own `allocated_margin` instead. */
   cross_initial_margin_requirement: string
+  /** Maintenance margin requirement of the cross positions. */
+  cross_maintenance_margin_requirement: string
   approved_integrators?: LtApprovedIntegrator[]
 }
 
