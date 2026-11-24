@@ -125,6 +125,8 @@ export {
   safeEstimateRealizedPnl,
   safeResolveCloseSize,
 } from './math/order.js'
+export type { PortfolioHistoryWindow } from './math/portfolioHistory.js'
+export { buildPortfolioHistoryWindow } from './math/portfolioHistory.js'
 export {
   buildPosition,
   calculateEffectiveLeverage,
@@ -266,6 +268,7 @@ export type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
@@ -309,6 +312,7 @@ export type {
   ProviderGetAvailableToTradeParams,
   ProviderGetDepositFlowParams,
   ProviderGetFillsParams,
+  ProviderGetMarginHealthParams,
   ProviderGetMarketSettingsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,

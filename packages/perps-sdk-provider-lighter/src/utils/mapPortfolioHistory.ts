@@ -1,10 +1,12 @@
 import {
   addDecimalString,
+  buildPortfolioHistoryWindow,
   numberToDecimalString,
   subtractDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
 } from '@lifi/perps-types'
@@ -67,7 +69,9 @@ function getCumulativeNetFlow(snapshot: LtPnLEntry): string {
 /**
  * Derive window-relative history from Lighter's cumulative PnL snapshots.
  * Historical account values are anchored to the current account value. A
- * snapshot with a non-finite value is skipped.
+ * snapshot with a non-finite value is skipped. With `bounds`, the latest
+ * snapshot at or before `start` is the opening, only the snapshots after
+ * `start` through `end` are points, and `volume` counts the retained span.
  *
  * @throws {PerpsError} `ValidationError` when `currentValue` does not match the
  *   decimal pattern.
@@ -75,7 +79,8 @@ function getCumulativeNetFlow(snapshot: LtPnLEntry): string {
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
   snapshots: LtPnLEntry[],
-  currentValue: string
+  currentValue: string,
+  bounds?: PortfolioHistoryBounds
 ): PortfolioHistoryResponse => {
   const orderedSnapshots = snapshots
     .filter(isValidSnapshot)
@@ -112,13 +117,45 @@ export const mapPortfolioHistory = (
     }
   })
 
+  if (bounds === undefined) {
+    return {
+      range,
+      points,
+      volume: subtractDecimalString(
+        snapshotDecimal(latestSnapshot, 'volume'),
+        snapshotDecimal(firstSnapshot, 'volume')
+      ),
+      totalPnl: points.at(-1)?.pnl,
+    }
+  }
+
+  const window = buildPortfolioHistoryWindow(
+    LIGHTER_PROVIDER_KEY,
+    points,
+    bounds
+  )
+  const firstRetained = window.opening ?? window.points[0]
+  const lastRetained = window.points.at(-1) ?? window.opening
+  const retainedSnapshots =
+    firstRetained === undefined || lastRetained === undefined
+      ? []
+      : orderedSnapshots.filter(
+          (snapshot) =>
+            snapshot.timestamp * 1_000 >= firstRetained.timestamp &&
+            snapshot.timestamp * 1_000 <= lastRetained.timestamp
+        )
+  const firstVolume = retainedSnapshots[0]
+  const lastVolume = retainedSnapshots.at(-1)
   return {
     range,
-    points,
-    volume: subtractDecimalString(
-      snapshotDecimal(latestSnapshot, 'volume'),
-      snapshotDecimal(firstSnapshot, 'volume')
-    ),
-    totalPnl: points.at(-1)?.pnl,
+    ...window,
+    volume:
+      firstVolume === undefined || lastVolume === undefined
+        ? '0'
+        : subtractDecimalString(
+            snapshotDecimal(lastVolume, 'volume'),
+            snapshotDecimal(firstVolume, 'volume')
+          ),
+    totalPnl: window.points.at(-1)?.pnl,
   }
 }
