@@ -404,6 +404,26 @@ describe('ExtendedWsProvider', () => {
       ])
     })
 
+    it.each([
+      ['account', { dex: 'extended', channel: 'positions', address: ADDRESS }],
+      [
+        'orderbook',
+        { dex: 'extended', channel: 'orderbook', marketId: 'ETH-USD' },
+      ],
+    ] as const)('leave no %s wire to replay when the connection fails during the open', async (_label, sub) => {
+      const { provider, sent, rws } = await setup()
+      rws.ready.mockRejectedValueOnce(new Error('connection failed'))
+
+      await expect(provider.subscribe(sub, () => {})).rejects.toThrow(
+        'connection failed'
+      )
+      expect(Reflect.get(provider, 'wireSubs').size).toBe(0)
+
+      sent.length = 0
+      await provider.subscribe(sub, () => {})
+      expect(sent.map(({ method }) => method)).toEqual(['subscribe'])
+    })
+
     it('map the account frames to positions, orders and the summary', async () => {
       const { provider, feed } = await setup()
       const positions = collect()

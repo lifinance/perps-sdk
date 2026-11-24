@@ -1440,6 +1440,39 @@ describe('HyperliquidWsProvider', () => {
       }
     })
 
+    it.each([
+      [
+        'positions',
+        { channel: 'positions', dex: 'hyperliquid', address: '0xabc' },
+      ],
+      [
+        'orderbook',
+        { channel: 'orderbook', dex: 'hyperliquid', marketId: 'BTC' },
+      ],
+    ] as const)('leaves no %s wire to replay when the connection fails during the open', async (_label, sub) => {
+      const provider = createProvider()
+      const socket = getMockRwsInstance()
+      const ready = vi
+        .spyOn(socket, 'ready')
+        .mockRejectedValueOnce(new Error('connection failed'))
+      try {
+        await expect(provider.subscribe(sub, vi.fn())).rejects.toThrow(
+          'connection failed'
+        )
+        socket.sent = []
+        socket.simulateOpen()
+        expect(socket.sent).toEqual([])
+
+        await provider.subscribe(sub, vi.fn())
+        expect(socket.sent.map((frame) => JSON.parse(frame).method)).toEqual([
+          'subscribe',
+        ])
+      } finally {
+        ready.mockRestore()
+        provider.close()
+      }
+    })
+
     it('retries the markets fetch on the next subscribe after a transient failure', async () => {
       marketsFetchMock.mockReset()
       marketsFetchMock

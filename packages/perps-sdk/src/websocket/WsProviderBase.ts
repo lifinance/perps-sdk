@@ -372,6 +372,28 @@ export abstract class WsProviderBase<TSub = unknown> implements WsProvider {
     }
   }
 
+  /**
+   * Finish a channel open: run `register` (the {@link registerSub} calls and
+   * their ref counts), wait for the socket, and return `release` as the
+   * channel teardown. When `register` or the wait fails, run `release` and
+   * rethrow, so a failed open leaves no wire sub or ref count that a later
+   * reconnect replays. `release` must accept a partial `register`; an error
+   * from it is logged, and the open error is rethrown.
+   */
+  protected async openWires(
+    register: () => Promise<void>,
+    release: () => void
+  ): Promise<() => void> {
+    try {
+      await register()
+      await this.rws.ready()
+      return release
+    } catch (error) {
+      this.callListener('open-release', release)
+      throw error
+    }
+  }
+
   /** Forget a wire subscription so the next (re)open no longer replays it. */
   protected unregisterSub(key: string): void {
     this.wireSubs.delete(key)
