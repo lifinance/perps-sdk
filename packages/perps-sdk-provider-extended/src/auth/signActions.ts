@@ -181,6 +181,10 @@ async function executeStarkStep(
       apiKey: credentials.apiKey,
     })
   } catch (error) {
+    // The client refused the request before sending it.
+    if (error instanceof PerpsError && error.code === PerpsErrorCode.SDKError) {
+      throw error
+    }
     if (
       error instanceof ExtendedApiError &&
       error.code !== PerpsErrorCode.ThirdPartyError
