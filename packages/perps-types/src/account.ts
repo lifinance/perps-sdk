@@ -258,6 +258,18 @@ export interface AvailableToTrade {
 }
 
 /**
+ * Cross-margin health of one collateral pool. `ratio` is maintenance margin
+ * divided by equity, as a fraction: a higher ratio means a greater liquidation
+ * risk, and the venue liquidates when `ratio` exceeds `liquidationThreshold`.
+ *
+ * @public
+ */
+export interface MarginHealth {
+  ratio: DecimalString
+  liquidationThreshold: DecimalString
+}
+
+/**
  * The user's complete venue-side settings for one perps market: the margin
  * mode and request-compatible leverage the next order on it will use.
  * @public
