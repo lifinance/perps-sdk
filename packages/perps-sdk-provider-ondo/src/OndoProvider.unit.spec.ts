@@ -796,6 +796,7 @@ describe('OndoProvider — reads without a session', () => {
   it('getAccount returns an empty snapshot with a loggedIn: false config', async () => {
     const provider = loggedOutProvider()
     const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
     expect(account).toEqual({
       provider: 'ondo',
       address: ADDRESS,
@@ -1287,6 +1288,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: true,
+      referralRebateRate: 0.1,
       depositAddress: null,
       balance: {
         walletBalance: '1000',
@@ -1447,6 +1449,30 @@ describe('OndoProvider — getAccount (logged in)', () => {
         withdrawableMargin: '599',
       },
     })
+  })
+
+  it.each([
+    ['a positive rate', { code: 'K04HBJ', rebate: 0.25 }, 0.25],
+    ['an explicit zero rate', { code: 'K04HBJ', rebate: 0 }, 0],
+  ])('exposes %s as referralRebateRate', async (_case, referral, rate) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      referralSet: true,
+      referralRebateRate: rate,
+    })
+  })
+
+  it.each([
+    ['a referral without a rate', { code: 'K04HBJ' }, true],
+    ['no referral', null, false],
+  ])('omits referralRebateRate for %s', async (_case, referral, referralSet) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ referralSet })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
   })
 
   it('reports apiKeyRegistered from local key presence, logged in or out', async () => {

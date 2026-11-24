@@ -357,6 +357,12 @@ describe('OndoAccountConfig', () => {
     }
   })
 
+  it('keeps the referral rebate rate an optional fraction', () => {
+    expectTypeOf<OndoAccountConfig['referralRebateRate']>().toEqualTypeOf<
+      number | undefined
+    >()
+  })
+
   it('rejects credential material on the config object', () => {
     const withToken: OndoAccountConfig = {
       provider: 'ondo',

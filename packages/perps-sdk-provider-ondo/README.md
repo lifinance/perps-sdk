@@ -208,6 +208,23 @@ rejection returns `"0"` on both sides. Without a session the method throws
 stream this figure, so the `availableToTrade` WebSocket channel stays
 unsupported.
 
+## Referral rebate rate
+
+`getAccount` reads `/v1/account/referral` with the session token.
+`config.referralSet` is `true` when a referral code applies to the account.
+`config.referralRebateRate` is the current fraction of eligible trading fees
+that Ondo credits back to the user. For example, `0.1` is 10%. The provider
+copies the venue `rebate` value unchanged, so an explicit `0` stays `0`.
+
+The field is absent in these cases:
+
+- No session is stored, or Ondo rejects the session.
+- No referral applies to the account.
+- Ondo omits `rebate` from the referral.
+
+The rate is not the builder fee. It is also not the amount that Ondo credited
+on a past fill. Fills give that amount as `fee.rebate`.
+
 ## Bounded portfolio history
 
 `getPortfolioHistory` with `bounds` reads the `/v1/portfolio/summary/graph`
