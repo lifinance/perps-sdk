@@ -307,6 +307,25 @@ describe('extendedSignActions STARK', () => {
     expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false)
   })
 
+  it.each([
+    '@evil.example/x',
+    '.evil.example/x',
+    ':8443/api/v1/user/order',
+    '//evil.example/x',
+    'api/v1/user/order',
+  ])('refuses a request path that leaves the Extended host: %s', async (path) => {
+    const { deps, requests } = await setup([placedOrderAnswer])
+    const step: StarkActionStep = {
+      action: ActionType.CANCEL_ORDER,
+      stark: { request: { method: 'DELETE', path }, messages: [] },
+    }
+
+    await expect(
+      extendedSignActions(deps, SigningMethod.STARK, [step], address)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requests).toHaveLength(0)
+  })
+
   it('keeps the earlier results when a later step cannot be signed', async () => {
     const { deps } = await setup([placedOrderAnswer])
     const valid = buildOrderStep('limit buy GTT nonce=1')
