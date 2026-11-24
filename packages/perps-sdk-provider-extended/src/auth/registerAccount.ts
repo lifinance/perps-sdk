@@ -1,4 +1,8 @@
-import { type PerpsClientSigner, PerpsError } from '@lifi/perps-sdk'
+import {
+  createWarnOnce,
+  type PerpsClientSigner,
+  PerpsError,
+} from '@lifi/perps-sdk'
 import {
   type Address,
   type Hex,
@@ -21,6 +25,7 @@ import type {
 } from './ExtendedCredentialStore.js'
 
 const API_KEY_PATH = '/api/v1/user/account/api-key'
+const REFERRAL_USE_PATH = '/api/v1/referrals/use'
 
 /** @internal */
 export interface ExtendedRegistrationDeps {
@@ -111,6 +116,43 @@ const pendingKeyPairs = (store: ExtendedCredentialStore) => {
   return pending
 }
 
+// The account step reads the backend's referral code, and the API-key step of
+// the same setup uses it for an account that onboarding did not refer.
+const referralCodes = new WeakMap<
+  ExtendedCredentialStore,
+  Map<string, string>
+>()
+
+const pendingReferralCodes = (store: ExtendedCredentialStore) => {
+  const pending = referralCodes.get(store) ?? new Map<string, string>()
+  referralCodes.set(store, pending)
+  return pending
+}
+
+const warnReferral = createWarnOnce()
+
+/**
+ * Attach the account to the referral code. Extended refuses an account that
+ * already has a referrer; that and any other failure leave the setup as it is.
+ */
+async function useReferralCode(
+  deps: ExtendedRegistrationDeps,
+  apiKey: string,
+  code: string
+): Promise<void> {
+  try {
+    await deps.client.send('POST', REFERRAL_USE_PATH, {
+      apiKey,
+      body: { code },
+    })
+  } catch (error) {
+    warnReferral(
+      REFERRAL_USE_PATH,
+      `[extended] referral code not attached: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
 async function deriveStarkKeyPair(
   deps: ExtendedRegistrationDeps,
   wallet: PerpsClientSigner,
@@ -183,6 +225,13 @@ export async function signOnboardingRequest(
     wallet,
     address
   )
+  const referralCode = request.body?.referralCode
+  if (typeof referralCode === 'string' && referralCode !== '') {
+    pendingReferralCodes(deps.credentialStore).set(
+      address.toLowerCase(),
+      referralCode
+    )
+  }
   const registration = buildAccountRegistrationTypedData(
     walletAddress,
     creation.time,
@@ -217,7 +266,10 @@ export async function signOnboardingRequest(
  * Create an API key for the main account of `address` and store the
  * credentials. Extended ties a key created without an account header to the
  * wallet's account index 0; the SDK then reads the account with the new key.
- * On a new device the wallet signs the key seed again.
+ * On a new device the wallet signs the key seed again. When the account step
+ * of the same setup carried a referral code, the SDK then attaches the account
+ * to it (`POST /api/v1/referrals/use`), for an account that onboarding did not
+ * refer. A failure there does not fail the setup.
  *
  * @throws {PerpsError} `SDKError` when Extended holds a different Stark key
  *   for the account than the one the wallet signature gives.
@@ -279,5 +331,11 @@ export async function registerExtendedApiKey(
   }
   await deps.credentialStore.set(address, credentials)
   pendingKeyPairs(deps.credentialStore).delete(address.toLowerCase())
+  const referrals = pendingReferralCodes(deps.credentialStore)
+  const referralCode = referrals.get(address.toLowerCase())
+  if (referralCode !== undefined) {
+    referrals.delete(address.toLowerCase())
+    await useReferralCode(deps, apiKey, referralCode)
+  }
   return credentials
 }
