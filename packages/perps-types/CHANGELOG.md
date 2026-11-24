@@ -1,5 +1,11 @@
 # @lifi/perps-types
 
+## 30.5.0
+
+### Minor Changes
+
+- [#776](https://github.com/lifinance/perps-sdk/pull/776) [`6c01f07`](https://github.com/lifinance/perps-sdk/commit/6c01f07b0142b6724b8cab5b85fc5c1fce269eb3) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Ondo `getAccount` gives the current referral rebate rate as `OndoAccountConfig.referralRebateRate`, a fraction of eligible trading fees.
+
 ## 30.4.0
 
 ### Minor Changes
