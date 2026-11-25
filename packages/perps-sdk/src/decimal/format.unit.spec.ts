@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatCompactNumber,
   formatCompactUsd,
   formatNumber,
   formatPrice,
@@ -254,6 +255,56 @@ describe('rounding option on the $/% wrappers', () => {
     expect(
       formatSignedPercent(1.239, { rounding: 'floor', locale: 'en-US' })
     ).toBe('+1.23%')
+  })
+})
+
+describe('trimZeros', () => {
+  it.each([
+    ['50.00', '50'],
+    ['12.50', '12.5'],
+    ['1234.5', '1,234.5'],
+    ['-0.001', '0'],
+  ])('drops the trailing zeros of %s', (value, expected) => {
+    expect(formatNumber(value, { locale: 'en-US', trimZeros: true })).toBe(
+      expected
+    )
+  })
+})
+
+describe('formatCompactNumber', () => {
+  const READOUT = {
+    locale: 'en-US',
+    rounding: 'floor',
+    significantDigits: 4,
+    trimZeros: true,
+  } as const
+
+  it.each([
+    ['0', 2, '0'],
+    ['50.00', 2, '50'],
+    ['280.689', 2, '280.68'],
+    ['0.000189', 5, '0.00018'],
+    ['999.999', 2, '999.99'],
+    ['1000', 2, '1K'],
+    ['4210.98', 2, '4.21K'],
+    ['246199', 2, '246.1K'],
+    ['999999.99', 2, '999.9K'],
+    ['1049999', 2, '1.049M'],
+    ['77199999', 2, '77.19M'],
+    ['1999999999', 2, '1.999B'],
+    ['-246199', 2, '-246.1K'],
+    ['-0.001', 2, '0'],
+  ])('writes %s at %i decimals as %s', (value, decimals, expected) => {
+    expect(formatCompactNumber(value, { ...READOUT, decimals })).toBe(expected)
+  })
+
+  it('has no currency symbol', () => {
+    expect(formatCompactNumber(1_230_000_000)).toBe('1.23B')
+    expect(formatCompactNumber(12.34)).toBe('12.34')
+  })
+
+  it('renders the placeholder for null', () => {
+    expect(formatCompactNumber(null)).toBe('—')
   })
 })
 
