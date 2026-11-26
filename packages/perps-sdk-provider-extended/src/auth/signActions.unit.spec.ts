@@ -452,7 +452,11 @@ describe('extendedSignActions SESSION', () => {
   it('deletes the SDK API key for REVOKE_API_KEY and removes the credentials', async () => {
     const { deps, requests } = await setup([
       okAnswer([
-        { id: 11, key: 'test-api-key', description: 'LI.FI perps SDK' },
+        {
+          key: 'test-api-key',
+          accountId: 330870,
+          description: 'LI.FI perps SDK',
+        },
       ]),
       okAnswer(undefined),
     ])
