@@ -67,6 +67,7 @@ function projectExtendedDescriptor(
     case ActionType.REVOKE_BUILDER_FEE:
     case ActionType.REVOKE_SESSION_AGENT:
     case ActionType.REVOKE_INTEGRATOR:
+    case ActionType.REVOKE_API_KEY:
       throw new PerpsError(
         PerpsErrorCode.SDKError,
         `Extended account-config mapper has no projection for descriptor type '${descriptor.type}'.`

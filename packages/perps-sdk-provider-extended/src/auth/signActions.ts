@@ -30,6 +30,7 @@ import type { ExtendedCredentials } from './ExtendedCredentialStore.js'
 import {
   type ExtendedRegistrationDeps,
   registerExtendedApiKey,
+  revokeExtendedApiKeys,
   signOnboardingRequest,
 } from './registerAccount.js'
 
@@ -247,6 +248,9 @@ const sentResult = (sent: StarkSignedActionStep): ActionResult => ({
  * - `SESSION` with `REGISTER_API_KEY`: create an API key for the account and
  *   store the credentials. The wallet signs the API-key request, and the Stark
  *   key seed when this session has not signed it yet.
+ * - `SESSION` with `REVOKE_API_KEY`: delete the API keys that the SDK created
+ *   for the account and remove the stored credentials. The wallet signs the
+ *   key list and each delete.
  * - `STARK` with `CREATE_ACCOUNT`: sign the backend-built onboarding request
  *   and return it unsent; the backend sends it to Extended.
  * - `STARK` with any other action: sign each message with the stored Stark
@@ -270,13 +274,16 @@ export async function extendedSignActions(
       const executed: ActionResult[] = []
       try {
         for (const step of steps) {
-          if (step.action !== ActionType.REGISTER_API_KEY) {
+          if (step.action === ActionType.REGISTER_API_KEY) {
+            await registerExtendedApiKey(deps, requireUserWallet(ctx), address)
+          } else if (step.action === ActionType.REVOKE_API_KEY) {
+            await revokeExtendedApiKeys(deps, requireUserWallet(ctx), address)
+          } else {
             throw new PerpsError(
               PerpsErrorCode.SDKError,
               `Extended has no session-step executor for action '${step.action}'.`
             )
           }
-          await registerExtendedApiKey(deps, requireUserWallet(ctx), address)
           executed.push({
             action: step.action,
             status: UserActionStatus.Accepted,
