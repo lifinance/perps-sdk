@@ -215,10 +215,13 @@ export class ExtendedApiClient {
   /** A path that does not start with one `/` could name another host. */
   private urlOf(path: string): string {
     const url = `${this.baseUrl}${path}`
+    // A relative proxy base (`/api/perps/extended`) needs a placeholder origin to parse.
+    const placeholder = 'http://relative.invalid'
     if (
       !path.startsWith('/') ||
       path.startsWith('//') ||
-      new URL(url).origin !== new URL(this.baseUrl).origin
+      new URL(url, placeholder).origin !==
+        new URL(this.baseUrl, placeholder).origin
     ) {
       throw new PerpsError(
         PerpsErrorCode.SDKError,
