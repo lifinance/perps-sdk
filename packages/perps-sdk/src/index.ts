@@ -57,11 +57,14 @@ export {
   scaledIntegerToDecimalString,
 } from './decimal/convert.js'
 export type {
+  CompactNumberOptions,
   CompactUsdOptions,
   FormatOptions,
+  NumberFormatOptions,
   RoundingMode,
 } from './decimal/format.js'
 export {
+  formatCompactNumber,
   formatCompactUsd,
   formatNumber,
   formatPrice,

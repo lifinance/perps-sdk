@@ -636,6 +636,117 @@ describe('LighterWsProvider', () => {
       p.close()
     })
 
+    it('reports the invalid api token form once and keeps public channels and other accounts', async () => {
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => 'expired-read-token' },
+        freshClient()
+      )
+      const { p, internals, send } = connectedProvider(provider)
+      const other = '0xcafecafecafecafecafecafecafecafecafecafe'
+      internals.accountIndexCache.set(other, 43)
+      const errors = [vi.fn(), vi.fn()]
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        errors[0]
+      )
+      await p.subscribe(
+        { channel: 'accountSummary', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        errors[1]
+      )
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      const otherError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: other },
+        vi.fn(),
+        undefined,
+        otherError
+      )
+      const expired = {
+        error: {
+          code: 20013,
+          message: 'invalid auth: invalid api token: account_all_orders:42',
+        },
+      }
+      internals.handleMessage(JSON.stringify(expired))
+      internals.handleMessage(JSON.stringify(expired))
+      for (const listener of errors) {
+        expect(listener).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ code: PerpsErrorCode.Unauthorized })
+        )
+      }
+      expect(publicError).not.toHaveBeenCalled()
+      expect(otherError).not.toHaveBeenCalled()
+      send.mockClear()
+      await internals.replaySubs()
+      const frames = send.mock.calls.map(([raw]) => JSON.parse(raw))
+      expect(frames).not.toContainEqual(
+        expect.objectContaining({ channel: 'account_all_orders/42' })
+      )
+      expect(frames).toContainEqual({
+        type: 'subscribe',
+        channel: 'account_all_trades/42',
+      })
+      expect(frames).toContainEqual(
+        expect.objectContaining({ channel: 'account_all_orders/43' })
+      )
+      p.close()
+    })
+
+    it.each([
+      'invalid auth: invalid api token: account_all_orders:7',
+      'invalid auth: invalid api token: account_all_trades:42',
+      'invalid api token: account_all_orders:42',
+      'invalid auth: invalid api token: xaccount_all_orders:42',
+    ])('logs the 20013 message %j and keeps every subscription', async (message) => {
+      const provider = new LighterWsProvider(
+        'ws://127.0.0.1:1',
+        'lighter',
+        { resolveAuthToken: async () => 'read-token' },
+        freshClient()
+      )
+      const { p, internals } = connectedProvider(provider)
+      const onError = vi.fn()
+      await p.subscribe(
+        { channel: 'orderUpdates', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        onError
+      )
+      const publicError = vi.fn()
+      await p.subscribe(
+        { channel: 'fills', dex: 'lighter', address: TEST_ADDR },
+        vi.fn(),
+        undefined,
+        publicError
+      )
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      internals.handleMessage(
+        JSON.stringify({ error: { code: 20013, message } })
+      )
+      expect(log).toHaveBeenCalledExactlyOnceWith(
+        '[lighter:ws] server error',
+        'Venue error code: 20013'
+      )
+      expect(onError).not.toHaveBeenCalled()
+      expect(publicError).not.toHaveBeenCalled()
+      expect(internals.wireSubs.has('account_all_orders/42')).toBe(true)
+      expect(internals.wireSubs.has('account_all_trades/42')).toBe(true)
+      log.mockRestore()
+      p.close()
+    })
+
     it('logs a 20013 that names no presented wire and keeps every subscription', async () => {
       const provider = new LighterWsProvider(
         'ws://127.0.0.1:1',
