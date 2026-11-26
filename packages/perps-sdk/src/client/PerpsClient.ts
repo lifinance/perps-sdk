@@ -928,13 +928,11 @@ export class PerpsClient {
   }
 
   /**
-   * Status of the deposit that the source-chain transaction `params.txHash`
-   * funded for `params.address` at `params.provider`, read from the provider
-   * plugin.
+   * Status of the deposit that `params.txHash` funded for `params.address` at
+   * `params.provider`, read from the provider plugin.
    *
-   * @returns `undefined` when the registered plugin declares no deposit status
-   *   read, or when the venue has no record of the transaction yet. Treat
-   *   `undefined` as not yet credited.
+   * @returns `undefined` when the plugin declares no read, or when the venue has
+   *   no record of the transaction yet. Treat `undefined` as not yet credited.
    * @throws {PerpsError} When the provider plugin is not registered, or the
    *   venue read fails.
    * @public

@@ -495,14 +495,10 @@ export interface PerpsProviderPlugin {
   ): Promise<DepositFlow>
 
   /**
-   * Status of the deposit that the source-chain transaction `params.txHash`
-   * funded for `params.address`.
-   *
-   * Resolves `undefined` when the venue has no record of the transaction yet.
-   * A caller treats `undefined` as not yet credited.
-   *
-   * Optional: a provider that cannot report a deposit status omits it, and
-   * `PerpsClient.getDepositStatus` then resolves `undefined`.
+   * Status of the deposit that `params.txHash` funded for `params.address`.
+   * Resolves `undefined` when the venue has no record of the transaction yet,
+   * and a caller treats that as not yet credited. Optional: a provider that
+   * cannot report a deposit status omits it.
    */
   getDepositStatus?(
     params: ProviderGetDepositStatusParams,
