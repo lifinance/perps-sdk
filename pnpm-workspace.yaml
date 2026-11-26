@@ -9,6 +9,7 @@ minimumReleaseAgeExclude:
   - '@lifi/*'
   - playwright-core@1.65.0
   - playwright@1.65.0
+  - viem@2.58.7
 overrides:
   ws@8: 8.21.1
-  viem: 2.57.11
+  viem: 2.58.7
