@@ -25,6 +25,7 @@ import type {
 } from './ExtendedCredentialStore.js'
 
 const API_KEY_PATH = '/api/v1/user/account/api-key'
+const API_KEYS_PATH = '/api/v1/user/account/api-keys'
 const REFERRAL_USE_PATH = '/api/v1/referrals/use'
 
 /** @internal */
@@ -97,6 +98,22 @@ export const buildAccountRegistrationTypedData = (
 
 const withoutHexPrefix = (signature: string): string =>
   signature.replace(/^0x/, '')
+
+/** The wallet signs `path@time` for an account request without an API key. */
+async function l1SignatureHeaders(
+  wallet: PerpsClientSigner,
+  path: string
+): Promise<Record<string, string>> {
+  const time = formatSignatureTime(new Date())
+  const signature = await wallet.signMessage({
+    account: wallet.account,
+    message: `${path}@${time}`,
+  })
+  return {
+    L1_SIGNATURE: withoutHexPrefix(signature),
+    L1_MESSAGE_TIME: time,
+  }
+}
 
 interface StarkKeyPair {
   starkPrivateKey: Hex
@@ -285,20 +302,12 @@ export async function registerExtendedApiKey(
     wallet,
     address
   )
-  const time = formatSignatureTime(new Date())
-  const signature = await wallet.signMessage({
-    account: wallet.account,
-    message: `${API_KEY_PATH}@${time}`,
-  })
   const { key: apiKey } = await deps.client.send<{ key: string }>(
     'POST',
     API_KEY_PATH,
     {
       body: { description: EXTENDED_API_KEY_DESCRIPTION },
-      headers: {
-        L1_SIGNATURE: withoutHexPrefix(signature),
-        L1_MESSAGE_TIME: time,
-      },
+      headers: await l1SignatureHeaders(wallet, API_KEY_PATH),
       secretResponse: true,
     }
   )
@@ -338,4 +347,47 @@ export async function registerExtendedApiKey(
     await useReferralCode(deps, apiKey, referralCode)
   }
   return credentials
+}
+
+const isApiKeyId = (value: unknown): value is number | string =>
+  (typeof value === 'number' && Number.isSafeInteger(value)) ||
+  (typeof value === 'string' && /^[\w-]+$/.test(value))
+
+/**
+ * Delete each API key of the main account of `address` that this SDK created,
+ * then remove the stored credentials. The wallet signs the key list and each
+ * delete. Keys that other apps created stay. The SDK checks every id before
+ * it deletes a key, so a malformed list deletes nothing.
+ *
+ * @throws {PerpsError} `SDKError` when the list is not a list, or names an
+ *   SDK key without a valid id.
+ * @internal
+ */
+export async function revokeExtendedApiKeys(
+  deps: ExtendedRegistrationDeps,
+  wallet: PerpsClientSigner,
+  address: Address
+): Promise<void> {
+  const keys = await deps.client.send<unknown>('GET', API_KEYS_PATH, {
+    headers: await l1SignatureHeaders(wallet, API_KEYS_PATH),
+    secretResponse: true,
+  })
+  if (!Array.isArray(keys)) {
+    return refuse('Extended answered the API key list without a list.')
+  }
+  const ids = keys.flatMap((key) =>
+    isRecord(key) && key.description === EXTENDED_API_KEY_DESCRIPTION
+      ? [key.id]
+      : []
+  )
+  if (!ids.every(isApiKeyId)) {
+    return refuse('Extended lists an API key of this SDK without a valid id.')
+  }
+  for (const id of ids) {
+    const path = `${API_KEY_PATH}/${id}`
+    await deps.client.send('DELETE', path, {
+      headers: await l1SignatureHeaders(wallet, path),
+    })
+  }
+  await deps.credentialStore.remove(address)
 }
