@@ -2120,6 +2120,11 @@ export const createLighterProvider = (
       marketSlippage: LIGHTER_MARKET_SLIPPAGE_PERCENT,
     },
 
+    reduceOnlyOrders: {
+      rejectsOversize: false,
+      limitIsImmediateOrCancel: false,
+    },
+
     estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,

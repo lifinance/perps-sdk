@@ -209,3 +209,15 @@ describe('triggerOrders on the Lighter plugins', () => {
     })
   })
 })
+
+describe('reduceOnlyOrders on the Lighter plugins', () => {
+  it.each([
+    ['lighter', lighterProvider],
+    ['lighter-rh', lighterRhProvider],
+  ])('sets the %s reduce-only settings', (_key, factory) => {
+    expect(factory().reduceOnlyOrders).toEqual({
+      rejectsOversize: false,
+      limitIsImmediateOrCancel: false,
+    })
+  })
+})

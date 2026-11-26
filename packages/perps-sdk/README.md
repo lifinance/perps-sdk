@@ -509,6 +509,18 @@ the `min`, `max`, `step` and `default` of the slippage input as percents
 `snapOrderPrice(sdk, market, calculateSlippagePrice(triggerPrice, slippagePercent, isBuy))`,
 where `isBuy` is `true` for a buy trigger order.
 
+A provider gives its reduce-only order settings in `reduceOnlyOrders`:
+
+- `rejectsOversize` is `true` when the venue rejects a reduce-only order
+  larger than the position. When it is `false`, the venue fills the order up
+  to the position and drops the rest.
+- `limitIsImmediateOrCancel` is `true` when the venue runs a reduce-only
+  limit order as Immediate or Cancel. Such an order never rests on the book.
+
+Ondo sets both values to `true`. Hyperliquid and Lighter set both values to
+`false`. An absent `reduceOnlyOrders` means that the provider does not
+declare these settings.
+
 `calculateOrderAmounts()` gives the three order-entry amounts from whichever
 one the user typed. Every venue places an order by size alone, so the size is
 the only amount that snaps onto a grid: the venue lot grid. Margin and notional

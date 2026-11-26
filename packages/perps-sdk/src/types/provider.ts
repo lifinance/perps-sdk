@@ -690,6 +690,20 @@ export interface PerpsProviderPlugin {
   }
 
   /**
+   * Reduce-only order settings of the venue.
+   *
+   * - `rejectsOversize`: the venue rejects a reduce-only order larger than the
+   *   position. When `false`, the venue fills up to the position and drops
+   *   the rest.
+   * - `limitIsImmediateOrCancel`: the venue runs a reduce-only limit order as
+   *   Immediate or Cancel, so the order never rests on the book.
+   */
+  reduceOnlyOrders?: {
+    rejectsOversize: boolean
+    limitIsImmediateOrCancel: boolean
+  }
+
+  /**
    * Estimate the liquidation price of the position that the order leaves on
    * `market` using the venue's margin model: a new position, or the blend of
    * the order into `params.position`. A preview helper — for existing

@@ -518,6 +518,11 @@ export function hyperliquidProvider(
 
     triggerOrders: { modifyCanChangeType: true },
 
+    reduceOnlyOrders: {
+      rejectsOversize: false,
+      limitIsImmediateOrCancel: false,
+    },
+
     estimateLiquidationPrice: (
       market: PerpsMarket,
       params: LiquidationEstimateParams

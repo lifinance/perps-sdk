@@ -168,6 +168,13 @@ describe('hyperliquidProvider', () => {
       })
     })
 
+    it('fills an oversized reduce-only order up to the position and rests a reduce-only limit', () => {
+      expect(hyperliquidProvider().reduceOnlyOrders).toEqual({
+        rejectsOversize: false,
+        limitIsImmediateOrCancel: false,
+      })
+    })
+
     it('estimates liquidation with mmr derived from the market maxLeverage', () => {
       const provider = hyperliquidProvider()
       // mmr = 1/(2*50) = 0.01; entry * (1 - 1/leverage) / (1 - mmr)
