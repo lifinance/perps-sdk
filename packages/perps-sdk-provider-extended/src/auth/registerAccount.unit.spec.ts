@@ -7,7 +7,7 @@ import {
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createFetchMock, okAnswer } from '../../test/fetchMock.js'
+import { createFetchMock, errorAnswer, okAnswer } from '../../test/fetchMock.js'
 import {
   registrationCases,
   signingKey,
@@ -21,7 +21,9 @@ import { ExtendedApiClient } from '../utils/apiClient.js'
 import { ExtendedCredentialStore } from './ExtendedCredentialStore.js'
 import {
   buildAccountCreationTypedData,
+  formatSignatureTime,
   registerExtendedApiKey,
+  revokeExtendedApiKeys,
   signOnboardingRequest,
 } from './registerAccount.js'
 
@@ -263,5 +265,107 @@ describe('Extended account setup', () => {
       registerExtendedApiKey(deps, wallet, ethAddress)
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
     expect(await credentialStore.get(ethAddress)).toBeNull()
+  })
+})
+
+describe('Extended API key revoke', () => {
+  const stored = {
+    starkPrivateKey: signingKey.starkPrivateKey,
+    starkPublicKey: signingKey.starkPublicKey,
+    accountId: '330870',
+    positionId: '430876',
+    apiKey: 'test-api-key',
+  }
+
+  const listAnswer = (keys: unknown[]) => okAnswer(keys)
+
+  const signedWith = async (path: string) => {
+    const time = formatSignatureTime(new Date(frozenNow))
+    const signature = await wallet.signMessage({ message: `${path}@${time}` })
+    return { l1_signature: signature.slice(2), l1_message_time: time }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(frozenNow))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('deletes only the SDK API keys, each with its own wallet signature, and removes the credentials', async () => {
+    const { deps, requests, credentialStore } = setup([
+      listAnswer([
+        { id: 11, key: 'test-api-key', description: 'LI.FI perps SDK' },
+        { id: 12, key: 'bot-key', description: 'trading bot' },
+        { id: '13', key: 'other-device-key', description: 'LI.FI perps SDK' },
+      ]),
+      okAnswer(undefined),
+      okAnswer(undefined),
+    ])
+    await credentialStore.set(ethAddress, stored)
+
+    await revokeExtendedApiKeys(deps, wallet, ethAddress)
+
+    const listPath = '/api/v1/user/account/api-keys'
+    expect(
+      requests.map(({ method, url }) => [
+        method,
+        url.slice(DEFAULT_EXTENDED_API_URL.length),
+      ])
+    ).toEqual([
+      ['GET', listPath],
+      ['DELETE', '/api/v1/user/account/api-key/11'],
+      ['DELETE', '/api/v1/user/account/api-key/13'],
+    ])
+    expect(requests[0].headers).toMatchObject(await signedWith(listPath))
+    expect(requests[2].headers).toMatchObject(
+      await signedWith('/api/v1/user/account/api-key/13')
+    )
+    expect(requests[1].headers['x-api-key']).toBeUndefined()
+    expect(await credentialStore.get(ethAddress)).toBeNull()
+  })
+
+  it('removes the credentials when Extended lists no SDK API key', async () => {
+    const { deps, requests, credentialStore } = setup([listAnswer([])])
+    await credentialStore.set(ethAddress, stored)
+
+    await revokeExtendedApiKeys(deps, wallet, ethAddress)
+
+    expect(requests).toHaveLength(1)
+    expect(await credentialStore.get(ethAddress)).toBeNull()
+  })
+
+  it.each([
+    ['no id', { description: 'LI.FI perps SDK' }],
+    [
+      'an id with a path',
+      { id: '11/../../order', description: 'LI.FI perps SDK' },
+    ],
+  ])('refuses an SDK API key with %s, and deletes nothing', async (_label, key) => {
+    const { deps, requests, credentialStore } = setup([
+      listAnswer([{ id: 11, description: 'LI.FI perps SDK' }, key]),
+    ])
+    await credentialStore.set(ethAddress, stored)
+
+    await expect(
+      revokeExtendedApiKeys(deps, wallet, ethAddress)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requests).toHaveLength(1)
+    expect(await credentialStore.get(ethAddress)).toEqual(stored)
+  })
+
+  it('keeps the credentials when Extended refuses a delete', async () => {
+    const { deps, credentialStore } = setup([
+      listAnswer([{ id: 11, description: 'LI.FI perps SDK' }]),
+      errorAnswer(404, 404, 'API key not found'),
+    ])
+    await credentialStore.set(ethAddress, stored)
+
+    await expect(
+      revokeExtendedApiKeys(deps, wallet, ethAddress)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.ExchangeRejected })
+    expect(await credentialStore.get(ethAddress)).toEqual(stored)
   })
 })

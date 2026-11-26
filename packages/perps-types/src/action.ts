@@ -766,6 +766,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.UPDATE_ASSET_COLLATERAL]: UpdateAssetCollateralParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.REVOKE_API_KEY]: Record<string, never>
   [ActionType.CREATE_ACCOUNT]: Record<string, never>
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>
