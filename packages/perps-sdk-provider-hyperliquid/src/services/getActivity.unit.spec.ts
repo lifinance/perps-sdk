@@ -14,6 +14,7 @@ import {
 import { installInfoFetchMock } from '../../test/mockFetch.js'
 import { DEFAULT_HYPERLIQUID_API_URL } from '../constants.js'
 import type {
+  HlSendAssetDelta,
   HlSpotTransferDelta,
   HlUserFill,
   HlUserFunding,
@@ -764,6 +765,123 @@ describe('getActivity — transfer registry identity', () => {
         mock.referenceRequests.some((url) => url.includes('/markets'))
       ).toBe(false)
     }
+  })
+
+  describe('same-account sends', () => {
+    // Recorded QA account rows, with the spec account in place of the QA address.
+    const counterparty = '0x66cf0aace1b4e562593bec10ec7868fba9932224'
+    const selfSend: HlSendAssetDelta = {
+      type: 'send',
+      user: ADDRESS,
+      destination: ADDRESS,
+      sourceDex: 'spot',
+      destinationDex: '',
+      token: 'USDC',
+      amount: '3.0',
+      usdcValue: '3.0',
+      fee: '0.0',
+      nativeTokenFee: '0.0',
+      nonce: 1784811640263,
+      feeToken: '',
+    }
+    const otherSend: HlSendAssetDelta = {
+      ...selfSend,
+      destination: counterparty,
+      amount: '5.0',
+      usdcValue: '5.0',
+      nonce: 1793845046078,
+    }
+
+    it.each([
+      { type: undefined },
+      { type: [ActivityType.INTERNAL_TRANSFER] },
+      { type: [ActivityType.TRANSFER] },
+      { type: [ActivityType.TRANSFER, ActivityType.INTERNAL_TRANSFER] },
+    ])('filters sends by mapped type with type=$type', async ({ type }) => {
+      installInfoFetchMock(
+        {
+          userFunding: [],
+          userFillsByTime: [],
+          userNonFundingLedgerUpdates: [
+            {
+              time: 1793845056984,
+              hash: '0x238d1d361258eb122506044817b7d4020321001bad5c09e4c755c888d15cc4fc',
+              delta: otherSend,
+            },
+            {
+              time: 1784811645874,
+              hash: '0x6ca7197747fce3a16e20044090e803020260005ce2f00273106fc4ca06f0bd8c',
+              delta: selfSend,
+            },
+            {
+              time: 1784811583983,
+              hash: '0x86b4d4a266215768882e044090e4990201cd00880124763a2a7d7ff525253153',
+              delta: { ...selfSend, sourceDex: '' },
+            },
+          ],
+        },
+        [],
+        [],
+        [USDC_ASSET]
+      )
+      const result = await getActivity(ctx, { address: ADDRESS, type })
+      expect(result.items).toMatchObject([
+        ...(!type || type.includes(ActivityType.TRANSFER)
+          ? [
+              {
+                id: '0x238d1d361258eb122506044817b7d4020321001bad5c09e4c755c888d15cc4fc',
+                type: ActivityType.TRANSFER,
+                direction: 'OUT',
+                counterpartyAddress: counterparty,
+                amount: '5.0',
+              },
+            ]
+          : []),
+        ...(!type || type.includes(ActivityType.INTERNAL_TRANSFER)
+          ? [
+              {
+                id: '0x6ca7197747fce3a16e20044090e803020260005ce2f00273106fc4ca06f0bd8c',
+                type: ActivityType.INTERNAL_TRANSFER,
+                sourceBalance: 'spot',
+                destinationBalance: 'perps',
+                asset: USDC_ASSET,
+                amount: '3.0',
+              },
+            ]
+          : []),
+      ])
+    })
+
+    it.each([
+      { type: [ActivityType.TRANSFER], delta: selfSend },
+      { type: [ActivityType.INTERNAL_TRANSFER], delta: otherSend },
+    ])('skips a send of another type before mapping for type=$type', async ({
+      type,
+      delta,
+    }) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      installInfoFetchMock(
+        {
+          userNonFundingLedgerUpdates: [
+            {
+              time: 1784811645874,
+              hash: '0xsend',
+              delta: { ...delta, token: 'UNKNOWN' },
+            },
+          ],
+          userFillsByTime: [],
+        },
+        [],
+        [],
+        []
+      )
+      const result = await getActivity(
+        { ...ctx, client: createPerpsClient({ retry: false }) },
+        { address: ADDRESS, type }
+      )
+      expect(result.items).toEqual([])
+      expect(warn).not.toHaveBeenCalled()
+    })
   })
 
   it.each([
