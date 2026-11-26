@@ -18,7 +18,7 @@ import {
   signStarkHash,
 } from '../signing/starkKey.js'
 import { calculateStarkRegistrationHash } from '../signing/starkMessageHash.js'
-import type { ExtendedApiClient } from '../utils/apiClient.js'
+import { type ExtendedApiClient, ExtendedApiError } from '../utils/apiClient.js'
 import type {
   ExtendedCredentialStore,
   ExtendedCredentials,
@@ -349,18 +349,37 @@ export async function registerExtendedApiKey(
   return credentials
 }
 
-const isApiKeyId = (value: unknown): value is number | string =>
-  (typeof value === 'number' && Number.isSafeInteger(value)) ||
-  (typeof value === 'string' && /^[\w-]+$/.test(value))
+const isApiKey = (value: unknown): value is string =>
+  typeof value === 'string' && /^[\w-]+$/.test(value)
+
+/** The key is in the delete path, so a failed delete must not carry it. */
+const withoutKey = (error: unknown, key: string): Error => {
+  const message = (
+    error instanceof Error ? error.message : String(error)
+  ).replaceAll(key, '***')
+  if (error instanceof ExtendedApiError) {
+    return new ExtendedApiError(
+      message,
+      error.httpStatus,
+      error.venueCode,
+      error.code
+    )
+  }
+  return new PerpsError(
+    error instanceof PerpsError ? error.code : PerpsErrorCode.ThirdPartyError,
+    message
+  )
+}
 
 /**
- * Delete each API key of the main account of `address` that this SDK created,
- * then remove the stored credentials. The wallet signs the key list and each
- * delete. Keys that other apps created stay. The SDK checks every id before
- * it deletes a key, so a malformed list deletes nothing.
+ * Delete each API key of the account of `address` that this SDK created, then
+ * remove the stored credentials. Extended lists a key without an id, so the
+ * delete path names the key itself. The wallet signs the key list and each
+ * delete. Keys that other apps created stay. The SDK checks every key before
+ * it deletes one, so a malformed list deletes nothing.
  *
  * @throws {PerpsError} `SDKError` when the list is not a list, or names an
- *   SDK key without a valid id.
+ *   SDK key that is not a plain key string.
  * @internal
  */
 export async function revokeExtendedApiKeys(
@@ -368,26 +387,33 @@ export async function revokeExtendedApiKeys(
   wallet: PerpsClientSigner,
   address: Address
 ): Promise<void> {
-  const keys = await deps.client.send<unknown>('GET', API_KEYS_PATH, {
+  const listed = await deps.client.send<unknown>('GET', API_KEYS_PATH, {
     headers: await l1SignatureHeaders(wallet, API_KEYS_PATH),
     secretResponse: true,
   })
-  if (!Array.isArray(keys)) {
+  if (!Array.isArray(listed)) {
     return refuse('Extended answered the API key list without a list.')
   }
-  const ids = keys.flatMap((key) =>
-    isRecord(key) && key.description === EXTENDED_API_KEY_DESCRIPTION
-      ? [key.id]
-      : []
+  const sdkKeys = listed.filter(
+    (entry): entry is Record<string, unknown> =>
+      isRecord(entry) && entry.description === EXTENDED_API_KEY_DESCRIPTION
   )
-  if (!ids.every(isApiKeyId)) {
-    return refuse('Extended lists an API key of this SDK without a valid id.')
+  const keys = sdkKeys.map((entry) => entry.key)
+  if (!keys.every(isApiKey)) {
+    const fields = [...new Set(sdkKeys.flatMap((entry) => Object.keys(entry)))]
+    return refuse(
+      `Extended lists an API key of this SDK without a valid key (fields: ${fields.join(', ')}).`
+    )
   }
-  for (const id of ids) {
-    const path = `${API_KEY_PATH}/${id}`
-    await deps.client.send('DELETE', path, {
-      headers: await l1SignatureHeaders(wallet, path),
-    })
+  for (const key of keys) {
+    const path = `${API_KEY_PATH}/${key}`
+    try {
+      await deps.client.send('DELETE', path, {
+        headers: await l1SignatureHeaders(wallet, path),
+      })
+    } catch (error) {
+      throw withoutKey(error, key)
+    }
   }
   await deps.credentialStore.remove(address)
 }
