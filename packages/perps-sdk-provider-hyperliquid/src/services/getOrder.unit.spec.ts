@@ -8,6 +8,8 @@ import {
   HL_ORDER_STATUS_FOUND_WITH_CLOID,
   HL_ORDER_STATUS_OUTCOME,
   HL_ORDER_STATUS_UNKNOWN,
+  HL_REDUCE_ONLY_SHRUNK_ORDER,
+  HL_REDUCE_ONLY_SHRUNK_ORDER_FILL,
   HL_TWAP_HISTORY_FINISHED,
   HL_TWAP_LONG_ACTIVATED,
   HL_TWAP_LONG_SLICE_FILLS,
@@ -69,6 +71,40 @@ describe('getOrder', () => {
       remainingSize: '0',
       filledSize: '0.05',
       updatedAt: '2024-01-01T00:00:01.000Z',
+    })
+  })
+
+  it.each([
+    ['without a trade', [], OrderStatus.OPEN, '0'],
+    [
+      'with a trade',
+      [HL_REDUCE_ONLY_SHRUNK_ORDER_FILL],
+      OrderStatus.PARTIALLY_FILLED,
+      '0.0001',
+    ],
+  ])('reads the filled size of a reduce-only order the venue shrank %s from its fills', async (_, userFills, status, filledSize) => {
+    ;({ restore } = installInfoFetchMock(
+      {
+        orderStatus: {
+          status: 'order',
+          order: {
+            order: HL_REDUCE_ONLY_SHRUNK_ORDER,
+            status: 'open',
+            statusTimestamp: HL_REDUCE_ONLY_SHRUNK_ORDER.timestamp,
+          },
+        },
+        userFills,
+      },
+      HL_MARKETS
+    ))
+
+    await expect(
+      getOrder(ctx, { address: ADDRESS, id: '41' })
+    ).resolves.toMatchObject({
+      status,
+      originalSize: '0.0004',
+      remainingSize: '0.0002',
+      filledSize,
     })
   })
 

@@ -12,6 +12,7 @@ import {
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
+  DecimalString,
   MarketDisplay,
   Order,
   OrderBase,
@@ -216,11 +217,14 @@ function venueError(message: string): PerpsError {
 /**
  * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
  * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
+ * @param tradedSize - Sum of the venue fills of a regular or trigger row. When
+ * absent, the filled size is `origSz − sz`.
  */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
   market: MarketDisplay,
-  parentOrderId?: string
+  parentOrderId?: string,
+  tradedSize?: DecimalString
 ): Order | undefined => {
   if ('state' in raw) {
     if (raw.twapId === undefined) {
@@ -298,12 +302,13 @@ export const mapOrder = (
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const filledSize = safeSubtractDecimalString(o.origSz, o.sz)
-  if (filledSize === undefined) {
+  const venueFilledSize = safeSubtractDecimalString(o.origSz, o.sz)
+  if (venueFilledSize === undefined) {
     return isDecimalString(o.origSz)
       ? skipOrder(market.id, 'sz', o.sz)
       : skipOrder(market.id, 'origSz', o.origSz)
   }
+  const filledSize = tradedSize ?? venueFilledSize
   const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
   if (createdAt === undefined) {
     return skipOrder(market.id, 'timestamp', o.timestamp)

@@ -20,6 +20,7 @@ import {
   resolveTwapExecution,
 } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { fetchTradedSizes } from './orderFills.js'
 import { fetchTwapSliceFills } from './twapSliceFills.js'
 
 /**
@@ -104,10 +105,15 @@ export const getOrder = async (
   }
 
   const registry = getMarketRegistry(client, PROVIDER_KEY)
-  await registry.sync()
+  const [tradedSizes] = await Promise.all([
+    fetchTradedSizes(apiUrl, params.address, [status.order.order], infoOpts),
+    registry.sync(),
+  ])
   const order = mapOrder(
     status.order,
-    registry.require(status.order.order.coin)
+    registry.require(status.order.order.coin),
+    undefined,
+    tradedSizes.get(status.order.order.oid)
   )
   if (order === undefined) {
     throw orderNotFound(params.id)

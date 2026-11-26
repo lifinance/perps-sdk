@@ -316,6 +316,22 @@ An `activated` TWAP maps to FILLED when its filled size reaches its original
 size. The remaining size never falls below zero. The filled size preserves the
 actual execution, even when it exceeds the original size.
 
+Hyperliquid also lowers `sz` when it shrinks a resting reduce-only order to the
+size of the position. Thus, `origSz` minus `sz` is not the filled size of a
+reduce-only order whose `sz` is below its `origSz`. For such an order, the
+provider adds the sizes of the order's `userFills` rows. `getOrders`,
+`getOrder`, and the `orderUpdates` feed use the same rule. `originalSize`
+stays `origSz`, and `remainingSize` stays `sz`. All other orders keep `origSz`
+minus `sz` as the filled size.
+
+The fill read starts at the creation time of the oldest such order. When the
+2,000 newest fills do not reach back to that time, the provider also reads
+`userFillsByTime`. A failed fill read rejects `getOrders` and `getOrder`. The
+`orderUpdates` feed drops the affected rows and emits the other rows of the
+frame. The venue keeps only the latest 10,000 fills. An order that can be
+older than these fills, or that has a fill with an invalid size, keeps `origSz`
+minus `sz`.
+
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.
 

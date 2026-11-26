@@ -59,6 +59,10 @@ import {
 } from '../constants.js'
 import { fetchFillLeverages } from '../services/fillLeverages.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
+import {
+  fetchTradedSizes,
+  isFilledSizeAmbiguous,
+} from '../services/orderFills.js'
 import type {
   HlActiveAssetData,
   HlAssetPosition,
@@ -1199,7 +1203,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return
       }
       const user = key.slice('orderUpdates:'.length)
-      const mapped = await Promise.all(
+      const details = await Promise.all(
         data.map(async (update) => {
           const basic = update.order
           if (
@@ -1208,9 +1212,8 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           ) {
             return undefined
           }
-          let detail: HlOrderDetail
           try {
-            detail = await this.readOrderDetail(user, client, update)
+            return await this.readOrderDetail(user, client, update)
           } catch (error) {
             if (!(error instanceof PerpsError)) {
               throw error
@@ -1222,11 +1225,47 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             )
             return undefined
           }
-          return mapOrderRow(basic.coin, this.registry, (resolved) =>
-            mapOrder(detail, resolved)
-          )
         })
       )
+      const readOrders = details.flatMap((detail) =>
+        detail ? [detail.order] : []
+      )
+      let tradedSizes: Map<number, DecimalString> | undefined
+      try {
+        tradedSizes = await fetchTradedSizes(
+          this.orderApiUrl,
+          user,
+          readOrders,
+          hlInfoOptions(client)
+        )
+      } catch (error) {
+        if (!(error instanceof PerpsError)) {
+          throw error
+        }
+        for (const order of readOrders.filter(isFilledSizeAmbiguous)) {
+          wsLog.droppedRow(
+            this.providerKey,
+            'order',
+            `${order.oid}: ${error.message}`
+          )
+        }
+      }
+      const mapped = details.map((detail) => {
+        if (
+          detail === undefined ||
+          (tradedSizes === undefined && isFilledSizeAmbiguous(detail.order))
+        ) {
+          return undefined
+        }
+        return mapOrderRow(detail.order.coin, this.registry, (resolved) =>
+          mapOrder(
+            detail,
+            resolved,
+            undefined,
+            tradedSizes?.get(detail.order.oid)
+          )
+        )
+      })
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }

@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   HL_FRONTEND_OPEN_ORDERS,
   HL_MARKETS,
+  HL_REDUCE_ONLY_SHRUNK_ORDER,
+  HL_REDUCE_ONLY_SHRUNK_ORDER_FILL,
   HL_TWAP_HISTORY_FINISHED,
   HL_TWAP_LONG_ACTIVATED,
   HL_TWAP_LONG_SLICE_FILLS,
@@ -130,6 +132,129 @@ describe('getOrders', () => {
         status: OrderStatus.PENDING,
       }),
     ])
+  })
+
+  it('reads a reduce-only row the venue shrank without a trade as open with no fill', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [HL_REDUCE_ONLY_SHRUNK_ORDER],
+        twapHistory: [],
+        userFills: [{ ...HL_REDUCE_ONLY_SHRUNK_ORDER_FILL, oid: 40 }],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '41',
+        status: OrderStatus.OPEN,
+        originalSize: '0.0004',
+        remainingSize: '0.0002',
+        filledSize: '0',
+      }),
+    ])
+    expect(installed.requests.map(({ body }) => body)).toContainEqual({
+      type: 'userFills',
+      user: ADDRESS,
+    })
+  })
+
+  it('reads the traded size of a shrunk reduce-only row from its fills', async () => {
+    restore = installInfoFetchMock(
+      {
+        frontendOpenOrders: [HL_REDUCE_ONLY_SHRUNK_ORDER],
+        twapHistory: [],
+        userFills: [HL_REDUCE_ONLY_SHRUNK_ORDER_FILL],
+      },
+      HL_MARKETS
+    ).restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '41',
+        status: OrderStatus.PARTIALLY_FILLED,
+        originalSize: '0.0004',
+        remainingSize: '0.0002',
+        filledSize: '0.0001',
+      }),
+    ])
+  })
+
+  it('reads the fills of a shrunk reduce-only row from the terminal feed', async () => {
+    restore = installInfoFetchMock(
+      {
+        historicalOrders: [
+          {
+            order: HL_REDUCE_ONLY_SHRUNK_ORDER,
+            status: 'reduceOnlyCanceled',
+            statusTimestamp: 1_795_608_120_000,
+          },
+        ],
+        twapHistory: [],
+        userFills: [],
+      },
+      HL_MARKETS
+    ).restore
+
+    const { orders } = await getOrders(ctx, {
+      address: ADDRESS,
+      statuses: [OrderStatus.CANCELLED],
+    })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        orderId: '41',
+        status: OrderStatus.CANCELLED,
+        remainingSize: '0.0002',
+        filledSize: '0',
+      }),
+    ])
+  })
+
+  it('keeps the size difference of a row that is not reduce-only and reads no fills', async () => {
+    const installed = installInfoFetchMock(
+      {
+        frontendOpenOrders: [
+          { ...HL_REDUCE_ONLY_SHRUNK_ORDER, reduceOnly: false },
+        ],
+        twapHistory: [],
+      },
+      HL_MARKETS
+    )
+    restore = installed.restore
+
+    const { orders } = await getOrders(ctx, { address: ADDRESS })
+
+    expect(orders).toEqual([
+      expect.objectContaining({
+        status: OrderStatus.PARTIALLY_FILLED,
+        filledSize: '0.0002',
+      }),
+    ])
+    expect(
+      installed.requests.some(({ body }) => body.type === 'userFills')
+    ).toBe(false)
+  })
+
+  it('rejects the read when the fills of a shrunk reduce-only row fail', async () => {
+    restore = installInfoFetchMock(
+      {
+        frontendOpenOrders: [HL_REDUCE_ONLY_SHRUNK_ORDER],
+        twapHistory: [],
+        userFills: new Response('{}', { status: 503 }),
+      },
+      HL_MARKETS
+    ).restore
+
+    await expect(getOrders(ctx, { address: ADDRESS })).rejects.toMatchObject({
+      code: PerpsErrorCode.ThirdPartyError,
+      tool: 'hyperliquid',
+    })
   })
 
   it('uses historicalOrders for terminal filters and includes finished TWAPs', async () => {

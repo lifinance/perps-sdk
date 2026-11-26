@@ -22,6 +22,7 @@ import {
   resolveTwapExecution,
 } from '../utils/twapHistory.js'
 import { requireAccountExists } from './getAccountExists.js'
+import { fetchTradedSizes } from './orderFills.js'
 import { fetchTwapSliceFills } from './twapSliceFills.js'
 
 /** Parameters for a lifecycle-filtered Hyperliquid order read. */
@@ -77,10 +78,19 @@ export const getOrders = async (
     ),
   ])
   const latestTwaps = resolveLatestTwapEntries(twaps)
-  const sliceFills =
+  const raw = open.flat()
+  const children = raw.flatMap((order) => order.children ?? [])
+  const [sliceFills, tradedSizes] = await Promise.all([
     active || statuses.includes(OrderStatus.FILLED)
-      ? await fetchTwapSliceFills(apiUrl, params.address, latestTwaps, infoOpts)
-      : []
+      ? fetchTwapSliceFills(apiUrl, params.address, latestTwaps, infoOpts)
+      : [],
+    fetchTradedSizes(
+      apiUrl,
+      params.address,
+      [...historical.map(({ order }) => order), ...raw, ...children],
+      infoOpts
+    ),
+  ])
   const rows = new Map<string, Order>()
   const keep = (key: string, order: Order | undefined): void => {
     if (order !== undefined) {
@@ -101,26 +111,25 @@ export const getOrders = async (
     keep(
       key,
       mapOrderRow(detail.order.coin, registry, (market) =>
-        mapOrder(detail, market)
+        mapOrder(detail, market, undefined, tradedSizes.get(detail.order.oid))
       )
     )
   }
-  const raw = open.flat()
-  const childIds = new Set(
-    raw.flatMap((order) => (order.children ?? []).map((child) => child.oid))
-  )
+  const childIds = new Set(children.map((child) => child.oid))
   for (const order of raw) {
     if (!childIds.has(order.oid)) {
       keep(
         String(order.oid),
-        mapOrderRow(order.coin, registry, (market) => mapOrder(order, market))
+        mapOrderRow(order.coin, registry, (market) =>
+          mapOrder(order, market, undefined, tradedSizes.get(order.oid))
+        )
       )
     }
     for (const child of order.children ?? []) {
       keep(
         String(child.oid),
         mapOrderRow(child.coin, registry, (market) =>
-          mapOrder(child, market, String(order.oid))
+          mapOrder(child, market, String(order.oid), tradedSizes.get(child.oid))
         )
       )
     }

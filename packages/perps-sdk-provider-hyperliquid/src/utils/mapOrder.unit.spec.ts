@@ -163,6 +163,37 @@ describe('mapOrder', () => {
       }
     )
   })
+  it.each([
+    ['no trade', '0', OrderStatus.OPEN],
+    ['a trade', '0.0001', OrderStatus.PARTIALLY_FILLED],
+  ])('takes the filled size of an open row with %s from its traded size', (_, tradedSize, status) => {
+    expect(
+      mapOrder(
+        raw({ origSz: '0.0004', sz: '0.0002', reduceOnly: true }),
+        MARKET,
+        undefined,
+        tradedSize
+      )
+    ).toMatchObject({
+      status,
+      originalSize: '0.0004',
+      remainingSize: '0.0002',
+      filledSize: tradedSize,
+    })
+  })
+  it('takes the filled size of a terminal row from its traded size', () => {
+    expect(
+      mapOrder(
+        {
+          ...detail('reduceOnlyCanceled'),
+          order: raw({ origSz: '0.0004', sz: '0.0002', reduceOnly: true }),
+        },
+        MARKET,
+        undefined,
+        '0'
+      )
+    ).toMatchObject({ status: OrderStatus.CANCELLED, filledSize: '0' })
+  })
   it('keeps both venue and client ids and omits a null client id', () => {
     expect(mapOrder(raw({ cloid: '0x1234' }), MARKET)).toMatchObject({
       orderId: '77',
