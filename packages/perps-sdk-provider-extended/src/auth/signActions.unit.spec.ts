@@ -449,6 +449,35 @@ describe('extendedSignActions SESSION', () => {
     expect(await deps.credentialStore.get(address)).toEqual(credentials)
   })
 
+  it('deletes the SDK API key for REVOKE_API_KEY and removes the credentials', async () => {
+    const { deps, requests } = await setup([
+      okAnswer([
+        { id: 11, key: 'test-api-key', description: 'LI.FI perps SDK' },
+      ]),
+      okAnswer(undefined),
+    ])
+
+    const result = await extendedSignActions(
+      deps,
+      SigningMethod.SESSION,
+      [{ action: ActionType.REVOKE_API_KEY, session: {} }],
+      address,
+      { userWallet: wallet }
+    )
+
+    expect(requests.map(({ method }) => method)).toEqual(['GET', 'DELETE'])
+    expect(result).toEqual({
+      signed: [],
+      executed: [
+        {
+          action: ActionType.REVOKE_API_KEY,
+          status: UserActionStatus.Accepted,
+        },
+      ],
+    })
+    expect(await deps.credentialStore.get(address)).toBeNull()
+  })
+
   it('requires the user wallet', async () => {
     const { deps } = await setup([], null)
 

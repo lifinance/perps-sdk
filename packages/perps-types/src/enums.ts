@@ -203,6 +203,8 @@ export enum ActionType {
   UPDATE_POSITION_MARGIN = 'updatePositionMargin',
   UPDATE_ASSET_COLLATERAL = 'updateAssetCollateral',
   REGISTER_API_KEY = 'registerApiKey',
+  /** Deletes the venue API keys that the SDK created. Signed by the user wallet. */
+  REVOKE_API_KEY = 'revokeApiKey',
   /** Opens the venue account, where the venue needs a separate step for it (Extended onboarding). */
   CREATE_ACCOUNT = 'createAccount',
   APPROVE_READ_ONLY_TOKEN = 'approveReadOnlyToken',
