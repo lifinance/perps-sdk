@@ -306,6 +306,34 @@ describe('formatCompactNumber', () => {
   it('renders the placeholder for null', () => {
     expect(formatCompactNumber(null)).toBe('—')
   })
+
+  it('renders a value below compactFrom in full', () => {
+    const options = { ...READOUT, trimZeros: false, compactFrom: '10000' }
+    expect(formatCompactNumber('9842', options)).toBe('9,842.00')
+    expect(formatCompactNumber('12480.5', options)).toBe('12.48K')
+  })
+
+  it('promotes a rounded mantissa to the next tier', () => {
+    expect(
+      formatCompactNumber('999999.99999', { locale: 'en-US', trimZeros: true })
+    ).toBe('1M')
+  })
+
+  it('trims the zeros of a mantissa at fixed decimals', () => {
+    const options = { locale: 'en-US', trimZeros: true }
+    expect(formatCompactNumber('12340', options)).toBe('12.34K')
+    expect(formatCompactNumber('50000', options)).toBe('50K')
+  })
+
+  // Like formatCompactUsd, significant digits span the integer part too.
+  it.each([
+    ['246199', '240K'],
+    ['-246199', '-240K'],
+  ])('writes %s at 2 significant digits as %s', (value, expected) => {
+    expect(
+      formatCompactNumber(value, { ...READOUT, significantDigits: 2 })
+    ).toBe(expected)
+  })
 })
 
 describe('formatCompactUsd', () => {
