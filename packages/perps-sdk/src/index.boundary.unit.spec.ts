@@ -425,12 +425,17 @@ const GROUPED = new RegExp(`\\d[${EN_US_GROUP}]\\d{3}`)
  * One sample call per human formatter at an input of 1000 or more, with the
  * marker that proves the output is for a screen. The grouping separator comes
  * from the locale, not a literal. `formatSignedPercent` never groups and
- * `formatCompactUsd` gives a magnitude suffix in place of grouping.
+ * `formatCompactNumber` and `formatCompactUsd` give a magnitude suffix in
+ * place of grouping.
  */
 const FORMAT_SAMPLES: Record<
   string,
   { args: readonly unknown[]; marker: RegExp }
 > = {
+  formatCompactNumber: {
+    args: [1234567.5, { locale: EN_US }],
+    marker: /\d[KMB]$/,
+  },
   formatCompactUsd: {
     args: [1234567.5, { locale: EN_US }],
     marker: /\d[KMB]$/,
