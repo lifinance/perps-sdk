@@ -11,6 +11,7 @@ import type {
   ActivityType,
   AvailableToTrade,
   DecimalString,
+  DepositStatus,
   FillsResponse,
   MarginHealth,
   MarginMode,
@@ -214,6 +215,19 @@ export interface ProviderAccountExistsParams {
  */
 export interface ProviderGetDepositFlowParams {
   address: Address
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getDepositStatus}.
+ *
+ * @public
+ */
+export interface ProviderGetDepositStatusParams {
+  address: Address
+  /** Chain of the source-chain transaction `txHash`. */
+  chainId: number
+  /** Source-chain transaction that funded the deposit. */
+  txHash: string
 }
 
 /**
@@ -479,6 +493,21 @@ export interface PerpsProviderPlugin {
     params: ProviderGetDepositFlowParams,
     options?: SDKRequestOptions
   ): Promise<DepositFlow>
+
+  /**
+   * Status of the deposit that the source-chain transaction `params.txHash`
+   * funded for `params.address`.
+   *
+   * Resolves `undefined` when the venue has no record of the transaction yet.
+   * A caller treats `undefined` as not yet credited.
+   *
+   * Optional: a provider that cannot report a deposit status omits it, and
+   * `PerpsClient.getDepositStatus` then resolves `undefined`.
+   */
+  getDepositStatus?(
+    params: ProviderGetDepositStatusParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositStatus | undefined>
 
   /**
    * The withdrawal flow this venue offers `params.address`, resolved from the

@@ -299,6 +299,14 @@ fails, Lighter offers `STANDARD` only. The client removes each option whose
 `max` is below the asset's `minWithdrawalAmount`. The client resolves
 `undefined` for Hyperliquid and Ondo.
 
+`getDepositStatus()` reads the status of one deposit as a `DepositStatus`:
+`PENDING`, `CREDITED`, or `FAILED`. Pass the `address`, and the `chainId` and
+`txHash` of the source-chain transaction that funded the deposit. The read gives
+`undefined` when the venue has no record of the transaction yet. Treat
+`undefined` as not yet credited. Hyperliquid, Lighter, and Ondo do not
+implement the read, so the client resolves `undefined` for them. A
+`DepositActivity` row carries `txHash` and `status` when the venue reports them.
+
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'
 import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'

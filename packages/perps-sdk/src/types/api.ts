@@ -275,6 +275,20 @@ export interface GetDepositFlowParams {
 }
 
 /**
+ * Parameters for {@link PerpsClient.getDepositStatus}.
+ *
+ * @public
+ */
+export interface GetDepositStatusParams {
+  provider: string
+  address: Address
+  /** Chain of the source-chain transaction `txHash`. */
+  chainId: number
+  /** Source-chain transaction that funded the deposit. */
+  txHash: string
+}
+
+/**
  * Parameters for {@link PerpsClient.getMarginHealth}.
  *
  * @public

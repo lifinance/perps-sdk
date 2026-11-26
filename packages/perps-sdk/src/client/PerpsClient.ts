@@ -9,6 +9,7 @@ import type {
   AvailableToTrade,
   CreateActionResponse,
   DecimalString,
+  DepositStatus,
   ExecuteActionResponse,
   MarginHealth,
   MarketRef,
@@ -60,6 +61,7 @@ import type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetDepositStatusParams,
   GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
@@ -923,6 +925,33 @@ export class PerpsClient {
   ): Promise<DepositFlow | undefined> {
     const plugin = this.requireProvider(params.provider)
     return plugin.getDepositFlow?.({ address: params.address }, options)
+  }
+
+  /**
+   * Status of the deposit that the source-chain transaction `params.txHash`
+   * funded for `params.address` at `params.provider`, read from the provider
+   * plugin.
+   *
+   * @returns `undefined` when the registered plugin declares no deposit status
+   *   read, or when the venue has no record of the transaction yet. Treat
+   *   `undefined` as not yet credited.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   venue read fails.
+   * @public
+   */
+  async getDepositStatus(
+    params: GetDepositStatusParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositStatus | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getDepositStatus?.(
+      {
+        address: params.address,
+        chainId: params.chainId,
+        txHash: params.txHash,
+      },
+      options
+    )
   }
 
   /**
