@@ -860,7 +860,13 @@ A production probe on 2026-11-10 presented a synthetic invalid credential:
 {"error":{"code":20013,"message":"invalid auth: account_all_orders:42"}}
 ```
 
-The SDK matches code `20013` and the private wire named in the message.
+Live checks on 2026-11-13 and 2026-11-16 received this frame for an expired or revoked read token:
+
+```json
+{"error":{"code":20013,"message":"invalid auth: invalid api token: account_all_orders:735022"}}
+```
+
+The SDK matches code `20013`, the `invalid auth: ` prefix, and the private wire named at the end of the message.
 It does not treat malformed-request codes or internal-server codes as
 authentication rejection.
 

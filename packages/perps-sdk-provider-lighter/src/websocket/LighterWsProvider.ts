@@ -694,12 +694,14 @@ export class LighterWsProvider extends WsProviderBase<SubState> {
   private handleSubscriptionError(error: Record<string, unknown>): void {
     const { code, message } = error
     const target =
-      code === LIGHTER_INVALID_AUTH_CODE && typeof message === 'string'
+      code === LIGHTER_INVALID_AUTH_CODE &&
+      typeof message === 'string' &&
+      message.startsWith('invalid auth: ')
         ? [...this.wireSubs.values()].find(
             (state) =>
               state.needsAuth &&
               state.token !== undefined &&
-              message === `invalid auth: ${state.channel.replaceAll('/', ':')}`
+              message.endsWith(`: ${state.channel.replaceAll('/', ':')}`)
           )
         : undefined
     if (target?.address === undefined || target.token === undefined) {

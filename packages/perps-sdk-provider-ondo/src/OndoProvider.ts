@@ -459,6 +459,10 @@ export const ondoProvider = (
                 account.privacyVersion === ONDO_PRIVACY_VERSION,
               apiKeyRegistered,
               referralSet: referral !== null && referral !== undefined,
+              ...(typeof referral?.rebate === 'number' &&
+              Number.isFinite(referral.rebate)
+                ? { referralRebateRate: referral.rebate }
+                : {}),
               depositAddress,
               balance: {
                 walletBalance: balance.walletBalance,
