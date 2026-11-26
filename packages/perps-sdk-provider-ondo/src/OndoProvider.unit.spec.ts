@@ -397,7 +397,7 @@ let fetchMock: Mock<
   (url: string | URL, init?: RequestInit) => Promise<Response>
 >
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
-let referralResult: { code: string; rebate?: number } | null
+let referralResult: { code: string; rebate?: unknown } | null
 /** `GET /v1/account` result; its versions drive `termsAccepted`. */
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
@@ -796,6 +796,7 @@ describe('OndoProvider — reads without a session', () => {
   it('getAccount returns an empty snapshot with a loggedIn: false config', async () => {
     const provider = loggedOutProvider()
     const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
     expect(account).toEqual({
       provider: 'ondo',
       address: ADDRESS,
@@ -1287,6 +1288,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: true,
+      referralRebateRate: 0.1,
       depositAddress: null,
       balance: {
         walletBalance: '1000',
@@ -1447,6 +1449,33 @@ describe('OndoProvider — getAccount (logged in)', () => {
         withdrawableMargin: '599',
       },
     })
+  })
+
+  it.each([
+    ['a positive rate', { code: 'K04HBJ', rebate: 0.25 }, 0.25],
+    ['an explicit zero rate', { code: 'K04HBJ', rebate: 0 }, 0],
+  ])('exposes %s as referralRebateRate', async (_case, referral, rate) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      referralSet: true,
+      referralRebateRate: rate,
+    })
+  })
+
+  it.each([
+    ['a referral without a rate', { code: 'K04HBJ' }, true],
+    ['a null rate', { code: 'K04HBJ', rebate: null }, true],
+    ['a string rate', { code: 'K04HBJ', rebate: '0.1' }, true],
+    ['a non-finite rate', { code: 'K04HBJ', rebate: Number.NaN }, true],
+    ['no referral', null, false],
+  ])('omits referralRebateRate for %s', async (_case, referral, referralSet) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ referralSet })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
   })
 
   it('reports apiKeyRegistered from local key presence, logged in or out', async () => {

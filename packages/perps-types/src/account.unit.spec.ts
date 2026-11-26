@@ -357,6 +357,12 @@ describe('OndoAccountConfig', () => {
     }
   })
 
+  it('types referralRebateRate as an optional number', () => {
+    expectTypeOf<
+      Pick<OndoAccountConfig, 'referralRebateRate'>
+    >().toEqualTypeOf<{ referralRebateRate?: number }>()
+  })
+
   it('rejects credential material on the config object', () => {
     const withToken: OndoAccountConfig = {
       provider: 'ondo',

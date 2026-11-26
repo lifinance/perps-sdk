@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 50.2.1
+
+### Patch Changes
+
+- [#775](https://github.com/lifinance/perps-sdk/pull/775) [`57239a6`](https://github.com/lifinance/perps-sdk/commit/57239a64e86ad87916f14038fa97191657718bd8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter WebSocket provider reports an expired or revoked read token (`invalid auth: invalid api token: <channel>`) as `Unauthorized` through `onError`.
+
+- Updated dependencies [[`6c01f07`](https://github.com/lifinance/perps-sdk/commit/6c01f07b0142b6724b8cab5b85fc5c1fce269eb3)]:
+  - @lifi/perps-types@30.5.0
+
 ## 50.2.0
 
 ### Minor Changes
