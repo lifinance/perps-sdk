@@ -3010,21 +3010,62 @@ describe('HyperliquidWsProvider', () => {
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'orderUpdates',
-          data: [
-            sparseOrderUpdate({ oid: 100 }),
-            sparseOrderUpdate({ oid: 101 }),
-          ],
-        })
-      )
-      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      vi.useFakeTimers({ toFake: ['setTimeout'] })
+      try {
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'orderUpdates',
+            data: [
+              sparseOrderUpdate({ oid: 100 }),
+              sparseOrderUpdate({ oid: 101 }),
+            ],
+          })
+        )
+        await vi.advanceTimersByTimeAsync(1_750)
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      } finally {
+        vi.useRealTimers()
+      }
       expect(listener.mock.calls[0][0].data.orders).toHaveLength(1)
       expect(listener.mock.calls[0][0].data.orders[0].orderId).toBe('101')
       expect(warn).toHaveBeenCalledWith(
         '[hyperliquid:ws] skipping order row: 100: Hyperliquid order metadata not found: 100'
       )
+      warn.mockRestore()
+    })
+
+    it('reads orderStatus again and emits the row when a later read finds the order', async () => {
+      const provider = createEnrichingProvider()
+      const listener = vi.fn()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      orderStatusFetchMock
+        .mockReset()
+        .mockResolvedValueOnce({ status: 'unknownOid' })
+        .mockResolvedValue(orderMetadata())
+      await provider.subscribe(
+        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
+        listener
+      )
+      vi.useFakeTimers({ toFake: ['setTimeout'] })
+      try {
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'orderUpdates',
+            data: [sparseOrderUpdate({ oid: 100 })],
+          })
+        )
+        await vi.advanceTimersByTimeAsync(249)
+        expect(listener).not.toHaveBeenCalled()
+
+        await vi.advanceTimersByTimeAsync(1)
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(orderStatusFetchMock).toHaveBeenCalledTimes(2)
+      expect(listener.mock.calls[0][0].data.orders).toHaveLength(1)
+      expect(listener.mock.calls[0][0].data.orders[0].orderId).toBe('100')
+      expect(warn).not.toHaveBeenCalled()
       warn.mockRestore()
     })
 
@@ -3210,13 +3251,23 @@ describe('HyperliquidWsProvider', () => {
         { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
         listener
       )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'orderUpdates',
-          data: [sparseOrderUpdate({ oid: 102 })],
-        })
-      )
-      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      vi.useFakeTimers({ toFake: ['setTimeout'] })
+      try {
+        getMockRwsInstance().simulateMessage(
+          JSON.stringify({
+            channel: 'orderUpdates',
+            data: [sparseOrderUpdate({ oid: 102 })],
+          })
+        )
+        await vi.advanceTimersByTimeAsync(1_749)
+        expect(listener).not.toHaveBeenCalled()
+
+        await vi.advanceTimersByTimeAsync(1)
+        await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(orderStatusFetchMock).toHaveBeenCalledTimes(4)
       expect(listener.mock.calls[0][0].data).toEqual({
         orders: [],
         terminated: [],

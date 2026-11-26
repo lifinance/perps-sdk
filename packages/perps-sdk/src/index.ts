@@ -368,6 +368,8 @@ export {
   orderSideLabel,
   triggerConditionFor,
 } from './utils/orderClassification.js'
+export type { RetryWithBackoffOptions } from './utils/retryWithBackoff.js'
+export { retryWithBackoff } from './utils/retryWithBackoff.js'
 export {
   isSetupOptionFor,
   selectUserSetupActions,

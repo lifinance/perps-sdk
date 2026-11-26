@@ -19,6 +19,7 @@ import {
   type QuoteListener,
   ReconnectingWebSocket,
   resolveSubscribeQuote,
+  retryWithBackoff,
   type SubscriptionErrorListener,
   type SubscriptionListener,
   safeAddDecimalString,
@@ -111,6 +112,12 @@ import { mapOrderRow } from '../utils/mapOrder.js'
 
 /** HL's compact `l2` snapshot carries 20 levels per side. */
 const HL_L2_BOOK_MAX_LEVELS_PER_SIDE = 20
+
+/** `orderStatus` can answer `unknownOid` for an order that the stream just
+ * reported, so the order update reads it again before it drops the row. With
+ * these values the retries wait 250, 500 and 1,000 ms. */
+const ORDER_STATUS_MAX_ATTEMPTS = 4
+const ORDER_STATUS_RETRY_BASE_DELAY_MS = 250
 
 const normalizeHlAddress = (address: string): string =>
   isAddress(address, { strict: false }) ? address.toLowerCase() : address
@@ -1252,22 +1259,34 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
     update: HlWsOrder
   ): Promise<HlOrderDetail> {
     const basic = update.order
-    const response = await infoRequest<HlOrderStatusResponse>(
-      this.orderApiUrl,
-      { type: 'orderStatus', user, oid: basic.oid },
-      hlInfoOptions(client)
+    const metadata = await retryWithBackoff(
+      async () => {
+        const response = await infoRequest<HlOrderStatusResponse>(
+          this.orderApiUrl,
+          { type: 'orderStatus', user, oid: basic.oid },
+          hlInfoOptions(client)
+        )
+        if (response.status !== 'order') {
+          throw new PerpsError(
+            PerpsErrorCode.OrderNotFound,
+            `Hyperliquid order metadata not found: ${basic.oid}`
+          )
+        }
+        return response.order.order
+      },
+      {
+        maxAttempts: ORDER_STATUS_MAX_ATTEMPTS,
+        baseDelayMs: ORDER_STATUS_RETRY_BASE_DELAY_MS,
+        shouldRetry: (error) =>
+          error instanceof PerpsError &&
+          error.code === PerpsErrorCode.OrderNotFound,
+      }
     )
-    if (response.status !== 'order') {
-      throw new PerpsError(
-        PerpsErrorCode.OrderNotFound,
-        `Hyperliquid order metadata not found: ${basic.oid}`
-      )
-    }
     return {
       status: update.status,
       statusTimestamp: update.statusTimestamp,
       order: {
-        ...response.order.order,
+        ...metadata,
         coin: basic.coin,
         side: basic.side,
         limitPx: basic.limitPx,
@@ -1275,7 +1294,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         oid: basic.oid,
         timestamp: basic.timestamp,
         origSz: basic.origSz,
-        cloid: basic.cloid ?? response.order.order.cloid,
+        cloid: basic.cloid ?? metadata.cloid,
       },
     }
   }
