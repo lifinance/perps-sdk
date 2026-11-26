@@ -38,6 +38,31 @@ export interface FormatOptions {
 }
 
 /**
+ * Options for {@link formatNumber}.
+ *
+ * @public
+ */
+export interface NumberFormatOptions extends FormatOptions {
+  /** Drops trailing fraction zeros: `50.00` renders as `50`, `12.50` as `12.5`. */
+  trimZeros?: boolean
+}
+
+/**
+ * Options for {@link formatCompactNumber}.
+ *
+ * @public
+ */
+export interface CompactNumberOptions extends NumberFormatOptions {
+  /**
+   * Significant digits of the compact mantissa, with trailing zeros dropped
+   * (`84.5K`, `1M`). Replaces `decimals` when set.
+   */
+  significantDigits?: number
+  /** Magnitudes below this value render as {@link formatNumber}, with no suffix. */
+  compactFrom?: DecimalString
+}
+
+/**
  * Options for {@link formatCompactUsd}.
  *
  * @public
@@ -102,17 +127,21 @@ function signAndBody(
   locale: string | undefined,
   grouping: boolean,
   rounding: RoundingMode,
-  signed: boolean
+  signed: boolean,
+  trimZeros = false
 ): { sign: '+' | '-' | ''; body: string } {
   const reduced = value.round(
     decimals,
     rounding === 'floor' ? Big.roundDown : Big.roundHalfUp
   )
   const sign = reduced.lt(0) ? '-' : signed && reduced.gt(0) ? '+' : ''
-  const [integerPart = '0', fractionPart] = reduced
+  const [integerPart = '0', paddedFraction] = reduced
     .abs()
     .toFixed(decimals)
     .split('.')
+  const fractionPart = trimZeros
+    ? paddedFraction?.replace(/0+$/, '') || undefined
+    : paddedFraction
   const integerBody = grouping
     ? BigInt(integerPart).toLocaleString(locale)
     : integerPart
@@ -154,13 +183,14 @@ function autoDecimals(abs: Big): number {
  */
 export function formatNumber(
   value: FormatInput,
-  options: FormatOptions = {}
+  options: NumberFormatOptions = {}
 ): string {
   const {
     decimals = 2,
     placeholder = DEFAULT_PLACEHOLDER,
     locale,
     rounding = 'halfUp',
+    trimZeros,
   } = options
   const n = toBig(value)
   if (n === null) {
@@ -169,7 +199,15 @@ export function formatNumber(
   if (typeof n === 'string') {
     return n
   }
-  const { sign, body } = signAndBody(n, decimals, locale, true, rounding, false)
+  const { sign, body } = signAndBody(
+    n,
+    decimals,
+    locale,
+    true,
+    rounding,
+    false,
+    trimZeros
+  )
   return `${sign}${body}`
 }
 
@@ -348,20 +386,11 @@ function compactMantissa(
     : roundToSignificantDigits(scaled, significantDigits, rounding)
 }
 
-/**
- * Format a USD value compactly with a `B`/`M`/`K` suffix: `$1.23B`, `$45.6M`,
- * `$789.0K`, `$12.34`.
- *
- * Values below 1000 (or `compactFrom`) render as {@link formatUsd}. Negatives
- * place the `-` before the `$`. `rounding: 'floor'` truncates toward zero, so
- * a compact balance is never overstated. Null/undefined/non-finite input
- * renders the placeholder.
- *
- * @public
- */
-export function formatCompactUsd(
+/** The compact core: `plain` renders the value below the tiers and each mantissa. */
+function formatCompact(
   value: FormatInput,
-  options: CompactUsdOptions = {}
+  options: CompactNumberOptions,
+  plain: typeof formatNumber
 ): string {
   const {
     decimals = 2,
@@ -370,6 +399,7 @@ export function formatCompactUsd(
     rounding = 'halfUp',
     significantDigits,
     compactFrom,
+    trimZeros,
   } = options
   const n = toBig(value)
   if (n === null) {
@@ -384,7 +414,7 @@ export function formatCompactUsd(
     compareDecimalStrings(abs, numberToDecimalString(COMPACT_TIER_SIZE)) < 0 ||
     (compactFrom !== undefined && compareDecimalStrings(abs, compactFrom) < 0)
   ) {
-    return formatUsd(value, options)
+    return plain(value, options)
   }
   const decimalRounding = COMPACT_DECIMAL_ROUNDING[rounding]
   const render = (mantissa: string, suffix: string): string => {
@@ -392,7 +422,7 @@ export function formatCompactUsd(
       significantDigits === undefined
         ? decimals
         : (mantissa.split('.')[1]?.length ?? 0)
-    return `${formatUsd(mantissa, { locale, decimals: mantissaDecimals })}${suffix}`
+    return `${plain(mantissa, { locale, decimals: mantissaDecimals, trimZeros })}${suffix}`
   }
   // The tier is picked after rounding, so 999,999.99 promotes to M, not 1000K.
   for (const [divisor, suffix] of COMPACT_TIERS) {
@@ -422,4 +452,39 @@ export function formatCompactUsd(
     ),
     'B'
   )
+}
+
+/**
+ * Format a number compactly with a `B`/`M`/`K` suffix and no currency symbol:
+ * `1.23B`, `45.60M`, `789.00K`, `12.34`.
+ *
+ * Values below 1000 (or `compactFrom`) render as {@link formatNumber}.
+ * `rounding: 'floor'` truncates toward zero, so a compact balance is never
+ * overstated. Null/undefined/non-finite input renders the placeholder.
+ *
+ * @public
+ */
+export function formatCompactNumber(
+  value: FormatInput,
+  options: CompactNumberOptions = {}
+): string {
+  return formatCompact(value, options, formatNumber)
+}
+
+/**
+ * Format a USD value compactly with a `B`/`M`/`K` suffix: `$1.23B`, `$45.6M`,
+ * `$789.0K`, `$12.34`.
+ *
+ * Values below 1000 (or `compactFrom`) render as {@link formatUsd}. Negatives
+ * place the `-` before the `$`. `rounding: 'floor'` truncates toward zero, so
+ * a compact balance is never overstated. Null/undefined/non-finite input
+ * renders the placeholder.
+ *
+ * @public
+ */
+export function formatCompactUsd(
+  value: FormatInput,
+  options: CompactUsdOptions = {}
+): string {
+  return formatCompact(value, options, formatUsd)
 }
