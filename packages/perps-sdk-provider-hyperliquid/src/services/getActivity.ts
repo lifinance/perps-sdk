@@ -42,6 +42,7 @@ import {
   infoRequest,
 } from '../utils/infoClient.js'
 import { isFillLiquidatingAccount } from '../utils/isFillLiquidatingAccount.js'
+import { isSameAccountTransfer } from '../utils/mapActivity.js'
 import { requireAccountExists } from './getAccountExists.js'
 import { getLedgerHistory, getLedgerWindow } from './getLedgerHistory.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
@@ -199,9 +200,14 @@ const fetchActivityData = async (
             !typeFilter.includes(ActivityType.REWARD)) ||
           (!typeFilter.includes(ActivityType.TRANSFER) &&
             (isSpotTransferDelta(entry.delta) ||
-              isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
               isVaultTransferDelta(entry.delta))) ||
+          (isSendAssetDelta(entry.delta) &&
+            !typeFilter.includes(
+              isSameAccountTransfer(entry.delta, timeParams.user)
+                ? ActivityType.INTERNAL_TRANSFER
+                : ActivityType.TRANSFER
+            )) ||
           (!typeFilter.includes(ActivityType.INTERNAL_TRANSFER) &&
             (isCStakingTransferDelta(entry.delta) ||
               isBorrowLendDelta(entry.delta) ||

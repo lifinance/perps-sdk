@@ -101,6 +101,24 @@ const resolveLedgerAsset = (
   return asset
 }
 
+/** Whether a transfer delta names the queried account as sender and recipient. */
+export const isSameAccountTransfer = (
+  delta: { user: string; destination: string },
+  queriedAddress: string
+): boolean => {
+  const queried = queriedAddress.toLowerCase()
+  return (
+    delta.user.toLowerCase() === queried &&
+    delta.destination.toLowerCase() === queried
+  )
+}
+
+// A `send` names spot `"spot"`, the main perp dex `""`, and other perp dexes by name.
+const resolveSendBalance = (
+  dex: unknown
+): InternalTransferBalance | undefined =>
+  typeof dex === 'string' ? (dex === 'spot' ? 'spot' : 'perps') : undefined
+
 /** Map supported ledger entries, preserving venue amounts and operation metadata. */
 export const mapLedgerEntry = (
   entry: HlLedgerUpdate,
@@ -119,6 +137,36 @@ export const mapLedgerEntry = (
   }
   const base = { id: entry.hash, provider: providerKey, timestamp }
 
+  if (isSendAssetDelta(delta) && isSameAccountTransfer(delta, queriedAddress)) {
+    const sourceBalance = resolveSendBalance(delta.sourceDex)
+    const destinationBalance = resolveSendBalance(delta.destinationDex)
+    if (
+      sourceBalance === undefined ||
+      destinationBalance === undefined ||
+      sourceBalance === destinationBalance
+    ) {
+      return null
+    }
+    const asset = resolveLedgerAsset(delta.token, assetRegistry, providerKey)
+    if (asset === null) {
+      return null
+    }
+    return {
+      ...base,
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance,
+      destinationBalance,
+      asset,
+      amount: delta.amount,
+      meta: {
+        transferType: 'sendAsset',
+        sourceDex: delta.sourceDex,
+        destinationDex: delta.destinationDex,
+      },
+      explorerLink: explorerTxUrl(ExplorerChainId.HYPERLIQUID, entry.hash),
+    } satisfies InternalTransferActivity
+  }
+
   if (
     isSpotTransferDelta(delta) ||
     isSendAssetDelta(delta) ||
@@ -127,7 +175,7 @@ export const mapLedgerEntry = (
     const queried = queriedAddress.toLowerCase()
     const sender = delta.user.toLowerCase()
     const recipient = delta.destination.toLowerCase()
-    if (sender === recipient && sender === queried) {
+    if (isSameAccountTransfer(delta, queriedAddress)) {
       return null
     }
     const asset = isCollateralTransferDelta(delta)

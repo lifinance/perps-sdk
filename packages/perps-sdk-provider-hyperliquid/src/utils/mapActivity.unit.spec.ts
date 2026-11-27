@@ -702,28 +702,6 @@ describe('mapLedgerEntry — sendAsset', () => {
     expect(t.counterpartyAddress).toBe(COUNTERPARTY.toLowerCase())
   })
 
-  it('returns null for a same-user dex move (user === destination === queried)', () => {
-    // User moving their own USDC from main perp ("") to spot ("spot"). This
-    // isn't a wallet IN/OUT — surfacing it as TRANSFER would lie about the
-    // direction. A future `DEX_TRANSFER` ActivityType would model this.
-    const entry = sendAssetUpdate({
-      user: QUERIED as HlSendAssetDelta['user'],
-      destination: QUERIED as HlSendAssetDelta['destination'],
-      sourceDex: '',
-      destinationDex: 'spot',
-    })
-
-    const result = mapLedgerEntry(
-      entry,
-      PROVIDER,
-      QUERIED,
-      assetRegistry,
-      resolveMarket
-    )
-
-    expect(result).toBeNull()
-  })
-
   it('lower-cases the counterparty address regardless of the input casing', () => {
     const upperCounterparty = `0x${'B'.repeat(40)}`
     const entry = sendAssetUpdate({
@@ -892,6 +870,120 @@ describe('mapLedgerEntry — same-account moves', () => {
     expect(
       mapLedgerEntry(entry, PROVIDER, QUERIED, assetRegistry, resolveMarket)
     ).toBeNull()
+  })
+})
+
+describe('mapLedgerEntry — same-account sends', () => {
+  // Recorded `userNonFundingLedgerUpdates` row of a QA account.
+  const ACCOUNT = '0x9507FCFC98B213066a3044b1770996BE8c102166'
+  const recorded: HlLedgerUpdate & { delta: HlSendAssetDelta } = {
+    time: 1784811583983,
+    hash: '0x86b4d4a266215768882e044090e4990201cd00880124763a2a7d7ff525253153',
+    delta: {
+      type: 'send',
+      user: '0x9507fcfc98b213066a3044b1770996be8c102166',
+      destination: '0x9507fcfc98b213066a3044b1770996be8c102166',
+      sourceDex: 'spot',
+      destinationDex: '',
+      token: 'USDC',
+      amount: '3.0',
+      usdcValue: '3.0',
+      fee: '0.0',
+      nativeTokenFee: '0.0',
+      nonce: 1784811579875,
+      feeToken: '',
+    },
+  }
+
+  // Only the spot-to-main-dex case is recorded; the others change its dex pair.
+  it.each([
+    ['spot', '', 'spot', 'perps'],
+    ['', 'spot', 'perps', 'spot'],
+    ['spot', 'xyz', 'spot', 'perps'],
+    ['xyz', 'spot', 'perps', 'spot'],
+  ] as const)('maps %j to %j as %s to %s', (sourceDex, destinationDex, sourceBalance, destinationBalance) => {
+    expect(
+      mapLedgerEntry(
+        {
+          ...recorded,
+          delta: { ...recorded.delta, sourceDex, destinationDex },
+        },
+        PROVIDER,
+        ACCOUNT,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toEqual({
+      id: recorded.hash,
+      provider: PROVIDER,
+      timestamp: '2026-07-23T12:59:43.983Z',
+      type: ActivityType.INTERNAL_TRANSFER,
+      sourceBalance,
+      destinationBalance,
+      asset: USDC,
+      amount: '3.0',
+      meta: { transferType: 'sendAsset', sourceDex, destinationDex },
+      explorerLink: `https://app.hyperliquid.xyz/explorer/tx/${recorded.hash}`,
+    } satisfies InternalTransferActivity)
+  })
+
+  it.each([
+    { sourceDex: '', destinationDex: '' },
+    { sourceDex: 'spot', destinationDex: 'spot' },
+    { sourceDex: 'xyz', destinationDex: '' },
+    { destinationDex: '' },
+    { sourceDex: 'spot' },
+    { sourceDex: null, destinationDex: '' },
+  ])('skips a same-account send without a spot and perps change: %j', (dexes) => {
+    const { sourceDex: _, destinationDex: __, ...delta } = recorded.delta
+    expect(
+      mapLedgerEntry(
+        { ...recorded, delta: { ...delta, ...dexes } },
+        PROVIDER,
+        ACCOUNT,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
+  it('skips a same-account send of a token the registry does not list', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      mapLedgerEntry(
+        { ...recorded, delta: { ...recorded.delta, token: 'USDC:0xunknown' } },
+        PROVIDER,
+        ACCOUNT,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
+  it('keeps a recorded send to another account as a transfer', () => {
+    const counterparty = '0x66cf0aace1b4e562593bec10ec7868fba9932224'
+    expect(
+      mapLedgerEntry(
+        {
+          ...recorded,
+          delta: {
+            ...recorded.delta,
+            destination: counterparty,
+            amount: '5.0',
+          },
+        },
+        PROVIDER,
+        ACCOUNT,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toMatchObject({
+      type: ActivityType.TRANSFER,
+      direction: 'OUT',
+      counterpartyAddress: counterparty,
+      asset: USDC,
+      amount: '5.0',
+    })
   })
 })
 

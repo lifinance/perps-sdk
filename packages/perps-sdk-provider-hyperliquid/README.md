@@ -114,7 +114,7 @@ defines token indices and `tokenId`.
 | Delta | Activity or explicit exclusion |
 | --- | --- |
 | `spotTransfer` | Transfer between distinct accounts. Resolve the bare token symbol. |
-| `send` | Transfer between distinct accounts. Resolve the bare token symbol. |
+| `send` | Transfer between distinct accounts. Resolve the bare token symbol. A same-account move between spot and perps is an `INTERNAL_TRANSFER`. |
 | `internalTransfer` | USDC transfer between distinct accounts; resolve token index `0`. |
 | `subAccountTransfer` | USDC transfer between master and subaccount addresses; resolve token index `0`. |
 | `deposit` | Deposit with the USDC registry asset at token index `0`. |
@@ -150,7 +150,8 @@ field. A query for the vault account therefore raises `ValidationError` for that
 row instead of inventing a counterparty. Depositor-account queries map normally.
 
 `TRANSFER` describes movements between distinct accounts and requires a counterparty.
-The mapper excludes same-account `send` and `spotTransfer` rows.
+The mapper excludes same-account `spotTransfer` rows.
+It also excludes a same-account `send` row unless the row moves value between spot and perps.
 `INTERNAL_TRANSFER` describes movements between balances of the queried account, without a counterparty or `IN`/`OUT` direction.
 Its balance identifiers are not trading-category identifiers.
 
@@ -164,6 +165,12 @@ Its balance identifiers are not trading-category identifiers.
 | `borrowLend`, `operation: 'repay'` | `spot` | `borrowLend` |
 | `accountClassTransfer`, `toPerp: true` | `spot` | `perps` |
 | `accountClassTransfer`, `toPerp: false` | `perps` | `spot` |
+| Same-account `send`, `sourceDex: 'spot'`, any other `destinationDex` | `spot` | `perps` |
+| Same-account `send`, `destinationDex: 'spot'`, any other `sourceDex` | `perps` | `spot` |
+
+A `send` names the main perp dex `""`, spot `"spot"`, and another perp dex by its name.
+Thus, a move between two perp dexes, a move from spot to spot, and a row without a string dex produce no row.
+A same-account `send` row keeps `meta.sourceDex` and `meta.destinationDex`.
 
 All internal rows preserve `meta.transferType`.
 The balance pair determines direction. The amount retains the venue decimal string, including its sign and precision.
