@@ -66,7 +66,8 @@
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
     "@scure/starknet": "1.1.2",
-    "@x10xchange/stark-crypto-wrapper-wasm": "0.4.0"
+    "@x10xchange/stark-crypto-wrapper-wasm": "0.4.0",
+    "json-custom-numbers": "3.1.1"
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:^",

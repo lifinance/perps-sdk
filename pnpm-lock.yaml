@@ -90,6 +90,9 @@ importers:
       '@x10xchange/stark-crypto-wrapper-wasm':
         specifier: 0.4.0
         version: 0.4.0
+      json-custom-numbers:
+        specifier: 3.1.1
+        version: 3.1.1
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:^
@@ -1728,6 +1731,9 @@ packages:
   js-yaml@4.1.1:
     resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
     hasBin: true
+
+  json-custom-numbers@3.1.1:
+    resolution: {integrity: sha512-rYIAIuiIRy58aax2tuZb7HawKFATBG848PiguybJh/R+pvC8jxjEOVBQHj4J3U2D4/Y4acBCO4A/glILW8wPoA==}
 
   json-parse-even-better-errors@2.3.1:
     resolution: {integrity: sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==}
@@ -3855,6 +3861,8 @@ snapshots:
   js-yaml@4.1.1:
     dependencies:
       argparse: 2.0.1
+
+  json-custom-numbers@3.1.1: {}
 
   json-parse-even-better-errors@2.3.1: {}
 
