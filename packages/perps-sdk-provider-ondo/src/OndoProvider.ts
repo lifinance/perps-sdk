@@ -1288,6 +1288,13 @@ export const ondoProvider = (
 
     triggerOrders: { modifyCanChangeType: false },
 
+    // The venue answers an oversized reduce-only order with "Reduce only order
+    // will flip position", and forces IOC on a reduce-only limit order.
+    reduceOnlyOrders: {
+      rejectsOversize: true,
+      limitIsImmediateOrCancel: true,
+    },
+
     estimateLiquidationPrice: estimateLiquidationPriceAtMarketRate,
 
     positionRemovableMargin,

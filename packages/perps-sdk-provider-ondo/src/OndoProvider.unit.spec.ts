@@ -646,6 +646,13 @@ describe('OndoProvider — order snapping and liquidation surface', () => {
     })
   })
 
+  it('rejects an oversized reduce-only order and runs a reduce-only limit as IOC', () => {
+    expect(ondoProvider().reduceOnlyOrders).toEqual({
+      rejectsOversize: true,
+      limitIsImmediateOrCancel: true,
+    })
+  })
+
   it('snaps an off-grid price through safeSnapOrderPrice', () => {
     const client = createPerpsClient({
       integrator: 'test',
