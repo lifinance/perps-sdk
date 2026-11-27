@@ -64,7 +64,7 @@
   },
   "peerDependencies": {
     "@lifi/perps-sdk": "workspace:^",
-    "viem": "^2.57.17"
+    "viem": "2.57.11 || ^2.57.17"
   },
   "devDependencies": {
     "@lifi/perps-sdk": "workspace:^",

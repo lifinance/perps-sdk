@@ -27,7 +27,7 @@ pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.58.7
 ```
 
 `viem` is a peer dependency of each SDK package. The host app supplies the
-`viem` copy that the SDK uses. The peer dependency range is `^2.57.17`.
+`viem` copy that the SDK uses. The peer dependency range is `2.57.11 || ^2.57.17`.
 
 | Package | Install for |
 | --- | --- |
