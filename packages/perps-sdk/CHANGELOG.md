@@ -1,5 +1,11 @@
 # @lifi/perps-sdk
 
+## 36.4.0
+
+### Minor Changes
+
+- [#782](https://github.com/lifinance/perps-sdk/pull/782) [`dd62b4d`](https://github.com/lifinance/perps-sdk/commit/dd62b4d83deb68216cad72dc68de560ba8b92315) Thanks [@mmioana](https://github.com/mmioana)! - Add `formatCompactNumber`, a compact `K`/`M`/`B` formatter with no currency symbol, and a `trimZeros` option that drops trailing fraction zeros from `formatNumber` and `formatCompactNumber`.
+
 ## 36.3.1
 
 ### Patch Changes

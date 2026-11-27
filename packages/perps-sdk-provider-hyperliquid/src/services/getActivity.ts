@@ -13,7 +13,7 @@ import type {
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY } from '../constants.js'
+import { FILL_ROWS_CAP, PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
@@ -42,6 +42,7 @@ import {
   infoRequest,
 } from '../utils/infoClient.js'
 import { isFillLiquidatingAccount } from '../utils/isFillLiquidatingAccount.js'
+import { isSameAccountTransfer } from '../utils/mapActivity.js'
 import { requireAccountExists } from './getAccountExists.js'
 import { getLedgerHistory, getLedgerWindow } from './getLedgerHistory.js'
 import { getHistoryLimit, historyPage } from './historyPagination.js'
@@ -104,7 +105,7 @@ const fetchLiquidationHistory = async (
       retained.set(fill.tid, fill)
       latest = Math.max(latest, fill.time)
     }
-    if (fills.length < 2000 || retained.size >= 10000) {
+    if (fills.length < FILL_ROWS_CAP || retained.size >= 10000) {
       break
     }
     if (latest === startTime) {
@@ -199,9 +200,14 @@ const fetchActivityData = async (
             !typeFilter.includes(ActivityType.REWARD)) ||
           (!typeFilter.includes(ActivityType.TRANSFER) &&
             (isSpotTransferDelta(entry.delta) ||
-              isSendAssetDelta(entry.delta) ||
               isCollateralTransferDelta(entry.delta) ||
               isVaultTransferDelta(entry.delta))) ||
+          (isSendAssetDelta(entry.delta) &&
+            !typeFilter.includes(
+              isSameAccountTransfer(entry.delta, timeParams.user)
+                ? ActivityType.INTERNAL_TRANSFER
+                : ActivityType.TRANSFER
+            )) ||
           (!typeFilter.includes(ActivityType.INTERNAL_TRANSFER) &&
             (isCStakingTransferDelta(entry.delta) ||
               isBorrowLendDelta(entry.delta) ||

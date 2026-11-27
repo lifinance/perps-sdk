@@ -1,6 +1,6 @@
 {
   "name": "@lifi/perps-sdk",
-  "version": "36.3.1",
+  "version": "36.4.0",
   "description": "LI.FI Perps SDK for perpetuals trading",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
@@ -66,7 +66,7 @@
     "partysocket": "^1.1.19"
   },
   "peerDependencies": {
-    "viem": ">=2.57.11 <2.57.12"
+    "viem": "2.57.11 || ^2.57.17"
   },
   "devDependencies": {
     "@types/big.js": "^7.0.0",
@@ -74,7 +74,7 @@
     "madge": "^8.0.0",
     "msw": "^2.7.0",
     "typescript": "^5.9.2",
-    "viem": "2.57.11",
+    "viem": "^2.58.7",
     "vitest": "^5.1.0"
   },
   "publishConfig": {

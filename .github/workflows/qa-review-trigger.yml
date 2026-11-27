@@ -1,5 +1,5 @@
 # Rings lifinance/QA to run a Zeus QA review when "Agent Review Request" is applied to a PR.
-# Requires secrets QA_APP_ID + QA_APP_PRIVATE_KEY (GitHub App scoped to repositories: QA) — set by an org admin.
+# Requires the QA_DISPATCH_APP_ID variable and the QA_DISPATCH_APP_PRIVATE_KEY secret (lifi-qa-dispatch GitHub App, installed on lifinance/QA only) — managed by DevOps.
 name: Trigger Zeus QA Review
 
 on:
@@ -23,10 +23,11 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
-          app-id: ${{ secrets.QA_APP_ID }}
-          private-key: ${{ secrets.QA_APP_PRIVATE_KEY }}
+          app-id: ${{ vars.QA_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.QA_DISPATCH_APP_PRIVATE_KEY }}
           owner: lifinance
           repositories: QA
+          permission-actions: write
 
       - name: Swap labels
         env:

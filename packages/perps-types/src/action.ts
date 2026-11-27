@@ -400,8 +400,10 @@ export interface PlaceOrderParams {
    */
   initialMarginFractionBps?: DecimalString
   /**
-   * Hyperliquid: requires `leverage`. Omitted leaves the market's current
-   * margin mode unchanged.
+   * Margin mode of the prepended leverage update. No venue order carries one.
+   * Hyperliquid requires `leverage` and sends an omitted mode as isolated.
+   * Lighter applies it only with `leverage` or `initialMarginFractionBps`,
+   * and sends an omitted mode as cross. Ondo rejects isolated.
    */
   marginMode?: MarginMode
   reduceOnly?: boolean
