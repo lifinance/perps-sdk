@@ -135,73 +135,21 @@ export interface SiweActionStep {
 }
 
 /**
- * Settlement fields of a Stark order. Each value is an integer as a decimal or
- * `0x` hex string. Amounts are signed: the side that the account pays is
- * negative.
- *
- * @public
- */
-export interface StarkOrderFields {
-  positionId: string
-  baseAssetId: string
-  baseAmount: string
-  quoteAssetId: string
-  quoteAmount: string
-  feeAssetId: string
-  feeAmount: string
-  /** Unix time in seconds. */
-  expiration: string
-  salt: string
-}
-
-/**
- * Settlement fields of a transfer between two Stark positions. Each value is
- * an integer as a decimal or `0x` hex string.
- *
- * @public
- */
-export interface StarkTransferFields {
-  recipientPositionId: string
-  senderPositionId: string
-  collateralId: string
-  amount: string
-  /** Unix time in seconds. */
-  expiration: string
-  salt: string
-}
-
-/**
- * Settlement fields of a Stark withdrawal. Each value is an integer as a
- * decimal or `0x` hex string.
- *
- * @public
- */
-export interface StarkWithdrawalFields {
-  /** Starknet contract address that receives the withdrawal. */
-  recipient: string
-  positionId: string
-  collateralId: string
-  amount: string
-  /** Unix time in seconds. */
-  expiration: string
-  salt: string
-}
-
-/**
  * One message that a Stark step signs. The provider signs it with the
  * account's Stark key and writes the `{ r, s }` signature into the request
- * body at `signaturePath`.
+ * body at `signaturePath`. Each venue defines its own message types and
+ * fields; the venue's provider package exports the exact shapes.
  *
  * @public
  */
-export type StarkMessage = {
+export interface StarkMessage {
+  /** Venue message kind, e.g. Extended's `order`. */
+  type: string
   /** Object keys from the body root to the signature, e.g. `['settlement', 'signature']`. */
   signaturePath: string[]
-} & (
-  | { type: 'order'; fields: StarkOrderFields }
-  | { type: 'transfer'; fields: StarkTransferFields }
-  | { type: 'withdrawal'; fields: StarkWithdrawalFields }
-)
+  /** Integers as decimal or `0x` hex strings, so a JSON round trip keeps them exact. */
+  fields: Record<string, string>
+}
 
 /**
  * A backend-built venue request. The provider signs each of `stark.messages`,
