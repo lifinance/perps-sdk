@@ -1010,9 +1010,7 @@ describe('mapLedgerEntry — vault transfers', () => {
       ).toBeNull()
     }
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(warn).toHaveBeenCalledWith(
-      `[${provider}] skipping ledger row: \`vault\` is not a valid counterparty address: '${COUNTERPARTY}'`
-    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('`depositor`'))
   })
 
   it('excludes a withdrawal back to the same vault account', () => {

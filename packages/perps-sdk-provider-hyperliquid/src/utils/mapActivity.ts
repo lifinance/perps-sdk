@@ -277,9 +277,8 @@ export const mapLedgerEntry = (
     const queried = queriedAddress.toLowerCase()
     const vault = delta.vault.toLowerCase()
     if (delta.type === 'vaultDeposit' && queried === vault) {
-      // The vault-side row names no depositor, so it has no counterparty.
-      warnSkippedVenueRow(providerKey, 'ledger', 'vault', delta.vault, {
-        expected: 'counterparty address',
+      warnSkippedVenueRow(providerKey, 'ledger', 'depositor', undefined, {
+        expected: 'address',
       })
       return null
     }
