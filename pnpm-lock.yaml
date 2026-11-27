@@ -90,10 +90,16 @@ importers:
       '@x10xchange/stark-crypto-wrapper-wasm':
         specifier: 0.4.0
         version: 0.4.0
+      big.js:
+        specifier: ^7.0.1
+        version: 7.0.1
     devDependencies:
       '@lifi/perps-sdk':
         specifier: workspace:^
         version: link:../perps-sdk
+      '@types/big.js':
+        specifier: ^7.0.0
+        version: 7.0.0
       '@vitest/coverage-v8':
         specifier: ^5.1.0
         version: 5.1.0(vitest@5.1.0)

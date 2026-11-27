@@ -16,8 +16,14 @@ export {
 export { extendedSignActions } from './auth/signActions.js'
 export {
   DEFAULT_EXTENDED_API_URL,
+  EXTENDED_BASE_FEE_TIER,
   EXTENDED_PROVIDER_KEY,
 } from './constants.js'
+export {
+  Extended,
+  type ExtendedProviderOptions,
+  extendedProvider,
+} from './ExtendedProvider.js'
 export {
   calculateStarkPrivateKey,
   calculateStarkPublicKey,
@@ -38,4 +44,5 @@ export type {
   ExtendedStarkTransferFields,
   ExtendedStarkWithdrawalFields,
 } from './types/starkMessage.js'
+export type * from './types/wire.js'
 export { ExtendedApiClient, ExtendedApiError } from './utils/apiClient.js'

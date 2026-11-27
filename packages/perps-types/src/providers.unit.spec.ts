@@ -1026,6 +1026,8 @@ describe('AccountConfig discriminated union', () => {
           return `lt:${config.accountIndex}:${config.accountType}`
         case 'ondo':
           return `ondo:${config.loggedIn}`
+        case 'extended':
+          return `extended:${config.apiKeyRegistered}`
         default: {
           const _exhaustive: never = config
           return _exhaustive
