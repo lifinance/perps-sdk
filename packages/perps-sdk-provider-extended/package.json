@@ -1,7 +1,6 @@
 {
   "name": "@lifi/perps-sdk-provider-extended",
   "version": "0.0.0",
-  "private": true,
   "description": "Extended provider plugin for @lifi/perps-sdk",
   "homepage": "https://github.com/lifinance/perps-sdk",
   "bugs": {
