@@ -1,5 +1,14 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 50.2.2
+
+### Patch Changes
+
+- [#785](https://github.com/lifinance/perps-sdk/pull/785) [`81f373d`](https://github.com/lifinance/perps-sdk/commit/81f373d59975765283f7f7a0a25fbea11bc99e70) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Keep support for viem `2.57.11` and accept `^2.57.17`, which starts with the fix for Hyperliquid EIP-712 signing.
+
+- Updated dependencies [[`7a1c3f3`](https://github.com/lifinance/perps-sdk/commit/7a1c3f39cc3cc2c7d35b794fcf55a9accf892369), [`a78be88`](https://github.com/lifinance/perps-sdk/commit/a78be8873904a3c1c1f4a222888bc467c0410c4a), [`159c5af`](https://github.com/lifinance/perps-sdk/commit/159c5af283bd31acd1f6586c32d95c776471b9cf)]:
+  - @lifi/perps-types@30.6.0
+
 ## 50.2.1
 
 ### Patch Changes
