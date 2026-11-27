@@ -90,7 +90,7 @@ pnpm workspace — Node `>=26.13.0` (the `engines` field of `package.json`), pnp
 | `pnpm check` | Biome lint/format check |
 | `pnpm check:write` | Biome auto-fix |
 | `pnpm check:write:unsafe` | Biome auto-fix, including unsafe fixes |
-| `pnpm check:types` | TypeScript type checking across packages |
+| `pnpm check:types` | TypeScript type checking across packages and `examples/` |
 | `pnpm check:types:spec` | TypeScript type checking for `*.spec.ts` files (excluded from `check:types`) |
 | `pnpm check:circular-deps` | madge circular-dependency check |
 | `pnpm knip:check` | Report unused files, deps, and exports |
@@ -167,18 +167,7 @@ While in pre mode, authors still write ordinary changesets — pre mode applies 
 
 ## Examples
 
-Example scripts in [`examples/`](./examples). Each script uses a placeholder `apiKey`, and `agent-trading.ts` uses a placeholder wallet client. Replace them before you run a script.
-
-Scripts:
-
-| Script | What it shows |
-| --- | --- |
-| [`market-data.ts`](./examples/market-data.ts) | Fetching markets, assets, prices, orderbook, OHLCV |
-| [`account-data.ts`](./examples/account-data.ts) | Account state, positions, orders, fills |
-| [`agent-trading.ts`](./examples/agent-trading.ts) | Full setup flow + placing and cancelling orders |
-| [`error-handling.ts`](./examples/error-handling.ts) | Handling `PerpsError` codes |
-| [`custom-storage.ts`](./examples/custom-storage.ts) | Plugging in a custom credential store |
-| [`websocket-subscriptions.ts`](./examples/websocket-subscriptions.ts) | WebSocket markets context, orderbook, multi-listener dedup, connection status |
+The [`examples/`](./examples) folder is a private workspace package with one folder for each provider. Node runs each script directly, and `pnpm check:types` type-checks all scripts. The scripts read their inputs from environment variables. The [examples README](./examples/README.md) gives the prerequisites, the run command, the environment variables, and the scripts of each provider.
 
 ## Documentation
 

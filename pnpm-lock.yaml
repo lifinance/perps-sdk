@@ -43,6 +43,24 @@ importers:
         specifier: ^7.3.8
         version: 7.3.8(@types/node@26.6.6)(jiti@2.7.0)(yaml@2.9.0)
 
+  examples:
+    dependencies:
+      '@lifi/perps-sdk':
+        specifier: workspace:*
+        version: link:../packages/perps-sdk
+      '@lifi/perps-sdk-provider-hyperliquid':
+        specifier: workspace:*
+        version: link:../packages/perps-sdk-provider-hyperliquid
+      '@lifi/sdk':
+        specifier: 4.12.1
+        version: 4.12.1
+      '@lifi/sdk-provider-ethereum':
+        specifier: 4.2.12
+        version: 4.2.12(typescript@5.9.3)(zod@4.5.4)
+      viem:
+        specifier: 2.57.11
+        version: 2.57.11(typescript@5.9.3)(zod@4.5.4)
+
   packages/perps-sdk:
     dependencies:
       '@lifi/perps-types':
@@ -653,6 +671,15 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lifi/sdk-provider-ethereum@4.2.12':
+    resolution: {integrity: sha512-VVxj4bM9Qpv2qS+7NLCToEU2+kU4YCrj4lrgUgYZX7LiiUx8cwDPl+vFuADt0jfGiettdvsZ4wyVTjicSsX6Ag==}
+
+  '@lifi/sdk@4.12.1':
+    resolution: {integrity: sha512-y3Ay06NU9h5siR41EIXJecoMu+A/rA8cXI2bE1QQ1akuDDa6qIVFy0/TDpYDGfEveDTJScfU8x0r5jzRR/aUxg==}
+
+  '@lifi/types@18.16.0':
+    resolution: {integrity: sha512-UWpAkkMjX4KTSvyoRLwrjzEWUFKPrANvijlO6dF+Vw6MrLYctcpmjWPp41sCcSqJboon0mtjs7x9CVGMgqJ4Fw==}
 
   '@lifi/types@18.3.0':
     resolution: {integrity: sha512-Qe7mIQ48P38FWguor4KNd5aFxFZqQElAt3T36Ft8X/vbrJLVEfNIOXgwBlvvxX5Fe1JADpu14MrS53mNVFKUbQ==}
@@ -2885,6 +2912,22 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@lifi/sdk-provider-ethereum@4.2.12(typescript@5.9.3)(zod@4.5.4)':
+    dependencies:
+      '@lifi/sdk': 4.12.1
+      viem: 2.57.11(typescript@5.9.3)(zod@4.5.4)
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
+
+  '@lifi/sdk@4.12.1':
+    dependencies:
+      '@lifi/types': 18.16.0
+
+  '@lifi/types@18.16.0': {}
 
   '@lifi/types@18.3.0': {}
 
