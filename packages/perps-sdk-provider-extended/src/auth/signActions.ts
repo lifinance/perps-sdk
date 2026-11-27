@@ -34,6 +34,7 @@ import {
   calculateStarkWithdrawalHash,
   type StarkDomain,
 } from '../signing/starkMessageHash.js'
+import type { ExtendedStarkMessage } from '../types/starkMessage.js'
 import { ExtendedApiError } from '../utils/apiClient.js'
 import { executeDeposit } from './deposit.js'
 import type { ExtendedCredentials } from './ExtendedCredentialStore.js'
@@ -52,8 +53,67 @@ export interface ExtendedSignActionsDeps extends ExtendedRegistrationDeps {
 const isStarkStep = (step: ActionStep): step is StarkActionStep =>
   'stark' in step
 
+const EXTENDED_MESSAGE_FIELDS: Record<
+  ExtendedStarkMessage['type'],
+  readonly string[]
+> = {
+  order: [
+    'positionId',
+    'baseAssetId',
+    'baseAmount',
+    'quoteAssetId',
+    'quoteAmount',
+    'feeAssetId',
+    'feeAmount',
+    'expiration',
+    'salt',
+  ],
+  transfer: [
+    'recipientPositionId',
+    'senderPositionId',
+    'collateralId',
+    'amount',
+    'expiration',
+    'salt',
+  ],
+  withdrawal: [
+    'recipient',
+    'positionId',
+    'collateralId',
+    'amount',
+    'expiration',
+    'salt',
+  ],
+}
+
+/** Accept only a message whose type and exact field set Extended signs. @internal */
+export function parseExtendedStarkMessage(
+  message: StarkMessage
+): ExtendedStarkMessage {
+  const expected = Object.hasOwn(EXTENDED_MESSAGE_FIELDS, message.type)
+    ? EXTENDED_MESSAGE_FIELDS[message.type as ExtendedStarkMessage['type']]
+    : undefined
+  if (expected === undefined) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended does not sign a '${message.type}' message.`
+    )
+  }
+  const keys = Object.keys(message.fields)
+  const valid =
+    keys.length === expected.length &&
+    expected.every((key) => typeof message.fields[key] === 'string')
+  if (!valid) {
+    throw new PerpsError(
+      PerpsErrorCode.SDKError,
+      `Extended ${message.type} message has fields [${keys.join(', ')}], expected [${expected.join(', ')}].`
+    )
+  }
+  return message as ExtendedStarkMessage
+}
+
 /** The position that each message spends from must be the account's own. */
-const spendingPositionOf = (message: StarkMessage): string => {
+const spendingPositionOf = (message: ExtendedStarkMessage): string => {
   switch (message.type) {
     case 'order':
       return message.fields.positionId
@@ -65,7 +125,7 @@ const spendingPositionOf = (message: StarkMessage): string => {
 }
 
 function assertOwnPosition(
-  message: StarkMessage,
+  message: ExtendedStarkMessage,
   credentials: ExtendedCredentials
 ): void {
   if (BigInt(spendingPositionOf(message)) !== BigInt(credentials.positionId)) {
@@ -77,7 +137,7 @@ function assertOwnPosition(
 }
 
 async function calculateMessageHash(
-  message: StarkMessage,
+  message: ExtendedStarkMessage,
   domain: StarkDomain,
   credentials: ExtendedCredentials
 ): Promise<Hex> {
@@ -170,7 +230,11 @@ export async function buildSignedBody(
   }
   const body = structuredClone(request.body)
   for (const message of messages) {
-    const hash = await calculateMessageHash(message, domain, credentials)
+    const hash = await calculateMessageHash(
+      parseExtendedStarkMessage(message),
+      domain,
+      credentials
+    )
     writeAtPath(
       body,
       message.signaturePath,
@@ -231,7 +295,9 @@ async function prepareWithdrawal(
       'Extended withdrawal step has no destination chain or amount.'
     )
   }
-  const [message, ...otherMessages] = step.stark.messages
+  const [first, ...otherMessages] = step.stark.messages
+  const message =
+    first === undefined ? undefined : parseExtendedStarkMessage(first)
   const settlement = body.settlement
   if (
     message === undefined ||
