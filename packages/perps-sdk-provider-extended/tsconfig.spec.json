@@ -7,6 +7,9 @@
     "paths": {
       "@lifi/perps-types": [
         "../perps-types/src/index.ts"
+      ],
+      "@lifi/perps-sdk": [
+        "../perps-sdk/src/index.ts"
       ]
     },
     "lib": [

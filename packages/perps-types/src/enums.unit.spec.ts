@@ -239,6 +239,10 @@ describe('ActionType wire values', () => {
     expect(ActionType.CREATE_ACCOUNT).toBe('createAccount')
   })
 
+  it('REVOKE_API_KEY carries wire value "revokeApiKey"', () => {
+    expect(ActionType.REVOKE_API_KEY).toBe('revokeApiKey')
+  })
+
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
   })
