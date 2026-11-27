@@ -1,5 +1,3 @@
-// Integers with more digits than this can exceed Number.MAX_SAFE_INTEGER.
-const SAFE_INTEGER_DIGITS = 15
 const JSON_NUMBER = /-?\d+(\.\d+)?([eE][+-]?\d+)?/y
 
 /**
@@ -38,7 +36,7 @@ export function parseVenueJson(text: string): unknown {
       const isLongInteger =
         number[1] === undefined &&
         number[2] === undefined &&
-        number[0].replace('-', '').length > SAFE_INTEGER_DIGITS
+        !Number.isSafeInteger(Number(number[0]))
       quoted += isLongInteger ? `"${number[0]}"` : number[0]
       index += number[0].length
       continue
