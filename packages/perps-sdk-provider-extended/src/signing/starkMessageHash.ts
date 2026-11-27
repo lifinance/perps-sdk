@@ -1,10 +1,10 @@
-import type {
-  Hex,
-  StarkOrderFields,
-  StarkTransferFields,
-  StarkWithdrawalFields,
-} from '@lifi/perps-types'
+import type { Hex } from '@lifi/perps-types'
 import { pedersen } from '@scure/starknet'
+import type {
+  ExtendedStarkOrderFields,
+  ExtendedStarkTransferFields,
+  ExtendedStarkWithdrawalFields,
+} from '../types/starkMessage.js'
 import { toDecimal, toStarkHex } from './starkFelt.js'
 import { loadStarkWasm } from './starkWasm.js'
 
@@ -29,7 +29,7 @@ const domainArgs = ({ name, version, chainId, revision }: StarkDomain) =>
 
 /** Calculate the SNIP-12 hash that the account signs to place an order. @public */
 export async function calculateStarkOrderHash(
-  fields: StarkOrderFields,
+  fields: ExtendedStarkOrderFields,
   domain: StarkDomain,
   publicKey: Hex
 ): Promise<Hex> {
@@ -53,7 +53,7 @@ export async function calculateStarkOrderHash(
 
 /** Calculate the SNIP-12 hash that the sender signs for a transfer. @public */
 export async function calculateStarkTransferHash(
-  fields: StarkTransferFields,
+  fields: ExtendedStarkTransferFields,
   domain: StarkDomain,
   publicKey: Hex
 ): Promise<Hex> {
@@ -74,7 +74,7 @@ export async function calculateStarkTransferHash(
 
 /** Calculate the SNIP-12 hash that the account signs for a withdrawal. @public */
 export async function calculateStarkWithdrawalHash(
-  fields: StarkWithdrawalFields,
+  fields: ExtendedStarkWithdrawalFields,
   domain: StarkDomain,
   publicKey: Hex
 ): Promise<Hex> {
