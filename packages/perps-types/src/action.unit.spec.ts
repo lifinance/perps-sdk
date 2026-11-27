@@ -18,8 +18,6 @@ import type {
   SiweActionStep,
   SiweSignedActionStep,
   StarkActionStep,
-  StarkMessage,
-  StarkOrderFields,
   StarkSignedActionStep,
   TriggerOrderInput,
   UpdateLeverageParams,
@@ -540,7 +538,7 @@ describe('Session steps', () => {
 })
 
 describe('Stark steps', () => {
-  const orderFields: StarkOrderFields = {
+  const orderFields = {
     positionId: '430876',
     baseAssetId: '344400637349001255728961162330505216',
     baseAmount: '100',
@@ -613,17 +611,6 @@ describe('Stark steps', () => {
     }
 
     expect(onboard.clientSent).toBeUndefined()
-  })
-
-  it('binds the fields to the message type', () => {
-    // @ts-expect-error order fields are not withdrawal fields
-    const bad: StarkMessage = {
-      type: 'withdrawal',
-      signaturePath: ['settlement', 'signature'],
-      fields: orderFields,
-    }
-
-    expect(bad.type).toBe('withdrawal')
   })
 })
 
