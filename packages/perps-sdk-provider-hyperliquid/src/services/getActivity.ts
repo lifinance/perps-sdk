@@ -13,7 +13,7 @@ import type {
 } from '@lifi/perps-types'
 import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
 import type { Address } from 'viem'
-import { PROVIDER_KEY } from '../constants.js'
+import { FILL_ROWS_CAP, PROVIDER_KEY } from '../constants.js'
 import type { HyperliquidContext } from '../context.js'
 import type { HlUserFills, HlUserFunding } from '../types/index.js'
 import {
@@ -105,7 +105,7 @@ const fetchLiquidationHistory = async (
       retained.set(fill.tid, fill)
       latest = Math.max(latest, fill.time)
     }
-    if (fills.length < 2000 || retained.size >= 10000) {
+    if (fills.length < FILL_ROWS_CAP || retained.size >= 10000) {
       break
     }
     if (latest === startTime) {
