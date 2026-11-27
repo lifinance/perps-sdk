@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
-import type { Hex, StarkMessage } from '@lifi/perps-types'
+import type { Hex } from '@lifi/perps-types'
 import type { StarkDomain } from '../../src/signing/starkMessageHash.js'
+import type { ExtendedStarkMessage } from '../../src/types/starkMessage.js'
 
 interface StarkSignatureFixture {
   r: Hex
@@ -137,7 +138,7 @@ if (mainnetKey === undefined) {
 export const signingKey = mainnetKey
 
 type WithoutPath<M> = M extends unknown ? Omit<M, 'signaturePath'> : never
-type FixtureMessage = WithoutPath<StarkMessage>
+type FixtureMessage = WithoutPath<ExtendedStarkMessage>
 
 /** The Stark message and the hash inputs that a Python SDK hash call used. */
 export function toStarkMessage({ fn, inputs }: HashCallFixture): {
