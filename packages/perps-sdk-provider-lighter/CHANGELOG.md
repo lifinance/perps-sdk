@@ -1,5 +1,37 @@
 # @lifi/perps-sdk-provider-lighter
 
+## 50.2.1
+
+### Patch Changes
+
+- [#775](https://github.com/lifinance/perps-sdk/pull/775) [`57239a6`](https://github.com/lifinance/perps-sdk/commit/57239a64e86ad87916f14038fa97191657718bd8) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The Lighter WebSocket provider reports an expired or revoked read token (`invalid auth: invalid api token: <channel>`) as `Unauthorized` through `onError`.
+
+- Updated dependencies [[`6c01f07`](https://github.com/lifinance/perps-sdk/commit/6c01f07b0142b6724b8cab5b85fc5c1fce269eb3)]:
+  - @lifi/perps-types@30.5.0
+
+## 50.2.0
+
+### Minor Changes
+
+- [#767](https://github.com/lifinance/perps-sdk/pull/767) [`7126499`](https://github.com/lifinance/perps-sdk/commit/7126499044def1ef0d822e05be77aee6f23a865a) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `getMarginHealth` to the client and to the Hyperliquid, Lighter, Lighter RH, and Ondo providers. It gives the current cross-margin ratio and the venue liquidation threshold as a `MarginHealth`.
+
+- [#768](https://github.com/lifinance/perps-sdk/pull/768) [`c1e1cf9`](https://github.com/lifinance/perps-sdk/commit/c1e1cf96f5d825c68f18dd8599e67a65a20ac1e7) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the opt-in `bounds` to `getPortfolioHistory`: an inclusive `start` and `end` in Unix milliseconds. A bounded read returns the latest valid sample at or before `start` as `PortfolioHistoryResponse.opening`, when the venue has one, and only the samples after `start` through `end` as `points`. `pnl` and `netTransfers` are relative to the first returned sample, and an absent `opening` never means a zero balance. Lighter and Lighter RH read `/api/v1/pnl` from one bucket before `start` through `end`, at the earliest from 0, with `count_back` plus one for the finite ranges. Hyperliquid and Ondo take the opening from the native preset, or from the narrowest wider preset of the same scope that has one. A wider preset the SDK cannot join or read is skipped with a warning. `@lifi/perps-types` adds `PortfolioHistoryBounds`, and `@lifi/perps-sdk` exports `buildPortfolioHistoryWindow`. A request without `bounds` keeps its behavior.
+
+- [#769](https://github.com/lifinance/perps-sdk/pull/769) [`913ecb5`](https://github.com/lifinance/perps-sdk/commit/913ecb509d78fa543b7c6d340a9e6d800f54acfe) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the optional `backend_symbol` field to the `LtToken` type.
+
+### Patch Changes
+
+- Updated dependencies [[`7126499`](https://github.com/lifinance/perps-sdk/commit/7126499044def1ef0d822e05be77aee6f23a865a), [`c1e1cf9`](https://github.com/lifinance/perps-sdk/commit/c1e1cf96f5d825c68f18dd8599e67a65a20ac1e7)]:
+  - @lifi/perps-types@30.4.0
+
+## 50.1.1
+
+### Patch Changes
+
+- [#756](https://github.com/lifinance/perps-sdk/pull/756) [`bd61377`](https://github.com/lifinance/perps-sdk/commit/bd613774c3d33f7982f4fafd7303c0b9ff627f69) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add `isDecimalStringEqual` and `safeIsDecimalStringEqual` for exact decimal-string equality. The Hyperliquid, Lighter, and Ondo providers use them for their equality checks, and their results do not change.
+
+- [#763](https://github.com/lifinance/perps-sdk/pull/763) [`ae0c64c`](https://github.com/lifinance/perps-sdk/commit/ae0c64cd9911b78a1db090e83366fdd5047496f0) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Use `isDecimalStringInteger` for the integer initial margin fraction check in the Lighter ROE calculation. The ROE results do not change.
+
 ## 50.1.0
 
 ### Minor Changes

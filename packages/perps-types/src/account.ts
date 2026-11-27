@@ -3,6 +3,7 @@ import type { DecimalString } from './decimal.js'
 import type {
   ActionType,
   ActivityType,
+  DepositStatus,
   FillClassification,
   LiquidationMethod,
   LiquidityRole,
@@ -258,6 +259,18 @@ export interface AvailableToTrade {
 }
 
 /**
+ * Cross-margin health of one collateral pool. `ratio` is maintenance margin
+ * divided by equity, as a fraction: a higher ratio means a greater liquidation
+ * risk, and the venue liquidates when `ratio` exceeds `liquidationThreshold`.
+ *
+ * @public
+ */
+export interface MarginHealth {
+  ratio: DecimalString
+  liquidationThreshold: DecimalString
+}
+
+/**
  * The user's complete venue-side settings for one perps market: the margin
  * mode and request-compatible leverage the next order on it will use.
  * @public
@@ -447,8 +460,8 @@ export interface BaseActivity {
 }
 
 /**
- * Account activity representing a completed deposit. `amount` is a decimal
- * string in `asset`'s units.
+ * Account activity representing a deposit. `amount` is a decimal string in
+ * `asset`'s units.
  *
  * @public
  */
@@ -463,6 +476,13 @@ export interface DepositActivity extends BaseActivity {
   counterpartyAddress?: string
   /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
+  /**
+   * Source-chain transaction that funded the deposit, as the venue reports it.
+   * Absent when the venue reports none.
+   */
+  txHash?: string
+  /** Absent when the venue reports no status. */
+  status?: DepositStatus
 }
 
 /**
@@ -848,6 +868,11 @@ export interface OndoAccountConfig {
   apiKeyRegistered: boolean
   /** A referral code (any referrer's) is already applied to the account. Always `false` when logged out. */
   referralSet: boolean
+  /**
+   * Current fraction of eligible trading fees Ondo credits back under the applied referral (`0.1` is 10%).
+   * Absent when logged out, when no referral applies, or when Ondo omits the rate or sends a non-finite value. Not a historical fill amount.
+   */
+  referralRebateRate?: number
   /** Canonical Ethereum USDC deposit address, or `null` when none is provisioned. */
   depositAddress: string | null
 }

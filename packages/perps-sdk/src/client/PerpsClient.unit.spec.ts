@@ -20,6 +20,7 @@ import {
   ActionType,
   acceptTermsTypeFields,
   createReferralCodeTypeFields,
+  DepositStatus,
   MarginMode,
   META_PROVIDER,
   OrderSide,
@@ -1815,6 +1816,45 @@ describe('PerpsClient', () => {
   // getDepositFlow — optional plugin method, undefined when unimplemented
   // ---------------------------------------------------------------------------
 
+  describe('getMarginHealth', () => {
+    const health = { ratio: '0.47', liquidationThreshold: '1' }
+
+    const clientWith = (plugin: Record<string, unknown>): PerpsClient =>
+      new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: 'hyperliquid',
+            bind: vi.fn(),
+            projectConfig: vi.fn(() => []),
+            ...plugin,
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+    it('delegates the address and categoryId to the plugin and returns its health', async () => {
+      const getMarginHealth = vi.fn(async () => health)
+      await expect(
+        clientWith({ getMarginHealth }).getMarginHealth({
+          provider,
+          address: userAddress,
+          categoryId: 'xyz',
+        })
+      ).resolves.toEqual(health)
+      expect(getMarginHealth).toHaveBeenCalledWith(
+        { address: userAddress, categoryId: 'xyz' },
+        undefined
+      )
+    })
+
+    it('resolves undefined when the plugin does not implement the read', async () => {
+      await expect(
+        clientWith({}).getMarginHealth({ provider, address: userAddress })
+      ).resolves.toBeUndefined()
+    })
+  })
+
   describe('getDepositFlow', () => {
     const flow = {
       kind: 'lifiSwap',
@@ -1889,6 +1929,87 @@ describe('PerpsClient', () => {
       })
       await expect(
         noProviderClient.getDepositFlow({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  describe('getDepositStatus', () => {
+    const chainId = 42161
+    const txHash =
+      '0x9b2f4c1e7a3d5b6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f'
+
+    const clientWith = (
+      getDepositStatus: PerpsProviderPlugin['getDepositStatus']
+    ): PerpsClient =>
+      new PerpsClient({
+        providers: [
+          createTestAgentProvider({ type: provider, getDepositStatus }),
+        ],
+      })
+
+    it('delegates the address, chain and transaction to the plugin and returns its status', async () => {
+      const getDepositStatus = vi.fn(async () => DepositStatus.CREDITED)
+      const options = { signal: new AbortController().signal }
+      await expect(
+        clientWith(getDepositStatus).getDepositStatus(
+          { provider, address: userAddress, chainId, txHash },
+          options
+        )
+      ).resolves.toBe(DepositStatus.CREDITED)
+      expect(getDepositStatus).toHaveBeenCalledWith(
+        { address: userAddress, chainId, txHash },
+        options
+      )
+    })
+
+    it('resolves undefined when the venue has no record of the transaction', async () => {
+      await expect(
+        clientWith(async () => undefined).getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('resolves undefined when the plugin does not implement the read', async () => {
+      await expect(
+        client.getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('propagates the plugin error', async () => {
+      const getDepositStatus = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
+      })
+      await expect(
+        clientWith(getDepositStatus).getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
     })
   })
@@ -2887,6 +3008,41 @@ describe('PerpsClient', () => {
         { address: userAddress, range: '7d' },
         options
       )
+    })
+
+    it('delegates the bounds unchanged', async () => {
+      const getPortfolioHistory = vi.fn(async () => history)
+      const bounds = { start: 1_741_046_400_000, end: 1_741_050_000_000 }
+
+      await clientWith({ getPortfolioHistory }).getPortfolioHistory({
+        provider,
+        address: userAddress,
+        range: '7d',
+        bounds,
+      })
+
+      expect(getPortfolioHistory).toHaveBeenCalledWith(
+        { address: userAddress, range: '7d', bounds },
+        undefined
+      )
+    })
+
+    it.each([
+      ['a start after the end', { start: 2, end: 1 }],
+      ['a non-finite start', { start: Number.NaN, end: 1 }],
+      ['a non-finite end', { start: 1, end: Number.POSITIVE_INFINITY }],
+    ])('throws a ValidationError for %s without a provider read', async (_name, bounds) => {
+      const getPortfolioHistory = vi.fn(async () => history)
+
+      await expect(
+        clientWith({ getPortfolioHistory }).getPortfolioHistory({
+          provider,
+          address: userAddress,
+          range: '7d',
+          bounds,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ValidationError })
+      expect(getPortfolioHistory).not.toHaveBeenCalled()
     })
 
     it('throws an SDKError when the plugin has no portfolio history read', async () => {

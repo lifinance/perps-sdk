@@ -1,9 +1,11 @@
 import {
+  buildPortfolioHistoryWindow,
   isDecimalString,
   safeSubtractDecimalString,
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
+  PortfolioHistoryBounds,
   PortfolioHistoryPoint,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
@@ -69,20 +71,32 @@ const getCumulativeNetFlow = (
  * totals for `range`. Ondo reports no 24-hour volume, so `volume` is absent
  * for `'24h'`. `totalPnl` comes from the last graph point: the summary route
  * takes no range parameter, so its `totalPnL` is an all-time total. A point
- * with an invalid time is skipped.
+ * with an invalid time is skipped. With `bounds`, the graph can come from a
+ * wider preset than `range`: the latest point at or before `start` is the
+ * opening, and only the points after `start` through `end` remain.
  */
 export const mapPortfolioHistory = (
   range: PortfolioHistoryRange,
   graph: OndoPortfolioGraphPoint[],
-  summary: OndoPortfolioSummary
+  summary: OndoPortfolioSummary,
+  bounds?: PortfolioHistoryBounds
 ): PortfolioHistoryResponse => {
   const first = graph.find((point) => !Number.isNaN(Date.parse(point.time)))
   const baseline = first === undefined ? undefined : getCumulativeNetFlow(first)
   const points = graph.flatMap((point) => mapPoint(point, baseline) ?? [])
+  if (bounds === undefined) {
+    return {
+      range,
+      points,
+      volume: summaryVolume(summary, range),
+      totalPnl: points.at(-1)?.pnl,
+    }
+  }
+  const window = buildPortfolioHistoryWindow(ONDO_PROVIDER_KEY, points, bounds)
   return {
     range,
-    points,
+    ...window,
     volume: summaryVolume(summary, range),
-    totalPnl: points.at(-1)?.pnl,
+    totalPnl: window.points.at(-1)?.pnl,
   }
 }

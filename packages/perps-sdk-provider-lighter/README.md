@@ -14,7 +14,7 @@ Lighter provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.mint
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-lighter viem@2.57.11
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-lighter viem@2.58.7
 ```
 
 ## Quick start
@@ -37,6 +37,12 @@ Account summaries and the current portfolio-history anchor include Lighter's set
 
 WebSocket account summaries retain spot and margin quantities from account snapshots and balance updates, and revalue non-settlement holdings on spot-market price updates. Assets without a matching spot price retain a zero USD value. These holdings do not change available margin or trading capacity.
 
+## Bounded portfolio history
+
+`getPortfolioHistory` with `bounds` keeps the resolution of `range` (`1h` for `24h` and `7d`, `1d` for `30d` and `all`) and reads `/api/v1/pnl` with `start_timestamp` one bucket before `bounds.start` and `end_timestamp` at `bounds.end`, both in Unix seconds. A `start_timestamp` below 0 becomes 0, because the venue takes no earlier start. The standard finite ranges send `count_back` plus one (`25`, `169`, `31`), so the snapshot before the start is in the response. `all` keeps `count_back` 1000. Lighter documents `count_back` as a sizing hint for a `start_timestamp` of 0: an explicit range takes precedence, so bounds wider than `range` are not cut. The venue keeps `1h` snapshots for the last 10 days, so a `24h` or `7d` read with an older `end` has no samples. Both deployments (`lighterProvider` and `lighterRhProvider`) share this read.
+
+The latest valid snapshot at or before `bounds.start` is the `opening`. For a 30D start after midnight, the daily snapshot of that midnight is the opening, and the next midnight snapshot is the first point. `volume` is the venue volume between the first and the last retained snapshot. The account values keep their anchor: the last fetched snapshot equals the current `portfolioValue`, so an `end` in the past shifts every account value by the change since that snapshot. The `@lifi/perps-sdk` README § Portfolio history describes the common contract.
+
 ## API key storage
 
 Setup registers an API key user-side; the bundled WASM signer uses it to sign orders locally. Key material is persisted through a `StorageAdapter` — the default adapter encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB, so key material is never stored as plaintext. Pass `storage` to use another backend:
@@ -55,7 +61,12 @@ The `SET_REFERRAL` action uses a short-lived standard token. It first reads the 
 
 Before `getAccount` starts an authenticated read, it compares the local public key with the registered Lighter public key. A missing or different key prevents token creation and authenticated reads. If Lighter returns code `61006` for a read-only token, the provider creates one replacement and retries the read once. REST responses with HTTP `401`, HTTP `403`, or code `20013` do not remove or replace the token.
 
-The WebSocket path is different. A private wire subscribe carries the resolved token, and Lighter answers a rejected token with `{"error":{"code":20013,"message":"invalid auth: <channel>"}}`. The WebSocket provider stops every private subscription that presented that token with `PerpsErrorCode.Unauthorized`, removes those wires from reconnect replay, and reports the token to `rejectAuthToken` on the registered `lighterProvider()`. The next `resolveAuthToken` call does not return a rejected token: it replaces a rejected read-only token through the same path as a `61006` revocation, and it signs a new standard token. The wallet signer and the trading API key stay in storage. A standalone `lighterWsProvider({ resolveAuthToken })` keeps its own rejected-token list and throws `Unauthorized` while the resolver returns a rejected token.
+The WebSocket path is different. A private wire subscribe carries the resolved token. Lighter answers a rejected token with code `20013` in one of two forms:
+
+- `{"error":{"code":20013,"message":"invalid auth: <channel>"}}` for an invalid token.
+- `{"error":{"code":20013,"message":"invalid auth: invalid api token: <channel>"}}` for an expired or revoked read token.
+
+The provider accepts a `20013` message as a rejection only when it starts with `invalid auth: ` and ends with `: <channel>` for a private wire that carried a token. It only logs other `20013` messages. The WebSocket provider stops every private subscription that presented that token with `PerpsErrorCode.Unauthorized`, removes those wires from reconnect replay, and reports the token to `rejectAuthToken` on the registered `lighterProvider()`. The next `resolveAuthToken` call does not return a rejected token: it replaces a rejected read-only token through the same path as a `61006` revocation, and it signs a new standard token. The wallet signer and the trading API key stay in storage. A standalone `lighterWsProvider({ resolveAuthToken })` keeps its own rejected-token list and throws `Unauthorized` while the resolver returns a rejected token.
 
 Lighter does not evict API keys through `onExecuteResults`. A failed action alone does not establish that the stored key is invalid; the registered-public-key check determines whether authenticated operations may use it.
 

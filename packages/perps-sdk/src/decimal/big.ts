@@ -14,3 +14,11 @@ DivBig.DP = 40
 export const TruncBig = Big()
 TruncBig.DP = 40
 TruncBig.RM = Big.roundDown
+
+/**
+ * As `DivBig`, but rounding away from zero, so a derived amount never falls
+ * below the exact quotient.
+ */
+export const RoundUpBig = Big()
+RoundUpBig.DP = 40
+RoundUpBig.RM = Big.roundUp

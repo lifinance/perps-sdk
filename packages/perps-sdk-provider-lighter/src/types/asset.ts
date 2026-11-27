@@ -121,6 +121,8 @@ export interface LtToken {
   logo: string
   logo_extension: string
   market: 'PERPS' | 'SPOT'
+  /** Symbol that `assetDetails` and the spot order book use for this token, for example `rhSPY` for `SPY`. */
+  backend_symbol?: string
 }
 
 /**
@@ -145,6 +147,10 @@ export interface LtAssetDetail {
   l1_decimals: number
   decimals: number
   l1_address: string
+  /** Asset index price in the settlement asset, as a decimal string. */
+  index_price: string
+  /** Fraction of the asset's margin value that counts toward liquidation equity, as a decimal string. */
+  liquidation_threshold: string
 }
 
 /**

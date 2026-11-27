@@ -27,6 +27,7 @@ import {
   type ProviderGetAvailableToTradeParams,
   type ProviderGetDepositFlowParams,
   type ProviderGetFillsParams,
+  type ProviderGetMarginHealthParams,
   type ProviderGetMarketSettingsParams,
   type ProviderGetOrderParams,
   type ProviderGetOrdersParams,
@@ -69,6 +70,7 @@ import type {
   FillsResponse,
   LighterAccountConfig,
   LiquidationActivity,
+  MarginHealth,
   MarketSettings,
   Order,
   OrdersResponse,
@@ -128,6 +130,7 @@ import type {
   LtAccountLimits,
   LtAccountOrdersResponse,
   LtAccountPnL,
+  LtAssetDetailsResponse,
   LtDepositHistoryItem,
   LtDepositHistoryResponse,
   LtFastwithdrawInfoResponse,
@@ -162,7 +165,10 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
-import { createSharedAccountRead } from './utils/fetchDetailedAccount.js'
+import {
+  createSharedAccountRead,
+  fetchDetailedAccount,
+} from './utils/fetchDetailedAccount.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   LIGHTER_MARKET_SLIPPAGE_PERCENT,
@@ -182,6 +188,7 @@ import {
   toIsoFromSeconds,
 } from './utils/index.js'
 import { calculateRoe, remarkPosition } from './utils/mapPosition.js'
+import { calculateMarginHealth } from './utils/marginHealth.js'
 import {
   fetchRegisteredApiKey,
   normalizeLighterPublicKey,
@@ -1493,6 +1500,20 @@ export const createLighterProvider = (
       )
     },
 
+    async getMarginHealth(
+      params: ProviderGetMarginHealthParams,
+      opts?: SDKRequestOptions
+    ): Promise<MarginHealth | undefined> {
+      const client = apiClient(opts)
+      const [account, assetDetails] = await Promise.all([
+        fetchDetailedAccount(client, params.address),
+        client
+          .get<LtAssetDetailsResponse>('/api/v1/assetDetails')
+          .then((response) => wireList(response.asset_details)),
+      ])
+      return calculateMarginHealth(account, assetDetails, collateral.assetIndex)
+    },
+
     /**
      * Lighter reports a market's margin mode and leverage on the account's
      * position row. Without a row carrying a positive IMF (or without an
@@ -1810,17 +1831,28 @@ export const createLighterProvider = (
       const client = apiClient(opts)
       const account = await plugin.getAccount({ address: params.address }, opts)
       const window = PNL_WINDOWS[params.range]
-      const endTimestampSeconds = Math.floor(Date.now() / 1_000)
+      const { bounds } = params
+      const endTimestampSeconds = Math.floor(
+        (bounds?.end ?? Date.now()) / 1_000
+      )
+      // A bounded read starts one bucket early, so the opening snapshot at or
+      // before `start` is in the response. The venue takes no start below 0.
+      const startTimestampSeconds =
+        bounds !== undefined
+          ? Math.max(0, Math.floor(bounds.start / 1_000) - window.bucketSeconds)
+          : params.range === 'all'
+            ? 0
+            : endTimestampSeconds - window.countBack * window.bucketSeconds
       const queryParams: Record<string, string | number | boolean> = {
         by: 'index',
         value: String(lighterConfig(account).accountIndex),
         resolution: window.resolution,
-        start_timestamp:
-          params.range === 'all'
-            ? 0
-            : endTimestampSeconds - window.countBack * window.bucketSeconds,
+        start_timestamp: startTimestampSeconds,
         end_timestamp: endTimestampSeconds,
-        count_back: window.countBack,
+        count_back:
+          bounds !== undefined && params.range !== 'all'
+            ? window.countBack + 1
+            : window.countBack,
         ignore_transfers: false,
       }
       const read = (tok: string) =>
@@ -1837,7 +1869,8 @@ export const createLighterProvider = (
       return mapPortfolioHistory(
         params.range,
         wireList(response.pnl),
-        getAccountSummary(account, account.positions).portfolioValue
+        getAccountSummary(account, account.positions).portfolioValue,
+        bounds
       )
     },
 

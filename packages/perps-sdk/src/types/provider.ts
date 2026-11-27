@@ -11,7 +11,9 @@ import type {
   ActivityType,
   AvailableToTrade,
   DecimalString,
+  DepositStatus,
   FillsResponse,
+  MarginHealth,
   MarginMode,
   Market,
   MarketRef,
@@ -21,6 +23,7 @@ import type {
   OrdersResponse,
   PerpsMarket,
   PerpsSigner,
+  PortfolioHistoryBounds,
   PortfolioHistoryRange,
   PortfolioHistoryResponse,
   Position,
@@ -215,6 +218,19 @@ export interface ProviderGetDepositFlowParams {
 }
 
 /**
+ * Read params for {@link PerpsProviderPlugin.getDepositStatus}.
+ *
+ * @public
+ */
+export interface ProviderGetDepositStatusParams {
+  address: Address
+  /** Chain of the source-chain transaction `txHash`. */
+  chainId: number
+  /** Source-chain transaction that funded the deposit. */
+  txHash: string
+}
+
+/**
  * Read params for {@link PerpsProviderPlugin.getWithdrawFlow}.
  *
  * @public
@@ -266,6 +282,20 @@ export interface ProviderGetMarketSettingsParams {
   /** The market's `id` and `categoryId`; the category identifies spot
    * markets, which carry no venue leverage state. */
   market: MarketRef
+}
+
+/**
+ * Read params for {@link PerpsProviderPlugin.getMarginHealth}.
+ *
+ * @public
+ */
+export interface ProviderGetMarginHealthParams {
+  address: Address
+  /**
+   * The `Balance.categoryId` of the cross pool, for a venue with one cross pool
+   * per category. A venue with one cross pool ignores it.
+   */
+  categoryId?: string
 }
 
 /**
@@ -350,6 +380,8 @@ export interface ProviderGetActivityParams {
 export interface ProviderGetPortfolioHistoryParams {
   address: Address
   range: PortfolioHistoryRange
+  /** Valid bounds: the client checks them before the provider read. */
+  bounds?: PortfolioHistoryBounds
 }
 
 /**
@@ -463,6 +495,17 @@ export interface PerpsProviderPlugin {
   ): Promise<DepositFlow>
 
   /**
+   * Status of the deposit that `params.txHash` funded for `params.address`.
+   * Resolves `undefined` when the venue has no record of the transaction yet,
+   * and a caller treats that as not yet credited. Optional: a provider that
+   * cannot report a deposit status omits it.
+   */
+  getDepositStatus?(
+    params: ProviderGetDepositStatusParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositStatus | undefined>
+
+  /**
    * The withdrawal flow this venue offers `params.address`, resolved from the
    * venue's own account and setup state — the destination a withdrawal goes
    * to, or the venue setup that must come first.
@@ -550,6 +593,16 @@ export interface PerpsProviderPlugin {
     params: ProviderGetAvailableToTradeParams,
     options?: SDKRequestOptions
   ): Promise<AvailableToTrade | undefined>
+
+  /**
+   * Current cross-margin health of the account. Optional because each venue
+   * calculates it differently. `undefined` means the venue gives no health for
+   * the account in its current mode.
+   */
+  getMarginHealth?(
+    params: ProviderGetMarginHealthParams,
+    options?: SDKRequestOptions
+  ): Promise<MarginHealth | undefined>
 
   getOrders(
     params: ProviderGetOrdersParams,

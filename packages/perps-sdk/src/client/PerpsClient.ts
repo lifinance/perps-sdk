@@ -9,7 +9,9 @@ import type {
   AvailableToTrade,
   CreateActionResponse,
   DecimalString,
+  DepositStatus,
   ExecuteActionResponse,
+  MarginHealth,
   MarketRef,
   MarketSettings,
   MetaActionType,
@@ -59,6 +61,8 @@ import type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetDepositStatusParams,
+  GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
@@ -924,6 +928,52 @@ export class PerpsClient {
   }
 
   /**
+   * Status of the deposit that `params.txHash` funded for `params.address` at
+   * `params.provider`, read from the provider plugin.
+   *
+   * @returns `undefined` when the plugin declares no read, or when the venue has
+   *   no record of the transaction yet. Treat `undefined` as not yet credited.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   venue read fails.
+   * @public
+   */
+  async getDepositStatus(
+    params: GetDepositStatusParams,
+    options?: SDKRequestOptions
+  ): Promise<DepositStatus | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getDepositStatus?.(
+      {
+        address: params.address,
+        chainId: params.chainId,
+        txHash: params.txHash,
+      },
+      options
+    )
+  }
+
+  /**
+   * Current cross-margin health of `params.address` at `params.provider`,
+   * calculated by the provider plugin.
+   *
+   * @returns `undefined` when the plugin declares no margin health read, or
+   *   when the venue gives no health for the account in its current mode.
+   * @throws {PerpsError} When the provider plugin is not registered, or the
+   *   venue read fails.
+   * @public
+   */
+  async getMarginHealth(
+    params: GetMarginHealthParams,
+    options?: SDKRequestOptions
+  ): Promise<MarginHealth | undefined> {
+    const plugin = this.requireProvider(params.provider)
+    return plugin.getMarginHealth?.(
+      { address: params.address, categoryId: params.categoryId },
+      options
+    )
+  }
+
+  /**
    * The withdrawal flow for `params.address` at `params.provider`, delegated to
    * the provider plugin — the withdrawal destination and any setup gate before
    * it are venue-owned.
@@ -1067,8 +1117,13 @@ export class PerpsClient {
 
   /**
    * The account's portfolio value and cumulative PnL over `params.range` at
-   * `params.provider`, read directly from the venue.
+   * `params.provider`, read directly from the venue. With `params.bounds`,
+   * the read returns the opening sample at or before `bounds.start` when the
+   * venue has one, and only the samples after `bounds.start` through
+   * `bounds.end`.
    *
+   * @throws {PerpsError} `ValidationError` when a bound is not a finite
+   *   number, or when `bounds.start` is after `bounds.end`.
    * @throws {PerpsError} When the provider plugin is not registered, when it
    *   declares no portfolio history read, or when the venue read fails.
    * @throws {PerpsError} `SetupRequired` when the venue needs a credential (a
@@ -1088,8 +1143,24 @@ export class PerpsClient {
         `Provider '${params.provider}' does not implement getPortfolioHistory.`
       )
     }
+    const { bounds } = params
+    if (
+      bounds !== undefined &&
+      (!Number.isFinite(bounds.start) ||
+        !Number.isFinite(bounds.end) ||
+        bounds.start > bounds.end)
+    ) {
+      throw new PerpsError(
+        PerpsErrorCode.ValidationError,
+        'Portfolio history bounds need finite start and end, with start at or before end.'
+      )
+    }
     return plugin.getPortfolioHistory(
-      { address: params.address, range: params.range },
+      {
+        address: params.address,
+        range: params.range,
+        ...(bounds === undefined ? {} : { bounds }),
+      },
       options
     )
   }

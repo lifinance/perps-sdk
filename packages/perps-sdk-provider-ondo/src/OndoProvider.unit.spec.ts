@@ -397,7 +397,7 @@ let fetchMock: Mock<
   (url: string | URL, init?: RequestInit) => Promise<Response>
 >
 /** `GET /v1/account/referral` result; `null` mirrors an unreferred account. */
-let referralResult: { code: string; rebate?: number } | null
+let referralResult: { code: string; rebate?: unknown } | null
 /** `GET /v1/account` result; its versions drive `termsAccepted`. */
 let accountInfoResult: typeof ACCOUNT_INFO_RESULT
 /** POST /v1/wallet/deposit_address/list result. */
@@ -717,6 +717,12 @@ const SESSION_GATED_READS: ReadonlyArray<
     { resolves: [] },
   ],
   [
+    'getMarginHealth',
+    'margin health read',
+    (p) => p.getMarginHealth!({ address: ADDRESS }),
+    { resolves: { liquidationThreshold: '1' } },
+  ],
+  [
     'getAvailableToTrade',
     'available-to-trade read',
     (p) => p.getAvailableToTrade!({ address: ADDRESS, marketId: 'AAPL-USD.P' }),
@@ -790,6 +796,7 @@ describe('OndoProvider — reads without a session', () => {
   it('getAccount returns an empty snapshot with a loggedIn: false config', async () => {
     const provider = loggedOutProvider()
     const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
     expect(account).toEqual({
       provider: 'ondo',
       address: ADDRESS,
@@ -956,6 +963,20 @@ describe('OndoProvider — getWithdrawableBalances (logged in)', () => {
         "ondo field `balance.withdrawableMargin` is not a valid decimal: 'n/a'",
       tool: 'ondo',
     })
+  })
+})
+
+describe('OndoProvider — getMarginHealth (logged in)', () => {
+  it.each([
+    ['the venue margin ratio', '0.039'],
+    ['the venue value for a margin balance of zero or below', '9999'],
+  ])('returns %s', async (_, marginRatio) => {
+    balanceResult = { ...BALANCE_RESULT, marginRatio }
+    const { provider } = await loggedInProvider()
+
+    await expect(
+      provider.getMarginHealth!({ address: ADDRESS })
+    ).resolves.toEqual({ ratio: marginRatio, liquidationThreshold: '1' })
   })
 })
 
@@ -1267,6 +1288,7 @@ describe('OndoProvider — getAccount (logged in)', () => {
       termsAccepted: true,
       apiKeyRegistered: false,
       referralSet: true,
+      referralRebateRate: 0.1,
       depositAddress: null,
       balance: {
         walletBalance: '1000',
@@ -1427,6 +1449,33 @@ describe('OndoProvider — getAccount (logged in)', () => {
         withdrawableMargin: '599',
       },
     })
+  })
+
+  it.each([
+    ['a positive rate', { code: 'K04HBJ', rebate: 0.25 }, 0.25],
+    ['an explicit zero rate', { code: 'K04HBJ', rebate: 0 }, 0],
+  ])('exposes %s as referralRebateRate', async (_case, referral, rate) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({
+      referralSet: true,
+      referralRebateRate: rate,
+    })
+  })
+
+  it.each([
+    ['a referral without a rate', { code: 'K04HBJ' }, true],
+    ['a null rate', { code: 'K04HBJ', rebate: null }, true],
+    ['a string rate', { code: 'K04HBJ', rebate: '0.1' }, true],
+    ['a non-finite rate', { code: 'K04HBJ', rebate: Number.NaN }, true],
+    ['no referral', null, false],
+  ])('omits referralRebateRate for %s', async (_case, referral, referralSet) => {
+    referralResult = referral
+    const { provider } = await loggedInProvider()
+    const account = await provider.getAccount({ address: ADDRESS })
+    expect(account.config).toMatchObject({ referralSet })
+    expect(account.config).not.toHaveProperty('referralRebateRate')
   })
 
   it('reports apiKeyRegistered from local key presence, logged in or out', async () => {
@@ -2179,6 +2228,230 @@ describe('OndoProvider — getPortfolioHistory', () => {
     expect(new URL(graphCall.url).searchParams.get('range')).toBe(range)
     expect(authHeaderOf(graphCall)).toBe('Bearer ondo-jwt-token')
     expect(authHeaderOf(summaryCall)).toBe('Bearer ondo-jwt-token')
+  })
+
+  describe('with bounds', () => {
+    const graphPoint = (
+      time: string,
+      marginBalance: string,
+      totalPnL: string,
+      allTimeDeposits: string
+    ): OndoPortfolioGraphPoint => ({
+      ...PORTFOLIO_GRAPH_RESULT[0],
+      time,
+      marginBalance,
+      totalPnL,
+      allTimeDeposits,
+    })
+    /** Each preset starts at its own first day; the venue has no point before 03-03. */
+    const GRAPH_BY_RANGE: Record<
+      string,
+      OndoPortfolioGraphPoint[] | undefined
+    > = {
+      '24h': [
+        graphPoint('2025-03-05T00:00:00Z', '4950.00', '52.00', '5000.00'),
+      ],
+      '7d': [
+        graphPoint('2025-03-03T00:00:00Z', '4700.00', '0.00', '4900.00'),
+        graphPoint('2025-03-04T00:00:00Z', '4800.00', '100.00', '5000.00'),
+        graphPoint('2025-03-05T00:00:00Z', '4950.00', '250.00', '5000.00'),
+        graphPoint('2025-03-06T00:00:00Z', '4990.00', '290.00', '5000.00'),
+      ],
+    }
+    const START = Date.parse('2025-03-04T12:00:00Z')
+    const END = Date.parse('2025-03-05T12:00:00Z')
+    const graphRanges = () =>
+      recorded
+        .filter((r) => r.url.includes('/v1/portfolio/summary/graph'))
+        .map((r) => new URL(r.url).searchParams.get('range'))
+
+    /** Answer each graph preset from `GRAPH_BY_RANGE`, unless `override` answers it. */
+    const installGraphFetch = (
+      override: (range: string) => Response | undefined = () => undefined
+    ) =>
+      fetchMock.mockImplementation(async (url: string | URL, init) => {
+        const u = String(url)
+        recorded.push({ url: u, init })
+        if (u.includes('/v1/portfolio/summary/graph')) {
+          const range = new URL(u).searchParams.get('range') ?? ''
+          return (
+            override(range) ?? respond(envelope(GRAPH_BY_RANGE[range] ?? null))
+          )
+        }
+        if (u.includes('/v1/portfolio/summary')) {
+          return respond(envelope(PORTFOLIO_SUMMARY_RESULT))
+        }
+        return respond(envelope([]))
+      })
+
+    beforeEach(() => {
+      installGraphFetch()
+    })
+
+    it('reads one graph when the native preset holds the opening point, and drops points after the end', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '7d',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history).toEqual({
+        range: '7d',
+        opening: {
+          timestamp: Date.parse('2025-03-04T00:00:00Z'),
+          accountValue: '4800.00',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '150',
+            netTransfers: '0',
+          },
+        ],
+        volume: '15000.00',
+        totalPnl: '150',
+      })
+      expect(graphRanges()).toEqual(['7d'])
+    })
+
+    it('reads the next wider preset when the native preset starts after the bounds start', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history).toEqual({
+        range: '24h',
+        opening: {
+          timestamp: Date.parse('2025-03-04T00:00:00Z'),
+          accountValue: '4800.00',
+          pnl: '0',
+          netTransfers: '0',
+        },
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '150',
+            netTransfers: '0',
+          },
+        ],
+        volume: undefined,
+        totalPnl: '150',
+      })
+      expect(graphRanges()).toEqual(['24h', '7d'])
+    })
+
+    it('returns the native points without an opening when no preset reaches the bounds start', async () => {
+      const { provider } = await loggedInProvider()
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: {
+          start: Date.parse('2025-03-01T00:00:00Z'),
+          end: Date.parse('2025-03-05T12:00:00Z'),
+        },
+      })
+
+      expect(history).toEqual({
+        range: '24h',
+        points: [
+          {
+            timestamp: Date.parse('2025-03-05T00:00:00Z'),
+            accountValue: '4950.00',
+            pnl: '0',
+            netTransfers: '0',
+          },
+        ],
+        volume: undefined,
+        totalPnl: '0',
+      })
+      expect(history.opening).toBeUndefined()
+      expect(graphRanges()).toEqual(['24h', '7d', '30d', 'all'])
+    })
+
+    it('skips a wider graph read that fails, warns, and keeps the next wider preset', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      installGraphFetch((range) => {
+        if (range === '7d') {
+          return respond({ success: false, error: 'graph unavailable' }, 500)
+        }
+        return range === '30d'
+          ? respond(envelope(GRAPH_BY_RANGE['7d']))
+          : undefined
+      })
+      const { provider } = await loggedInProvider()
+
+      const history = await provider.getPortfolioHistory!({
+        address: ADDRESS,
+        range: '24h',
+        bounds: { start: START, end: END },
+      })
+
+      expect(history.opening).toEqual({
+        timestamp: Date.parse('2025-03-04T00:00:00Z'),
+        accountValue: '4800.00',
+        pnl: '0',
+        netTransfers: '0',
+      })
+      expect(history.points.map((p) => p.pnl)).toEqual(['150'])
+      expect(graphRanges()).toEqual(['24h', '7d', '30d'])
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[ondo] portfolio graph '7d' read failed, so it gives no opening sample"
+        )
+      )
+      warn.mockRestore()
+    })
+
+    it('evicts the token and throws Unauthorized when the venue rejects the session on a wider graph read', async () => {
+      installGraphFetch((range) =>
+        range === '7d'
+          ? respond({ success: false, error: 'token expired' }, 401)
+          : undefined
+      )
+      const { provider, store } = await loggedInProvider()
+
+      await expect(
+        provider.getPortfolioHistory!({
+          address: ADDRESS,
+          range: '24h',
+          bounds: { start: START, end: END },
+        })
+      ).rejects.toMatchObject(sessionRejectedError('portfolio history read'))
+      await expect(store.get(ADDRESS)).resolves.toBeNull()
+    })
+
+    it('rejects with the abort reason when the caller aborts during a wider graph read', async () => {
+      const controller = new AbortController()
+      const reason = new Error('stopped')
+      installGraphFetch((range) => {
+        if (range === '7d') {
+          controller.abort(reason)
+          throw reason
+        }
+        return undefined
+      })
+      const { provider } = await loggedInProvider()
+
+      await expect(
+        provider.getPortfolioHistory!(
+          {
+            address: ADDRESS,
+            range: '24h',
+            bounds: { start: START, end: END },
+          },
+          { signal: controller.signal }
+        )
+      ).rejects.toBe(reason)
+      expect(graphRanges()).toEqual(['24h', '7d'])
+    })
   })
 })
 

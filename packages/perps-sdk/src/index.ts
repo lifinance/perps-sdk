@@ -57,11 +57,14 @@ export {
   scaledIntegerToDecimalString,
 } from './decimal/convert.js'
 export type {
+  CompactNumberOptions,
   CompactUsdOptions,
   FormatOptions,
+  NumberFormatOptions,
   RoundingMode,
 } from './decimal/format.js'
 export {
+  formatCompactNumber,
   formatCompactUsd,
   formatNumber,
   formatPrice,
@@ -125,6 +128,8 @@ export {
   safeEstimateRealizedPnl,
   safeResolveCloseSize,
 } from './math/order.js'
+export type { PortfolioHistoryWindow } from './math/portfolioHistory.js'
+export { buildPortfolioHistoryWindow } from './math/portfolioHistory.js'
 export {
   buildPosition,
   calculateEffectiveLeverage,
@@ -266,6 +271,8 @@ export type {
   ExecuteMetaActionParams,
   GetAccountResult,
   GetDepositFlowParams,
+  GetDepositStatusParams,
+  GetMarginHealthParams,
   GetPortfolioHistoryParams,
   GetSetupParams,
   GetWithdrawableBalancesParams,
@@ -308,7 +315,9 @@ export type {
   ProviderGetActivityParams,
   ProviderGetAvailableToTradeParams,
   ProviderGetDepositFlowParams,
+  ProviderGetDepositStatusParams,
   ProviderGetFillsParams,
+  ProviderGetMarginHealthParams,
   ProviderGetMarketSettingsParams,
   ProviderGetOrderParams,
   ProviderGetOrdersParams,

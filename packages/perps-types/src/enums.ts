@@ -359,3 +359,13 @@ export enum WithdrawalType {
   NATIVE = 'NATIVE',
   BRIDGE = 'BRIDGE',
 }
+
+/** How far a venue processed one deposit. @public */
+export enum DepositStatus {
+  /** The venue saw the deposit and did not credit it yet. */
+  PENDING = 'PENDING',
+  /** The venue credited the deposit to the account. */
+  CREDITED = 'CREDITED',
+  /** The venue reports that the deposit failed. It credits nothing. */
+  FAILED = 'FAILED',
+}

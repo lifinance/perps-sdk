@@ -25,6 +25,7 @@ import type {
 import type { Asset } from './asset.js'
 import {
   ActivityType,
+  DepositStatus,
   FillClassification,
   LiquidationMethod,
   LiquidityRole,
@@ -275,6 +276,29 @@ describe('counterpartyAddress on DepositActivity', () => {
   })
 })
 
+describe('txHash and status on DepositActivity', () => {
+  it('accepts the funding transaction and the venue status', () => {
+    const deposit: DepositActivity = {
+      id: 'd',
+      provider: 'lighter',
+      timestamp: '2026-05-07T12:00:00.000Z',
+      type: ActivityType.DEPOSIT,
+      asset: USDC_ASSET,
+      amount: '1',
+      txHash:
+        '0x9b2f4c1e7a3d5b6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f',
+      status: DepositStatus.PENDING,
+    }
+    expect(deposit.status).toBe(DepositStatus.PENDING)
+    expectTypeOf<DepositActivity['txHash']>().toEqualTypeOf<
+      string | undefined
+    >()
+    expectTypeOf<DepositActivity['status']>().toEqualTypeOf<
+      DepositStatus | undefined
+    >()
+  })
+})
+
 describe('ActivityType.TRANSFER enum member', () => {
   it('has wire value "TRANSFER"', () => {
     expect(ActivityType.TRANSFER).toBe('TRANSFER')
@@ -355,6 +379,12 @@ describe('OndoAccountConfig', () => {
     } else {
       throw new Error('expected ondo variant')
     }
+  })
+
+  it('types referralRebateRate as an optional number', () => {
+    expectTypeOf<
+      Pick<OndoAccountConfig, 'referralRebateRate'>
+    >().toEqualTypeOf<{ referralRebateRate?: number }>()
   })
 
   it('rejects credential material on the config object', () => {
