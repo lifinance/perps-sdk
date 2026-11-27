@@ -1,5 +1,20 @@
 # @lifi/perps-sdk-provider-hyperliquid
 
+## 39.1.1
+
+### Patch Changes
+
+- [#787](https://github.com/lifinance/perps-sdk/pull/787) [`d4ecff5`](https://github.com/lifinance/perps-sdk/commit/d4ecff50a8893982c2836ce497d1fb601aad8094) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - The activity reads map a Hyperliquid `send` between the spot and perps balances of the queried account to `INTERNAL_TRANSFER`.
+
+- [#790](https://github.com/lifinance/perps-sdk/pull/790) [`a07a384`](https://github.com/lifinance/perps-sdk/commit/a07a384f2e9a274dad663df777e3b039d493cfdb) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Use the `FILL_ROWS_CAP` constant for the fill page size in the Hyperliquid liquidation history fetch.
+
+- [#795](https://github.com/lifinance/perps-sdk/pull/795) [`9cee119`](https://github.com/lifinance/perps-sdk/commit/9cee119991afdb6981d59ce977649616d8ee8e42) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Hyperliquid `getActivity` for a vault account skips a `vaultDeposit` row without a depositor address and returns the other rows. The warning identifies the missing depositor.
+
+- [#785](https://github.com/lifinance/perps-sdk/pull/785) [`81f373d`](https://github.com/lifinance/perps-sdk/commit/81f373d59975765283f7f7a0a25fbea11bc99e70) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Keep support for viem `2.57.11` and accept `^2.57.17`, which starts with the fix for Hyperliquid EIP-712 signing.
+
+- Updated dependencies [[`7a1c3f3`](https://github.com/lifinance/perps-sdk/commit/7a1c3f39cc3cc2c7d35b794fcf55a9accf892369), [`a78be88`](https://github.com/lifinance/perps-sdk/commit/a78be8873904a3c1c1f4a222888bc467c0410c4a), [`159c5af`](https://github.com/lifinance/perps-sdk/commit/159c5af283bd31acd1f6586c32d95c776471b9cf)]:
+  - @lifi/perps-types@30.6.0
+
 ## 39.1.0
 
 ### Minor Changes

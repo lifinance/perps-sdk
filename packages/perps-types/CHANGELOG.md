@@ -1,5 +1,15 @@
 # @lifi/perps-types
 
+## 30.6.0
+
+### Minor Changes
+
+- [#777](https://github.com/lifinance/perps-sdk/pull/777) [`7a1c3f3`](https://github.com/lifinance/perps-sdk/commit/7a1c3f39cc3cc2c7d35b794fcf55a9accf892369) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - `ProviderCategory` has an optional `collateralLedgerDecimals` field. The field gives the precision of the category collateral on the perps ledger, which can differ from `quoteAsset.decimals`.
+
+- [#774](https://github.com/lifinance/perps-sdk/pull/774) [`a78be88`](https://github.com/lifinance/perps-sdk/commit/a78be8873904a3c1c1f4a222888bc467c0410c4a) Thanks [@Kayanski](https://github.com/Kayanski)! - Add `Market.minOrderSize`, the minimum order size in base units of a market whose minimum is larger than one lot.
+
+- [#786](https://github.com/lifinance/perps-sdk/pull/786) [`159c5af`](https://github.com/lifinance/perps-sdk/commit/159c5af283bd31acd1f6586c32d95c776471b9cf) Thanks [@aaronmboyd](https://github.com/aaronmboyd)! - Add the `DepositStatus` enum, optional `txHash` and `status` fields on `DepositActivity`, an optional `getDepositStatus` provider method, and `PerpsClient.getDepositStatus`.
+
 ## 30.5.0
 
 ### Minor Changes
