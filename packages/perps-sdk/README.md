@@ -932,9 +932,20 @@ This required contract method is a breaking SDK change for custom providers.
 
 Every provider persists its trading credentials (agent keys, API keys, session tokens) through a pluggable `StorageAdapter`. The default `localStorageAdapter` encrypts values with AES-GCM before writing to browser `localStorage`, holding the master key as a non-extractable `CryptoKey` handle in IndexedDB — key material is never stored as plaintext. Environments without WebCrypto or IndexedDB degrade to non-persistent sessions rather than plaintext writes. Pass a custom adapter to a provider's store to use another backend.
 
+Node.js scripts can use `LocalJSONFileAdapter` from `@lifi/perps-sdk/node`. Pass the adapter as the provider's `storage` option.
+The adapter stores credentials in plaintext. Keep the file private and use one adapter instance to write to it.
+
+```ts
+import { LocalJSONFileAdapter } from '@lifi/perps-sdk/node'
+import { hyperliquidProvider } from '@lifi/perps-sdk-provider-hyperliquid'
+
+const storage = new LocalJSONFileAdapter('./.perps-storage.json')
+const provider = hyperliquidProvider({ storage })
+```
+
 ## Examples
 
-Runnable scripts live in the [`examples/`](https://github.com/lifinance/perps-sdk/tree/main/examples) directory of the repository — market data, account data, agent trading, error handling, custom storage, and WebSocket subscriptions.
+The [type-checked examples](https://github.com/lifinance/perps-sdk/tree/main/examples) show common SDK operations and how to handle failures.
 
 ## Documentation
 

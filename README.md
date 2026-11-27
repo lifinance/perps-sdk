@@ -167,7 +167,7 @@ While in pre mode, authors still write ordinary changesets — pre mode applies 
 
 ## Examples
 
-The [`examples/`](./examples) folder is a private workspace package with one folder for each provider. Node runs each script directly, and `pnpm check:types` type-checks all scripts. The scripts read their inputs from environment variables. The [examples README](./examples/README.md) gives the prerequisites, the run command, the environment variables, and the scripts of each provider.
+The [examples](./examples/README.md) show common SDK operations as standalone TypeScript snippets. The root `pnpm check:types` checks them against the workspace packages.
 
 ## Documentation
 
