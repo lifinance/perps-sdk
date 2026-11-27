@@ -175,7 +175,7 @@ export const mapOrder = (
       ? safeTimestampToIsoString(order.order_expiry)
       : undefined
   const lifecycle = mapOrderLifecycle(order)
-  const base: OrderBase = {
+  const base = {
     orderId: order.order_id,
     ...(order.client_order_id === NO_CLIENT_ORDER_ID
       ? {}
@@ -191,7 +191,7 @@ export const mapOrder = (
     ...(order.parent_order_id ? { parentOrderId: order.parent_order_id } : {}),
     createdAt,
     updatedAt,
-  }
+  } satisfies OrderBase
   switch (type) {
     case OrderType.TWAP:
       return {

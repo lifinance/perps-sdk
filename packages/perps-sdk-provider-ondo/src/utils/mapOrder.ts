@@ -224,6 +224,7 @@ export const mapOrder = (
     }
     return {
       ...base,
+      filledSize,
       type: OrderType.TWAP,
       durationSeconds: order.runningTime,
       startedAt: createdAt,

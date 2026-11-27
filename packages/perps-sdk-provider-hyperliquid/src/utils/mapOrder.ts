@@ -214,8 +214,7 @@ function venueError(message: string): PerpsError {
 }
 
 /**
- * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
- * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
+ * Normalize regular, trigger, and TWAP rows through one lifecycle model.
  */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
@@ -298,8 +297,8 @@ export const mapOrder = (
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const filledSize = safeSubtractDecimalString(o.origSz, o.sz)
-  if (filledSize === undefined) {
+  const sizeDifference = safeSubtractDecimalString(o.origSz, o.sz)
+  if (sizeDifference === undefined) {
     return isDecimalString(o.origSz)
       ? skipOrder(market.id, 'sz', o.sz)
       : skipOrder(market.id, 'origSz', o.origSz)
@@ -314,12 +313,16 @@ export const mapOrder = (
     return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
   const lifecycle = mapOrderLifecycle(venueStatus)
+  const sizeDecreased = isDecimalStringGreaterThan(sizeDifference, '0')
+  // Hyperliquid can reduce the size of a reduce-only order without a trade.
+  const filledSize = o.reduceOnly && sizeDecreased ? null : sizeDifference
   let status = lifecycle.status
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING
   } else if (
     status === OrderStatus.OPEN &&
-    isDecimalStringGreaterThan(filledSize, '0')
+    filledSize !== null &&
+    sizeDecreased
   ) {
     status = OrderStatus.PARTIALLY_FILLED
   }

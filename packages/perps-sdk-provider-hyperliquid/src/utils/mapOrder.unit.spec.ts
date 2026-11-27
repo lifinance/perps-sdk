@@ -163,6 +163,32 @@ describe('mapOrder', () => {
       }
     )
   })
+  it.each([
+    ['open', OrderStatus.OPEN, '0.0002'],
+    ['reduceOnlyCanceled', OrderStatus.CANCELLED, '0.0002'],
+    ['filled', OrderStatus.FILLED, '0'],
+  ] as const)('keeps %s status when the reduce-only filled size is unknown', (venueStatus, status, sz) => {
+    const order = raw({ origSz: '0.0004', sz, reduceOnly: true })
+    expect(
+      mapOrder(
+        venueStatus === 'open' ? order : { ...detail(venueStatus), order },
+        MARKET
+      )
+    ).toMatchObject({
+      status,
+      originalSize: '0.0004',
+      remainingSize: sz,
+      filledSize: null,
+    })
+  })
+  it('reports a known zero when the reduce-only size is unchanged', () => {
+    expect(
+      mapOrder(
+        raw({ origSz: '0.0004', sz: '0.0004', reduceOnly: true }),
+        MARKET
+      )
+    ).toMatchObject({ status: OrderStatus.OPEN, filledSize: '0' })
+  })
   it('keeps both venue and client ids and omits a null client id', () => {
     expect(mapOrder(raw({ cloid: '0x1234' }), MARKET)).toMatchObject({
       orderId: '77',

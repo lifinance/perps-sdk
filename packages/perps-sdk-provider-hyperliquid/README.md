@@ -325,6 +325,12 @@ An `activated` TWAP maps to FILLED when its filled size reaches its original
 size. The remaining size never falls below zero. The filled size preserves the
 actual execution, even when it exceeds the original size.
 
+Hyperliquid can reduce the remaining size of a reduce-only order without a
+trade. When `sz` is below `origSz`, `getOrders`, `getOrder`, and `orderUpdates`
+report `filledSize: null` and do not infer a partial fill from the difference.
+They preserve `originalSize` as `origSz` and `remainingSize` as `sz`.
+These order reads do not query the account fills to calculate this value.
+
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.
 
