@@ -17,6 +17,8 @@ import type {
   SignedActionStep,
   SiweActionStep,
   SiweSignedActionStep,
+  StarkActionStep,
+  StarkSignedActionStep,
   TriggerOrderInput,
   UpdateLeverageParams,
   WithdrawalAssetRef,
@@ -532,6 +534,83 @@ describe('Session steps', () => {
     const params: Resolved = {}
 
     expect(params).toEqual({})
+  })
+})
+
+describe('Stark steps', () => {
+  const orderFields = {
+    positionId: '430876',
+    baseAssetId: '344400637349001255728961162330505216',
+    baseAmount: '100',
+    quoteAssetId: '0x1',
+    quoteAmount: '-5129500',
+    feeAssetId: '0x1',
+    feeAmount: '1283',
+    expiration: '1796216400',
+    salt: '1',
+  }
+  const placeOrder: StarkActionStep = {
+    action: ActionType.PLACE_ORDER,
+    stark: {
+      request: {
+        method: 'POST',
+        path: '/user/order',
+        body: { id: '1802919074413810230028133407912464447540939052479071' },
+      },
+      messages: [
+        {
+          type: 'order',
+          signaturePath: ['settlement', 'signature'],
+          fields: orderFields,
+        },
+      ],
+    },
+  }
+
+  it('is a member of the ActionStep union', () => {
+    const step: ActionStep = placeOrder
+
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+  })
+
+  it('carries an empty message list for a request that the API key alone authorizes', () => {
+    const updateLeverage: StarkActionStep = {
+      action: ActionType.UPDATE_LEVERAGE,
+      stark: {
+        request: {
+          method: 'PATCH',
+          path: '/user/leverage',
+          body: { market: 'BTC-USD', leverage: '10' },
+        },
+        messages: [],
+      },
+    }
+
+    expect(updateLeverage.stark.messages).toEqual([])
+  })
+
+  it('reports a client-sent request with its venue order id', () => {
+    const sent: StarkSignedActionStep = {
+      action: ActionType.PLACE_ORDER,
+      stark: placeOrder.stark,
+      clientSent: { orderId: '2123003046861942784' },
+    }
+    const step: SignedActionStep = sent
+
+    expect(step.action).toBe(ActionType.PLACE_ORDER)
+    expect(sent.clientSent?.orderId).toBe('2123003046861942784')
+  })
+
+  it('leaves clientSent out for a request that the backend sends', () => {
+    const onboard: StarkSignedActionStep = {
+      action: ActionType.CREATE_ACCOUNT,
+      stark: {
+        request: { method: 'POST', path: '/auth/onboard', body: {} },
+        messages: [],
+      },
+    }
+
+    expect(onboard.clientSent).toBeUndefined()
   })
 })
 

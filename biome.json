@@ -114,7 +114,7 @@
       }
     },
     {
-      "includes": ["packages/*/src/signers/wasmBinaryUrl.vite.js"],
+      "includes": ["packages/*/src/*/wasmBinaryUrl.vite.js"],
       "linter": {
         "rules": {
           "correctness": {

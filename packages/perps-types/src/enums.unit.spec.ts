@@ -224,6 +224,10 @@ describe('SigningMethod credential members', () => {
     expect(SigningMethod.SESSION).toBe('session')
   })
 
+  it('STARK carries wire value "stark"', () => {
+    expect(SigningMethod.STARK).toBe('stark')
+  })
+
   it('does not collide with any existing SigningMethod value', () => {
     const values = Object.values(SigningMethod)
     expect(new Set(values).size).toBe(values.length)
@@ -231,6 +235,10 @@ describe('SigningMethod credential members', () => {
 })
 
 describe('ActionType wire values', () => {
+  it('CREATE_ACCOUNT carries wire value "createAccount"', () => {
+    expect(ActionType.CREATE_ACCOUNT).toBe('createAccount')
+  })
+
   it('carries wire value "siweLogin"', () => {
     expect(ActionType.SIWE_LOGIN).toBe('siweLogin')
   })
