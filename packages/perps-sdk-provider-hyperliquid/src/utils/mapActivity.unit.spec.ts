@@ -947,6 +947,19 @@ describe('mapLedgerEntry — same-account sends', () => {
     ).toBeNull()
   })
 
+  it('skips a same-account send of a token the registry does not list', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(
+      mapLedgerEntry(
+        { ...recorded, delta: { ...recorded.delta, token: 'USDC:0xunknown' } },
+        PROVIDER,
+        ACCOUNT,
+        assetRegistry,
+        resolveMarket
+      )
+    ).toBeNull()
+  })
+
   it('keeps a recorded send to another account as a transfer', () => {
     const counterparty = '0x66cf0aace1b4e562593bec10ec7868fba9932224'
     expect(
