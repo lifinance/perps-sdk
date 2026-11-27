@@ -459,7 +459,9 @@ export interface PerpsProviderPlugin {
    * own existence signal: Hyperliquid probes `preTransferCheck.userExists` (an
    * account exists once it has been funded, paying the one-time creation fee),
    * whereas Lighter resolves it from its `getAccount` → `AccountNotFound`
-   * semantics. Used by `PerpsClient.checkSetup` to gate the deposit-first flow.
+   * semantics. Used by `PerpsClient.checkSetup` to gate the deposit-first flow,
+   * except for a venue that opens the account in setup (SIWE or
+   * `CREATE_ACCOUNT`), where `checkSetup` does not call it.
    */
   accountExists(
     params: ProviderAccountExistsParams,

@@ -3233,6 +3233,100 @@ describe('PerpsClient', () => {
       ])
     })
 
+    it('stages CREATE_ACCOUNT for setup even when accountExists reports false', async () => {
+      const extendedProviderKey = 'extended'
+      const accountExists = vi.fn(async () => false)
+      const extendedClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+        providers: [
+          {
+            type: extendedProviderKey,
+            bind: vi.fn(),
+            accountExists,
+            projectConfig: vi.fn(() => []),
+          } as unknown as PerpsProviderPlugin,
+        ],
+      })
+
+      const createCalls: ActionType[] = []
+      server.use(
+        http.get(`${BASE_URL}/providers`, () =>
+          HttpResponse.json({
+            providers: [
+              ...mockProviders.providers,
+              {
+                key: extendedProviderKey,
+                name: 'Extended',
+                logoURI: 'https://example.com/extended.png',
+                signingMethod: SigningMethod.STARK,
+                active: true,
+                setup: [
+                  {
+                    type: ActionType.CREATE_ACCOUNT,
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.API,
+                    signingMethod: SigningMethod.STARK,
+                    sequence: 10,
+                    params: [],
+                  },
+                  {
+                    type: ActionType.REGISTER_API_KEY,
+                    options: null,
+                    revoke: null,
+                    signer: PerpsSigner.USER,
+                    relay: ActionRelay.CLIENT,
+                    signingMethod: SigningMethod.SESSION,
+                    sequence: 20,
+                    params: [],
+                  },
+                ],
+                actions: [],
+                categories: [],
+              },
+            ],
+          })
+        ),
+        http.post(`${BASE_URL}/createAction`, async ({ request }) => {
+          const body = (await request.json()) as CreateActionRequest
+          createCalls.push(body.action)
+          if (body.action === ActionType.CREATE_ACCOUNT) {
+            return HttpResponse.json({
+              actions: [
+                {
+                  action: ActionType.CREATE_ACCOUNT,
+                  stark: {
+                    request: { method: 'POST', path: '/auth/onboard' },
+                    messages: [],
+                  },
+                },
+              ],
+            } satisfies CreateActionResponse)
+          }
+          return HttpResponse.json({
+            actions: [{ action: body.action, session: {} } as ActionStep],
+          } satisfies CreateActionResponse)
+        })
+      )
+
+      const result = await extendedClient.checkSetup({
+        provider: extendedProviderKey,
+        address: userAddress,
+      })
+
+      expect(accountExists).not.toHaveBeenCalled()
+      expect(result).toMatchObject({
+        accountExists: true,
+        isReady: false,
+      })
+      expect(result.setup.map((step) => step.action)).toEqual([
+        ActionType.CREATE_ACCOUNT,
+        ActionType.REGISTER_API_KEY,
+      ])
+    })
+
     it('skips SIWE setup when provider config reports it already satisfied', async () => {
       const ondoProviderKey = 'ondo'
       const getAccount = vi.fn(async () => mockAccount)

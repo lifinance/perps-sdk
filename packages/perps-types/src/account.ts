@@ -897,6 +897,11 @@ export interface ExtendedAccountConfig {
   provider: 'extended'
   /** This device holds the account's Stark key and API key. */
   apiKeyRegistered: boolean
+  /**
+   * The wallet has an Extended account: this device holds its credentials, or
+   * saw the backend confirm the onboarding. The API-key setup step can run.
+   */
+  accountCreated: boolean
   /** Venue balance figures. Absent without credentials, which read no balance. */
   balance?: ExtendedAccountBalance
 }

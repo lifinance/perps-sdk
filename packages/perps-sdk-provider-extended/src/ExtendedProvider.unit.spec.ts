@@ -129,6 +129,7 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: true,
+        accountCreated: true,
         balance: {
           balance: '0.065740',
           equity: '0.065740',
@@ -158,6 +159,7 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: true,
+        accountCreated: true,
       })
     })
 
@@ -171,7 +173,43 @@ describe('extendedProvider', () => {
       expect(account.config).toEqual({
         provider: 'extended',
         apiKeyRegistered: false,
+        accountCreated: false,
       })
+    })
+
+    it('reports the account created once the backend confirmed the onboarding', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      await provider.onExecuteResults?.(ADDRESS, [
+        {
+          action: ActionType.CREATE_ACCOUNT,
+          status: UserActionStatus.Accepted,
+        },
+      ])
+      const account = await provider.getAccount({ address: ADDRESS })
+
+      expect(account.config).toEqual({
+        provider: 'extended',
+        apiKeyRegistered: false,
+        accountCreated: true,
+      })
+    })
+
+    it('does not report the account created after a refused onboarding', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      await provider.onExecuteResults?.(ADDRESS, [
+        {
+          action: ActionType.CREATE_ACCOUNT,
+          status: UserActionStatus.Failed,
+          error: 'refused',
+        },
+      ])
+      const account = await provider.getAccount({ address: ADDRESS })
+
+      expect(account.config).toMatchObject({ accountCreated: false })
     })
 
     it('removes credentials that Extended refuses', async () => {
@@ -424,14 +462,27 @@ describe('extendedProvider', () => {
       revoke: null,
     })
 
-    expect(
-      provider.projectConfig({ provider: 'extended', apiKeyRegistered: true }, [
-        step(ActionType.CREATE_ACCOUNT, SigningMethod.STARK),
-        step(ActionType.REGISTER_API_KEY, SigningMethod.SESSION),
-      ])
-    ).toEqual([
+    const project = (apiKeyRegistered: boolean, accountCreated: boolean) =>
+      provider.projectConfig(
+        { provider: 'extended', apiKeyRegistered, accountCreated },
+        [
+          step(ActionType.CREATE_ACCOUNT, SigningMethod.STARK),
+          step(ActionType.REGISTER_API_KEY, SigningMethod.SESSION),
+        ]
+      )
+
+    expect(project(true, true)).toEqual([
       { type: ActionType.CREATE_ACCOUNT, values: [], satisfied: true },
       { type: ActionType.REGISTER_API_KEY, values: [], satisfied: true },
+    ])
+    // After the onboarding and before the API key: the API-key step is next.
+    expect(project(false, true)).toEqual([
+      { type: ActionType.CREATE_ACCOUNT, values: [], satisfied: true },
+      { type: ActionType.REGISTER_API_KEY, values: [], satisfied: false },
+    ])
+    expect(project(false, false).map((s) => s.satisfied)).toEqual([
+      false,
+      false,
     ])
   })
 
@@ -454,6 +505,25 @@ describe('extendedProvider', () => {
       })
     })
 
+    it('sends the venue account id with a withdrawal', async () => {
+      stubFetch({})
+      const { provider } = await setup()
+
+      expect(
+        await provider.resolveActionRequest?.(
+          ActionType.WITHDRAWAL,
+          ADDRESS,
+          PerpsSigner.SDK
+        )
+      ).toEqual({
+        params: {
+          starkKey: signingKey.starkPublicKey,
+          positionId: '430876',
+          accountId: '330870',
+        },
+      })
+    })
+
     it.each([
       ActionType.CREATE_ACCOUNT,
       ActionType.REGISTER_API_KEY,
@@ -464,6 +534,59 @@ describe('extendedProvider', () => {
       expect(
         await provider.resolveActionRequest?.(action, ADDRESS, PerpsSigner.USER)
       ).toEqual({})
+    })
+  })
+
+  describe('transfer flows', () => {
+    it('ask for the setup when this device holds no credentials', async () => {
+      stubFetch({})
+      const { provider } = await setup(null)
+
+      expect(await provider.getDepositFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'setupRequired',
+        setup: [ActionType.CREATE_ACCOUNT, ActionType.REGISTER_API_KEY],
+      })
+      expect(await provider.getWithdrawFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'setupRequired',
+        setup: [ActionType.CREATE_ACCOUNT, ActionType.REGISTER_API_KEY],
+      })
+    })
+
+    it('deposit through the Arbitrum bridge and withdraw to the user address', async () => {
+      stubFetch({})
+      const { provider } = await setup()
+
+      expect(await provider.getDepositFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'venueDepositPipeline',
+        chainId: 42161,
+        gasAsset: expect.objectContaining({ chainId: 42161, decimals: 18 }),
+        collateral: {
+          chainId: 42161,
+          address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+          decimals: 6,
+        },
+        bridgeAction: ActionType.DEPOSIT,
+      })
+      expect(await provider.getWithdrawFlow?.({ address: ADDRESS })).toEqual({
+        kind: 'ready',
+        destination: ADDRESS,
+      })
+    })
+
+    it('report the recorded withdrawable balance', async () => {
+      stubFetch({ '/api/v1/user/balance': { body: recordedBody('balance') } })
+      const { provider } = await setup()
+
+      expect(
+        await provider.getWithdrawableBalances?.({ address: ADDRESS })
+      ).toEqual([
+        {
+          assetId: 'USDC',
+          categoryId: 'extended',
+          available: '0.065740',
+          max: '0.065740',
+        },
+      ])
     })
   })
 

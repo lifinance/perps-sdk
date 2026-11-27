@@ -96,7 +96,10 @@ import type {
   WithdrawalSourceTypes,
   WithdrawFlow,
 } from '../types/withdrawal.js'
-import { isSubmittedOrAccepted } from '../utils/actionResult.js'
+import {
+  isSubmittedOrAccepted,
+  sentBeforeExecuteResults,
+} from '../utils/actionResult.js'
 import { isUserFacingSetupStep } from '../utils/setupActions.js'
 import { signTypedDataWithSigner } from '../utils/signTypedData.js'
 import {
@@ -504,7 +507,8 @@ export class PerpsClient {
    * empty report means nothing executed.
    *
    * @throws {PerpsExecutionError} When the submission or the plugin callback
-   *   throws after a result is known.
+   *   throws after a result is known. A failed submission reports the signed
+   *   steps that already moved funds as `Submitted`.
    */
   private async submitSignedActions(
     provider: string,
@@ -527,7 +531,10 @@ export class PerpsClient {
         })
         results = [...executed, ...response.results]
       } catch (error) {
-        rethrowWithKnownResults(executed, error)
+        rethrowWithKnownResults(
+          [...executed, ...sentBeforeExecuteResults(signed)],
+          error
+        )
       }
     }
     if (results.length === 0) {
@@ -1157,16 +1164,19 @@ export class PerpsClient {
     const { provider, address } = params
 
     const metadata = await this.getProviderMetadata(provider)
-    const hasSiweSetup = metadata.setup.some(
-      (descriptor) => descriptor.signingMethod === SigningMethod.SIWE
+    const setupBeforeDeposit = metadata.setup.some(
+      (descriptor) =>
+        descriptor.signingMethod === SigningMethod.SIWE ||
+        descriptor.type === ActionType.CREATE_ACCOUNT
     )
 
     // Gate on existence first: an unfunded account has no setup, so short-circuit
     // before any createAction round-trip and let the consumer prompt a deposit.
     //
-    // SIWE-first providers (Ondo) are the exception: they cannot reliably probe
-    // account existence before the user signs in, so setup must still stage.
-    if (!hasSiweSetup && !(await this.accountExists(provider, address))) {
+    // Two exceptions must still stage setup. SIWE-first providers (Ondo) cannot
+    // probe account existence before the user signs in. Providers with a
+    // CREATE_ACCOUNT step (Extended) open the account in setup, before a deposit.
+    if (!setupBeforeDeposit && !(await this.accountExists(provider, address))) {
       return {
         accountExists: false,
         setup: [],

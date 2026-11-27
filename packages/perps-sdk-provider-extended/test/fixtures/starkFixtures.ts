@@ -20,6 +20,24 @@ interface SignedRequestFixture {
   stopLoss?: { settlement: { signature: StarkSignatureFixture } }
 }
 
+/** `POST /api/v1/user/withdrawal` body of the Python SDK. */
+export interface WithdrawalRequestFixture {
+  accountId: string
+  amount: string
+  chainId: string
+  quoteId: string
+  asset: string
+  settlement: {
+    recipient: string
+    positionId: string
+    collateralId: string
+    amount: string
+    expiration: { seconds: string }
+    salt: string
+    signature: StarkSignatureFixture
+  }
+}
+
 export interface StarkCaseFixture {
   label: string
   hashCalls: HashCallFixture[]
@@ -58,7 +76,7 @@ interface ExtendedStarkFixtures {
   }[]
   withdrawals: {
     amount: string
-    request: SignedRequestFixture
+    request: WithdrawalRequestFixture
     hashCalls: HashCallFixture[]
   }[]
   transfers: {
