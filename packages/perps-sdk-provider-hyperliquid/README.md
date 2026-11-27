@@ -122,7 +122,7 @@ defines token indices and `tokenId`.
 | `liquidation` | Liquidation with resolved positions. |
 | `accountClassTransfer` | `INTERNAL_TRANSFER` between spot and perps. Resolve collateral token index `0` and retain `usdc`. |
 | `vaultCreate` | Excluded: vault creation and capital allocation require a vault activity model. |
-| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. |
+| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. For a query of the vault account, the mapper skips the row and writes a warning. |
 | `vaultDistribution` | Excluded: a vault distribution requires vault identity and investment semantics. |
 | `vaultWithdraw` | USDC transfer from the vault to the user; use `netWithdrawnUsd` and preserve accounting fields in `meta`. |
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
@@ -146,8 +146,10 @@ The mapper excludes a fee or reward row without a string `token` and a string
 
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor
-field. A query for the vault account therefore raises `ValidationError` for that
-row instead of inventing a counterparty. Depositor-account queries map normally.
+field. For a query of the vault account, the mapper therefore skips that row
+and writes one warning. It does not invent a counterparty, and the other rows
+of the account stay in the result. Depositor-account queries map normally.
+Portfolio transfer history keeps unavailable coverage for the vault-side row.
 
 `TRANSFER` describes movements between distinct accounts and requires a counterparty.
 The mapper excludes same-account `send` and `spotTransfer` rows.

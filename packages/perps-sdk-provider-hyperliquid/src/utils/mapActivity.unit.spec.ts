@@ -989,16 +989,30 @@ describe('mapLedgerEntry — vault transfers', () => {
     })
   })
 
-  it('rejects a vault-side deposit whose payload identifies no depositor', () => {
-    expect(() =>
-      mapLedgerEntry(
-        deposit,
-        PROVIDER,
-        COUNTERPARTY,
-        assetRegistry,
-        resolveMarket
-      )
-    ).toThrow(/identifies no depositor/)
+  it('skips a vault-side deposit whose payload identifies no depositor and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const provider = 'hyperliquid-vault-side-deposit'
+    const secondDeposit: HlLedgerUpdate = {
+      hash: 'vault-deposit-2',
+      time: 2,
+      delta: { type: 'vaultDeposit', vault: COUNTERPARTY, usdc: '5' },
+    }
+
+    for (const entry of [deposit, secondDeposit]) {
+      expect(
+        mapLedgerEntry(
+          entry,
+          provider,
+          COUNTERPARTY,
+          assetRegistry,
+          resolveMarket
+        )
+      ).toBeNull()
+    }
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      `[${provider}] skipping ledger row: \`vault\` is not a valid counterparty address: '${COUNTERPARTY}'`
+    )
   })
 
   it('excludes a withdrawal back to the same vault account', () => {
