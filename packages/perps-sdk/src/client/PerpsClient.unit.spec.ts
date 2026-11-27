@@ -1997,6 +1997,21 @@ describe('PerpsClient', () => {
         })
       ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
     })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
   })
 
   // ---------------------------------------------------------------------------
