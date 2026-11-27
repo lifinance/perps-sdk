@@ -402,11 +402,12 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (sub.channel === 'accountSummary') {
         this.summaryUsers.add(user)
       }
-      if (count === 0) {
-        await this.registerSub(wireKey, payload)
+      const register = async () => {
+        if (count === 0) {
+          await this.registerSub(wireKey, payload)
+        }
       }
-      await this.rws.ready()
-      return () => {
+      return this.openWires(register, () => {
         if (sub.channel === 'accountSummary') {
           this.summaryUsers.delete(user)
           this.abstractionReadsByUser.delete(user)
@@ -425,7 +426,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         } else {
           this.clearinghouseRefs.set(user, remaining)
         }
-      }
+      })
     }
 
     // All other channels: single WS subscription per key
@@ -434,14 +435,13 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       this.claimOrderbookKey(sub.marketId, key)
     }
     const payload = this.toHlPayload(sub)
-    await this.registerSub(key, payload)
-    if (sub.channel === 'orderbook') {
-      this.registerOrderbook(sub.marketId, key)
+    const register = async () => {
+      await this.registerSub(key, payload)
+      if (sub.channel === 'orderbook') {
+        this.registerOrderbook(sub.marketId, key)
+      }
     }
-
-    await this.rws.ready()
-
-    return () => {
+    return this.openWires(register, () => {
       this.unregisterSub(key)
       if (this.orderUpdatesKey === key) {
         this.orderUpdatesKey = undefined
@@ -456,7 +456,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       if (sub.channel === 'orderbook') {
         this.releaseOrderbook(sub.marketId, key)
       }
-    }
+    })
   }
 
   /**

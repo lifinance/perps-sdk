@@ -21,6 +21,7 @@ import {
   WS_MARKETS_CONTEXT_INTERVAL_MS,
   WsProviderBase,
 } from './WsProviderBase.js'
+import { wsLog } from './wsLog.js'
 
 /** Minimal stand-in for ReconnectingWebSocket — the base only calls these. */
 class MockRws {
@@ -140,6 +141,11 @@ class TestProvider extends WsProviderBase<{ id: string }> {
   }
   unregister(key: string): void {
     this.unregisterSub(key)
+  }
+
+  /** Test hook into the base's protected open with rollback. */
+  open(register: () => Promise<void>, release: () => void) {
+    return this.openWires(register, release)
   }
 }
 
@@ -910,6 +916,46 @@ describe('WsProviderBase — reconnect recovery', () => {
 })
 
 describe('WsProviderBase — wire-sub registry & replay', () => {
+  it('releases a failed open, so the next open replays no wire sub', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    vi.spyOn(rws, 'ready').mockRejectedValueOnce(new Error('connection failed'))
+    const release = vi.fn(() => p.unregister('marketsContext'))
+
+    await expect(
+      p.open(
+        () => p.register('marketsContext', { id: 'marketsContext' }),
+        release
+      )
+    ).rejects.toThrow('connection failed')
+    expect(release).toHaveBeenCalledTimes(1)
+
+    p.sendSubscribeSpy.mockClear()
+    rws.simulateOpen()
+    await flushAsync()
+    expect(p.sendSubscribeSpy).not.toHaveBeenCalled()
+  })
+
+  it('rethrows the open error when the release of a failed open throws', async () => {
+    const rws = new MockRws()
+    const p = new TestProvider(rws)
+    vi.spyOn(rws, 'ready').mockRejectedValueOnce(new Error('connection failed'))
+    const logged = vi
+      .spyOn(wsLog, 'listenerFailure')
+      .mockImplementation(() => {})
+
+    await expect(
+      p.open(
+        async () => {},
+        () => {
+          throw new Error('socket closed')
+        }
+      )
+    ).rejects.toThrow('connection failed')
+    expect(logged).toHaveBeenCalledTimes(1)
+    logged.mockRestore()
+  })
+
   it('sends exactly one subscribe frame per cycle across open→close→reopen', async () => {
     const rws = new MockRws() // starts 'connected'
     const p = new TestProvider(rws)
