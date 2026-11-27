@@ -4,6 +4,7 @@ import {
   PerpsErrorCode,
   SigningMethod,
   type StarkActionStep,
+  type StarkMessage,
   UserActionStatus,
 } from '@lifi/perps-types'
 import { createWalletClient, http } from 'viem'
@@ -255,7 +256,7 @@ describe('extendedSignActions STARK', () => {
 
   const fixtureMessage = (
     hashCall: (typeof starkFixtures.transfers)[number]['hashCalls'][number]
-  ): StarkActionStep['stark']['messages'][number] => ({
+  ): StarkMessage => ({
     ...toStarkMessage(hashCall).message,
     signaturePath: ['settlement', 'signature'],
   })
@@ -305,6 +306,43 @@ describe('extendedSignActions STARK', () => {
     ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
     expect(requests).toHaveLength(0)
     expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false)
+  })
+
+  it.each([
+    [
+      'an unknown type',
+      (message: StarkMessage) => ({ ...message, type: 'toString' }),
+    ],
+    [
+      'a missing field',
+      ({ fields: { salt: _salt, ...fields }, ...message }: StarkMessage) => ({
+        ...message,
+        fields,
+      }),
+    ],
+    [
+      'an extra field',
+      (message: StarkMessage) => ({
+        ...message,
+        fields: { ...message.fields, nonce: '1' },
+      }),
+    ],
+    [
+      'a field that is not a string',
+      (message: StarkMessage) => ({
+        ...message,
+        fields: { ...message.fields, salt: 1 as unknown as string },
+      }),
+    ],
+  ])('refuses a message with %s', async (_label, change) => {
+    const { deps, requests } = await setup([placedOrderAnswer])
+    const step = buildOrderStep('limit buy GTT nonce=1')
+    step.stark.messages[0] = change(step.stark.messages[0])
+
+    await expect(
+      extendedSignActions(deps, SigningMethod.STARK, [step], address)
+    ).rejects.toMatchObject({ code: PerpsErrorCode.SDKError })
+    expect(requests).toHaveLength(0)
   })
 
   it.each([

@@ -39,6 +39,12 @@ export {
   EXTENDED_MAINNET_STARK_DOMAIN,
   type StarkDomain,
 } from './signing/starkMessageHash.js'
+export type {
+  ExtendedStarkMessage,
+  ExtendedStarkOrderFields,
+  ExtendedStarkTransferFields,
+  ExtendedStarkWithdrawalFields,
+} from './types/starkMessage.js'
 export type * from './types/wire.js'
 export { ExtendedApiClient, ExtendedApiError } from './utils/apiClient.js'
 export {
