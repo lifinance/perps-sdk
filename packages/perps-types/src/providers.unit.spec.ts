@@ -241,6 +241,20 @@ const spotCategory: ProviderCategory = {
   quoteAsset: null,
 }
 
+// The perps ledger holds the collateral at a lower precision than the spot
+// token, so the category carries its own ledger precision.
+const categoryWithCollateralLedgerDecimals: ProviderCategory = {
+  id: 'hyperliquid',
+  quoteAsset: { ...usdcAsset, decimals: 8 },
+  collateralLedgerDecimals: 6,
+}
+
+// An older backend omits the field.
+const categoryWithoutCollateralLedgerDecimals: ProviderCategory = {
+  id: 'hyperliquid',
+  quoteAsset: { ...usdcAsset, decimals: 8 },
+}
+
 // An empty setup array is valid (provider with no gates and no knobs).
 const providerWithNoDescriptors: Provider = {
   key: 'noop',
@@ -576,6 +590,16 @@ type _TradeNoticeOptional = Expect<
   Equals<Extract<RequiredKeys<ProviderCategory>, 'tradeNotice'>, never>
 >
 
+type _CollateralLedgerDecimalsShape = Expect<
+  Equals<ProviderCategory['collateralLedgerDecimals'], number | undefined>
+>
+type _CollateralLedgerDecimalsIsOptional = Expect<
+  Equals<
+    Extract<RequiredKeys<ProviderCategory>, 'collateralLedgerDecimals'>,
+    never
+  >
+>
+
 // `AccountConfig` narrows on `provider`. The widget never reads the union
 // directly without narrowing — these assertions lock that contract.
 type _NarrowHl = Expect<
@@ -765,6 +789,22 @@ describe('ProviderCategory.tradeNotice', () => {
 
   it('keeps the message plaintext — a URL stays inline text', () => {
     expect(warnNotice.message).toContain('docs.example.invalid')
+  })
+})
+
+describe('ProviderCategory.collateralLedgerDecimals', () => {
+  it('keeps the ledger precision apart from the spot token precision', () => {
+    expect(categoryWithCollateralLedgerDecimals.quoteAsset?.decimals).toBe(8)
+    expect(categoryWithCollateralLedgerDecimals.collateralLedgerDecimals).toBe(
+      6
+    )
+  })
+
+  it('admits a category from an older backend without the field', () => {
+    expect(
+      categoryWithoutCollateralLedgerDecimals.collateralLedgerDecimals
+    ).toBeUndefined()
+    expect(spotCategory.collateralLedgerDecimals).toBeUndefined()
   })
 })
 

@@ -140,6 +140,13 @@ export interface ProviderCategory {
   logoURI?: string
   /** `null` for the "spot" category — no single fixed quote. */
   quoteAsset: Asset | null
+  /**
+   * Precision of the category's collateral on the perps ledger. It can differ
+   * from `quoteAsset.decimals` (spot token precision) and is not an order-size
+   * precision (`Market.szDecimals`). Absent when the backend publishes none:
+   * do not substitute `quoteAsset.decimals`.
+   */
+  collateralLedgerDecimals?: number
   tradeNotice?: TradeNotice
 }
 
