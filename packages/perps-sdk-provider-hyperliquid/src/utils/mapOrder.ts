@@ -2,6 +2,7 @@ import {
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
+  isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
   safeDivideDecimalString,
@@ -218,7 +219,7 @@ function venueError(message: string): PerpsError {
  * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
  * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
  * @param tradedSize - Sum of the venue fills of a regular or trigger row. When
- * absent, the filled size is `origSz − sz`.
+ * absent, or zero on a `filled` row, the filled size is `origSz − sz`.
  */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
@@ -308,7 +309,6 @@ export const mapOrder = (
       ? skipOrder(market.id, 'sz', o.sz)
       : skipOrder(market.id, 'origSz', o.origSz)
   }
-  const filledSize = tradedSize ?? venueFilledSize
   const createdAt = rowTimestampToIsoStringOrUndefined(o.timestamp)
   if (createdAt === undefined) {
     return skipOrder(market.id, 'timestamp', o.timestamp)
@@ -319,6 +319,12 @@ export const mapOrder = (
     return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
   const lifecycle = mapOrderLifecycle(venueStatus)
+  // A `filled` order has a fill, so a zero sum comes from a fill read that lags the venue.
+  const filledSize =
+    tradedSize === undefined ||
+    (lifecycle.status === OrderStatus.FILLED && isDecimalStringZero(tradedSize))
+      ? venueFilledSize
+      : tradedSize
   let status = lifecycle.status
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING

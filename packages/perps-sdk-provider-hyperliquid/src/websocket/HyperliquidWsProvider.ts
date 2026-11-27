@@ -1230,55 +1230,52 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
       const readOrders = details.flatMap((detail) =>
         detail ? [detail.order] : []
       )
-      let tradedSizes: Map<number, DecimalString> | undefined
-      try {
-        tradedSizes = await fetchTradedSizes(
-          this.orderApiUrl,
-          user,
-          readOrders,
-          hlInfoOptions(client)
-        )
-      } catch (error) {
-        if (!(error instanceof PerpsError)) {
-          throw error
-        }
-        for (const order of readOrders.filter(isFilledSizeAmbiguous)) {
-          wsLog.droppedRow(
-            this.providerKey,
-            'order',
-            `${order.oid}: ${error.message}`
+      const tradedSizes = await this.readFrameEnrichment(
+        'order fill',
+        (signal) =>
+          fetchTradedSizes(
+            this.orderApiUrl,
+            user,
+            readOrders,
+            hlInfoOptions(client, { signal })
           )
-        }
-      }
-      const mapped = details.map((detail) => {
-        if (
-          detail === undefined ||
-          (tradedSizes === undefined && isFilledSizeAmbiguous(detail.order))
-        ) {
-          return undefined
-        }
-        return mapOrderRow(detail.order.coin, this.registry, (resolved) =>
-          mapOrder(
-            detail,
-            resolved,
-            undefined,
-            tradedSizes?.get(detail.order.oid)
-          )
-        )
-      })
+      )
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
       const orders: Order[] = []
       const terminated: string[] = []
-      for (const order of mapped) {
+      for (const detail of details) {
+        if (detail === undefined) {
+          continue
+        }
+        const order = mapOrderRow(
+          detail.order.coin,
+          this.registry,
+          (resolved) =>
+            mapOrder(
+              detail,
+              resolved,
+              undefined,
+              tradedSizes?.get(detail.order.oid)
+            )
+        )
         if (order === undefined) {
           continue
         }
-        orders.push(order)
         if (!isActiveOrderStatus(order.status)) {
           terminated.push(order.orderId)
         }
+        // Without its fills the row has no filled size, but its terminal status still evicts it.
+        if (tradedSizes === undefined && isFilledSizeAmbiguous(detail.order)) {
+          wsLog.droppedRow(
+            this.providerKey,
+            'order',
+            `${order.orderId}: the fill read failed`
+          )
+          continue
+        }
+        orders.push(order)
       }
       this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })

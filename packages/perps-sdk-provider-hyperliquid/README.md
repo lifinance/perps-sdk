@@ -326,11 +326,14 @@ minus `sz` as the filled size.
 
 The fill read starts at the creation time of the oldest such order. When the
 2,000 newest fills do not reach back to that time, the provider also reads
-`userFillsByTime`. A failed fill read rejects `getOrders` and `getOrder`. The
-`orderUpdates` feed drops the affected rows and emits the other rows of the
-frame. The venue keeps only the latest 10,000 fills. An order that can be
+`userFillsByTime`. A failed fill read rejects `getOrders` and `getOrder` with a
+`ThirdPartyError`. In the `orderUpdates` feed, a fill read that fails or that
+takes more than `WS_FRAME_ENRICHMENT_TIMEOUT_MS` drops the affected rows. The
+frame emits its other rows and lists each affected terminal order in
+`terminated`. The venue keeps only the latest 10,000 fills. An order that can be
 older than these fills, or that has a fill with an invalid size, keeps `origSz`
-minus `sz`.
+minus `sz`. A `filled` order without a fill in the read also keeps `origSz`
+minus `sz`, because a filled order always has a fill.
 
 The venue returns at most 2,000 historical orders. The provider returns the
 available matching rows in one response; it does not expose older pages.

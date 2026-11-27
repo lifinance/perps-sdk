@@ -160,6 +160,22 @@ describe('fetchTradedSizes', () => {
     expect(tradedSizes).toEqual(new Map([[42, '0.0001']]))
   })
 
+  it('gives no entry for an order created at the time of the oldest retained fill', async () => {
+    const retained = Array.from({ length: 10_000 }, (_, index) =>
+      fill(index, 40, START + 1_000 + index)
+    )
+    installVenue(retained)
+
+    await expect(
+      fetchTradedSizes(
+        DEFAULT_HYPERLIQUID_API_URL,
+        ADDRESS,
+        [order(41, { timestamp: START + 1_000 })],
+        options
+      )
+    ).resolves.toEqual(new Map())
+  })
+
   it('gives no entry for an order with an invalid fill size', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     installVenue([fill(1, 41, START + 1_000, 'bad')])
