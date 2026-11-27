@@ -2,7 +2,6 @@ import {
   createWarnOnce,
   isDecimalString,
   isDecimalStringGreaterThan,
-  isDecimalStringZero,
   type MarketRegistry,
   PerpsError,
   safeDivideDecimalString,
@@ -13,7 +12,6 @@ import {
   warnSkippedVenueRow,
 } from '@lifi/perps-sdk'
 import type {
-  DecimalString,
   MarketDisplay,
   Order,
   OrderBase,
@@ -216,16 +214,12 @@ function venueError(message: string): PerpsError {
 }
 
 /**
- * Normalize regular, trigger, and TWAP rows through one lifecycle model. A row
- * whose filled or remaining size or timestamp cannot be derived gives `undefined`.
- * @param tradedSize - Sum of the venue fills of a regular or trigger row. When
- * absent, or zero on a `filled` row, the filled size is `origSz − sz`.
+ * Normalize regular, trigger, and TWAP rows through one lifecycle model.
  */
 export const mapOrder = (
   raw: HlOrderLike | HlOrderDetail | HlTwapHistoryEntry,
   market: MarketDisplay,
-  parentOrderId?: string,
-  tradedSize?: DecimalString
+  parentOrderId?: string
 ): Order | undefined => {
   if ('state' in raw) {
     if (raw.twapId === undefined) {
@@ -303,8 +297,8 @@ export const mapOrder = (
   }
   const o = 'order' in raw ? raw.order : raw
   const venueStatus = 'order' in raw ? raw.status : 'open'
-  const venueFilledSize = safeSubtractDecimalString(o.origSz, o.sz)
-  if (venueFilledSize === undefined) {
+  const sizeDifference = safeSubtractDecimalString(o.origSz, o.sz)
+  if (sizeDifference === undefined) {
     return isDecimalString(o.origSz)
       ? skipOrder(market.id, 'sz', o.sz)
       : skipOrder(market.id, 'origSz', o.origSz)
@@ -319,18 +313,16 @@ export const mapOrder = (
     return skipOrder(market.id, 'statusTimestamp', statusTimestamp)
   }
   const lifecycle = mapOrderLifecycle(venueStatus)
-  // A `filled` order has a fill, so a zero sum comes from a fill read that lags the venue.
-  const filledSize =
-    tradedSize === undefined ||
-    (lifecycle.status === OrderStatus.FILLED && isDecimalStringZero(tradedSize))
-      ? venueFilledSize
-      : tradedSize
+  const sizeDecreased = isDecimalStringGreaterThan(sizeDifference, '0')
+  // Hyperliquid can reduce the size of a reduce-only order without a trade.
+  const filledSize = o.reduceOnly && sizeDecreased ? null : sizeDifference
   let status = lifecycle.status
   if (parentOrderId !== undefined && !('order' in raw)) {
     status = OrderStatus.PENDING
   } else if (
     status === OrderStatus.OPEN &&
-    isDecimalStringGreaterThan(filledSize, '0')
+    filledSize !== null &&
+    sizeDecreased
   ) {
     status = OrderStatus.PARTIALLY_FILLED
   }

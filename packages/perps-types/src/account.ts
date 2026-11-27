@@ -117,7 +117,8 @@ export interface OrderBase {
   statusReason?: string
   originalSize: DecimalString
   remainingSize: DecimalString
-  filledSize: DecimalString
+  /** `null` when the venue order data does not establish the filled size. */
+  filledSize: DecimalString | null
   averagePrice?: DecimalString
   reduceOnly: boolean
   /** Parent of a placement TP/SL leg or TWAP child; absent on position-level triggers. */
@@ -162,6 +163,7 @@ export interface TriggerOrder extends OrderBase {
 /** Time-weighted execution parent. */
 export interface TwapOrder extends OrderBase {
   type: OrderType.TWAP
+  filledSize: DecimalString
   durationSeconds: number
   startedAt: string
 }

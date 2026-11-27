@@ -164,55 +164,30 @@ describe('mapOrder', () => {
     )
   })
   it.each([
-    ['no trade', '0', OrderStatus.OPEN],
-    ['a trade', '0.0001', OrderStatus.PARTIALLY_FILLED],
-  ])('takes the filled size of an open row with %s from its traded size', (_, tradedSize, status) => {
+    ['open', OrderStatus.OPEN, '0.0002'],
+    ['reduceOnlyCanceled', OrderStatus.CANCELLED, '0.0002'],
+    ['filled', OrderStatus.FILLED, '0'],
+  ] as const)('keeps %s status when the reduce-only filled size is unknown', (venueStatus, status, sz) => {
+    const order = raw({ origSz: '0.0004', sz, reduceOnly: true })
     expect(
       mapOrder(
-        raw({ origSz: '0.0004', sz: '0.0002', reduceOnly: true }),
-        MARKET,
-        undefined,
-        tradedSize
+        venueStatus === 'open' ? order : { ...detail(venueStatus), order },
+        MARKET
       )
     ).toMatchObject({
       status,
       originalSize: '0.0004',
-      remainingSize: '0.0002',
-      filledSize: tradedSize,
+      remainingSize: sz,
+      filledSize: null,
     })
   })
-  it('takes the filled size of a terminal row from its traded size', () => {
+  it('reports a known zero when the reduce-only size is unchanged', () => {
     expect(
       mapOrder(
-        {
-          ...detail('reduceOnlyCanceled'),
-          order: raw({ origSz: '0.0004', sz: '0.0002', reduceOnly: true }),
-        },
-        MARKET,
-        undefined,
-        '0'
+        raw({ origSz: '0.0004', sz: '0.0004', reduceOnly: true }),
+        MARKET
       )
-    ).toMatchObject({ status: OrderStatus.CANCELLED, filledSize: '0' })
-  })
-  it.each([
-    ['takes the traded size of a filled row', '0.0002', '0.0002'],
-    [
-      'keeps origSz − sz for a filled row without a fill in the read',
-      '0',
-      '0.0004',
-    ],
-  ])('%s', (_, tradedSize, filledSize) => {
-    expect(
-      mapOrder(
-        {
-          ...detail('filled'),
-          order: raw({ origSz: '0.0004', sz: '0.0', reduceOnly: true }),
-        },
-        MARKET,
-        undefined,
-        tradedSize
-      )
-    ).toMatchObject({ status: OrderStatus.FILLED, filledSize })
+    ).toMatchObject({ status: OrderStatus.OPEN, filledSize: '0' })
   })
   it('keeps both venue and client ids and omits a null client id', () => {
     expect(mapOrder(raw({ cloid: '0x1234' }), MARKET)).toMatchObject({

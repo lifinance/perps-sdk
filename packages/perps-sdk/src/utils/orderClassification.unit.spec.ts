@@ -76,7 +76,7 @@ describe('isTpSlOrder', () => {
 })
 
 describe('Order union classification', () => {
-  const base: OrderBase = {
+  const base = {
     orderId: '1',
     market: {
       providerId: 'hyperliquid',
@@ -103,7 +103,7 @@ describe('Order union classification', () => {
     reduceOnly: false,
     createdAt: '2026-09-15T00:00:00Z',
     updatedAt: '2026-09-15T00:00:00Z',
-  }
+  } satisfies OrderBase
   const orders: Order[] = [
     {
       ...base,

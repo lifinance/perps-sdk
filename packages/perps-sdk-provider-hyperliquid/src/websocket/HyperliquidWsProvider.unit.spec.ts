@@ -20,8 +20,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   HL_DELISTED_MARKET,
   HL_MARKETS,
-  HL_REDUCE_ONLY_SHRUNK_ORDER,
-  HL_REDUCE_ONLY_SHRUNK_ORDER_FILL,
   HL_SPOT_MARKET,
   HL_TWAP_SLICE_FILL_REFERENCE,
   USDC_ASSET,
@@ -261,9 +259,6 @@ const assetsFetchMock = vi.fn()
 // here. Unset/cleared resolves `null` (= never set = standard mode).
 const abstractionFetchMock = vi.fn()
 const orderStatusFetchMock = vi.fn()
-const userFillsFetchMock = vi.fn(
-  async (_signal?: AbortSignal | null): Promise<unknown> => []
-)
 const activeAssetDataFetchMock = vi.fn()
 const spotStateFetchMock = vi.fn()
 const accountExistsFetchMock = vi.fn(async () => ({
@@ -323,10 +318,6 @@ vi.stubGlobal(
       const body = JSON.parse(String(init?.body ?? '{}'))
       if (body.type === 'orderStatus') {
         return Response.json(await orderStatusFetchMock(body, url))
-      }
-      if (body.type === 'userFills') {
-        const result = await userFillsFetchMock(init?.signal)
-        return result instanceof Response ? result : Response.json(result)
       }
       if (body.type === 'spotClearinghouseState') {
         return Response.json(await spotStateFetchMock(body, url))
@@ -3232,169 +3223,6 @@ describe('HyperliquidWsProvider', () => {
       })
       expect(warn).toHaveBeenCalledWith(
         '[hyperliquid:ws] skipping order row: 102: Hyperliquid order metadata not found: 102'
-      )
-      warn.mockRestore()
-    })
-
-    it.each([
-      ['without a trade', [], OrderStatus.OPEN, '0'],
-      [
-        'with a trade',
-        [HL_REDUCE_ONLY_SHRUNK_ORDER_FILL],
-        OrderStatus.PARTIALLY_FILLED,
-        '0.0001',
-      ],
-    ])('reads the filled size of a reduce-only update the venue shrank %s from its fills', async (_, fills, status, filledSize) => {
-      const provider = createEnrichingProvider()
-      const listener = vi.fn()
-      orderStatusFetchMock
-        .mockReset()
-        .mockResolvedValue(orderMetadata({ oid: 41, reduceOnly: true }))
-      userFillsFetchMock.mockResolvedValueOnce(fills)
-      await provider.subscribe(
-        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
-        listener
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'orderUpdates',
-          data: [
-            sparseOrderUpdate({
-              oid: 41,
-              side: 'A',
-              sz: '0.0002',
-              origSz: '0.0004',
-              timestamp: HL_REDUCE_ONLY_SHRUNK_ORDER.timestamp,
-            }),
-          ],
-        })
-      )
-      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
-      expect(listener.mock.calls[0][0].data.orders).toEqual([
-        expect.objectContaining({
-          orderId: '41',
-          status,
-          originalSize: '0.0004',
-          remainingSize: '0.0002',
-          filledSize,
-        }),
-      ])
-    })
-
-    it('drops a shrunk reduce-only update whose fill read fails and keeps the other rows', async () => {
-      const provider = createEnrichingProvider()
-      const listener = vi.fn()
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      orderStatusFetchMock
-        .mockReset()
-        .mockImplementation(async (body: { oid: number }) =>
-          orderMetadata({ oid: body.oid, reduceOnly: body.oid === 41 })
-        )
-      userFillsFetchMock.mockResolvedValueOnce(
-        new Response('{}', { status: 500 })
-      )
-      await provider.subscribe(
-        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
-        listener
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'orderUpdates',
-          data: [
-            sparseOrderUpdate({ oid: 41, sz: '0.0002', origSz: '0.0004' }),
-            sparseOrderUpdate({ oid: 101 }),
-          ],
-        })
-      )
-      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
-      expect(listener.mock.calls[0][0].data.orders).toEqual([
-        expect.objectContaining({ orderId: '101', filledSize: '0.05' }),
-      ])
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('[hyperliquid:ws] skipping order row: 41: ')
-      )
-      warn.mockRestore()
-    })
-
-    it('evicts a terminal shrunk reduce-only update whose fill read fails', async () => {
-      const provider = createEnrichingProvider()
-      const listener = vi.fn()
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      orderStatusFetchMock
-        .mockReset()
-        .mockResolvedValue(orderMetadata({ oid: 41, reduceOnly: true }))
-      userFillsFetchMock.mockResolvedValueOnce(
-        new Response('{}', { status: 500 })
-      )
-      await provider.subscribe(
-        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
-        listener
-      )
-      getMockRwsInstance().simulateMessage(
-        JSON.stringify({
-          channel: 'orderUpdates',
-          data: [
-            sparseOrderUpdate(
-              { oid: 41, sz: '0.0002', origSz: '0.0004' },
-              'reduceOnlyCanceled'
-            ),
-          ],
-        })
-      )
-
-      await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
-      expect(listener.mock.calls[0][0].data).toEqual({
-        orders: [],
-        terminated: ['41'],
-      })
-      warn.mockRestore()
-    })
-
-    it('emits the other rows when the fill read exceeds the timeout', async () => {
-      const provider = createEnrichingProvider()
-      const listener = vi.fn()
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      orderStatusFetchMock
-        .mockReset()
-        .mockImplementation(async (body: { oid: number }) =>
-          orderMetadata({ oid: body.oid, reduceOnly: body.oid === 41 })
-        )
-      userFillsFetchMock.mockImplementationOnce(
-        (signal) =>
-          new Promise((_resolve, reject) => {
-            signal?.addEventListener('abort', () => reject(signal.reason))
-          })
-      )
-      await provider.subscribe(
-        { channel: 'orderUpdates', dex: 'hyperliquid', address: '0xuser1' },
-        listener
-      )
-      vi.useFakeTimers()
-      try {
-        getMockRwsInstance().simulateMessage(
-          JSON.stringify({
-            channel: 'orderUpdates',
-            data: [
-              sparseOrderUpdate({ oid: 41, sz: '0.0002', origSz: '0.0004' }),
-              sparseOrderUpdate({ oid: 101 }),
-            ],
-          })
-        )
-        await vi.advanceTimersByTimeAsync(WS_FRAME_ENRICHMENT_TIMEOUT_MS - 1)
-        expect(listener).not.toHaveBeenCalled()
-
-        await vi.advanceTimersByTimeAsync(1)
-        expect(listener).toHaveBeenCalledOnce()
-      } finally {
-        vi.useRealTimers()
-      }
-      expect(listener.mock.calls[0][0].data).toEqual({
-        orders: [expect.objectContaining({ orderId: '101' })],
-        terminated: [],
-      })
-      expect(warn).toHaveBeenCalledWith(
-        '[hyperliquid:ws] order fill read failed; the frame emits without it',
-        expect.objectContaining({ name: 'TimeoutError' })
       )
       warn.mockRestore()
     })

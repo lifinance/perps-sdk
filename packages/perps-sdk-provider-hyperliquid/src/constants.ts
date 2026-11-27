@@ -47,12 +47,6 @@ export const MAX_HISTORY_LIMIT = 200
  * @internal
  */
 export const FILL_ROWS_CAP = 2000
-/**
- * Number of the newest fills of an account that `userFillsByTime` can return.
- * The venue discards older fills.
- * @internal
- */
-export const RETAINED_FILLS_CAP = 10_000
 
 /**
  * Main perps DEX uses an empty sub-dex name on the wire; surfaced as

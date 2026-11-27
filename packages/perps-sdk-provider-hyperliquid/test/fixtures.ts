@@ -7,7 +7,6 @@ import {
 import type {
   HlClearinghouseState,
   HlExtraAgents,
-  HlFrontendOpenOrder,
   HlFrontendOpenOrders,
   HlMetaAndAssetCtxs,
   HlOrderDetail,
@@ -17,7 +16,6 @@ import type {
   HlTwapHistoryEntry,
   HlTwapSliceFill,
   HlUserFees,
-  HlUserFill,
   HlUserFills,
   HlUserFunding,
   HlUserNonFundingLedgerUpdates,
@@ -282,47 +280,6 @@ export const HL_FRONTEND_OPEN_ORDERS: HlFrontendOpenOrders = [
     cloid: null,
   },
 ]
-
-/**
- * A reduce-only limit sell of 0.0004 BTC that the venue shrank to the 0.0002
- * BTC long it reduces. `frontendOpenOrders` keeps `origSz` and lowers `sz`.
- */
-export const HL_REDUCE_ONLY_SHRUNK_ORDER: HlFrontendOpenOrder = {
-  oid: 41,
-  coin: 'BTC',
-  side: 'A',
-  sz: '0.0002',
-  limitPx: '62000.0',
-  orderType: 'Limit',
-  origSz: '0.0004',
-  reduceOnly: true,
-  timestamp: 1_795_608_000_000,
-  isTrigger: false,
-  isPositionTpsl: false,
-  triggerCondition: 'N/A',
-  triggerPx: '0.0',
-  children: [],
-  tif: 'Gtc',
-  cloid: null,
-}
-
-/** A 0.0001 BTC trade of {@link HL_REDUCE_ONLY_SHRUNK_ORDER}. */
-export const HL_REDUCE_ONLY_SHRUNK_ORDER_FILL: HlUserFill = {
-  tid: 410,
-  oid: 41,
-  coin: 'BTC',
-  side: 'A',
-  sz: '0.0001',
-  px: '62000.0',
-  dir: 'Close Long',
-  fee: '0.00279',
-  feeToken: 'USDC',
-  closedPnl: '0.5',
-  crossed: false,
-  time: 1_795_608_060_000,
-  startPosition: '0.0003',
-  hash: '0x4f1e2a9c0b7d3e5f6a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f',
-}
 
 export const HL_ORDER_DETAIL_FOUND: HlOrderDetail = {
   order: {

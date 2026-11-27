@@ -1,7 +1,8 @@
 import type { Address } from 'viem'
+import { FILL_ROWS_CAP } from '../constants.js'
 import type { HlTwapHistoryEntry, HlTwapSliceFill } from '../types/index.js'
-import type { InfoRequestOptions } from '../utils/infoClient.js'
-import { fetchFillFeedSince } from './fillFeed.js'
+import { type InfoRequestOptions, infoRequest } from '../utils/infoClient.js'
+import { historyPage } from './historyPagination.js'
 
 /**
  * Read the slice fills of each `activated` TWAP in `entries`, or none without
@@ -23,12 +24,40 @@ export const fetchTwapSliceFills = async (
   if (starts.length === 0) {
     return []
   }
-  return fetchFillFeedSince<HlTwapSliceFill>(
+  const window = await infoRequest<HlTwapSliceFill[]>(
     apiUrl,
-    user,
-    'userTwapSliceFills',
-    Math.min(...starts),
-    ({ fill }) => fill,
+    { type: 'userTwapSliceFills', user },
     options
   )
+  if (window.length < FILL_ROWS_CAP) {
+    return window
+  }
+  const oldest = Math.min(...window.map(({ fill }) => fill.time))
+  const startTime = Math.min(...starts)
+  if (startTime > oldest) {
+    return window
+  }
+  // The window can end inside its oldest millisecond, so read that millisecond again.
+  const older = await historyPage(
+    { startTime, endTime: oldest },
+    Number.MAX_SAFE_INTEGER,
+    async (rangeStart, rangeEnd) => {
+      const fills = await infoRequest<HlTwapSliceFill[]>(
+        apiUrl,
+        {
+          type: 'userTwapSliceFillsByTime',
+          user,
+          startTime: rangeStart,
+          endTime: rangeEnd,
+        },
+        options
+      )
+      return fills.length >= FILL_ROWS_CAP
+        ? { items: [], saturated: true }
+        : { items: fills, saturated: false }
+    },
+    ({ fill }) => ({ time: fill.time, key: fill.tid }),
+    options?.signal
+  )
+  return [...window.filter(({ fill }) => fill.time > oldest), ...older.items]
 }

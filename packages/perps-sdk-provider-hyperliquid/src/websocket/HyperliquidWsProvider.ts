@@ -59,10 +59,6 @@ import {
 } from '../constants.js'
 import { fetchFillLeverages } from '../services/fillLeverages.js'
 import { requireAccountExists } from '../services/getAccountExists.js'
-import {
-  fetchTradedSizes,
-  isFilledSizeAmbiguous,
-} from '../services/orderFills.js'
 import type {
   HlActiveAssetData,
   HlAssetPosition,
@@ -1203,7 +1199,7 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
         return
       }
       const user = key.slice('orderUpdates:'.length)
-      const details = await Promise.all(
+      const mapped = await Promise.all(
         data.map(async (update) => {
           const basic = update.order
           if (
@@ -1212,8 +1208,9 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
           ) {
             return undefined
           }
+          let detail: HlOrderDetail
           try {
-            return await this.readOrderDetail(user, client, update)
+            detail = await this.readOrderDetail(user, client, update)
           } catch (error) {
             if (!(error instanceof PerpsError)) {
               throw error
@@ -1225,57 +1222,24 @@ export class HyperliquidWsProvider extends WsProviderBase<object> {
             )
             return undefined
           }
-        })
-      )
-      const readOrders = details.flatMap((detail) =>
-        detail ? [detail.order] : []
-      )
-      const tradedSizes = await this.readFrameEnrichment(
-        'order fill',
-        (signal) =>
-          fetchTradedSizes(
-            this.orderApiUrl,
-            user,
-            readOrders,
-            hlInfoOptions(client, { signal })
+          return mapOrderRow(basic.coin, this.registry, (resolved) =>
+            mapOrder(detail, resolved)
           )
+        })
       )
       if (epoch !== this.orderUpdatesEpoch || key !== this.orderUpdatesKey) {
         return
       }
       const orders: Order[] = []
       const terminated: string[] = []
-      for (const detail of details) {
-        if (detail === undefined) {
-          continue
-        }
-        const order = mapOrderRow(
-          detail.order.coin,
-          this.registry,
-          (resolved) =>
-            mapOrder(
-              detail,
-              resolved,
-              undefined,
-              tradedSizes?.get(detail.order.oid)
-            )
-        )
+      for (const order of mapped) {
         if (order === undefined) {
           continue
         }
+        orders.push(order)
         if (!isActiveOrderStatus(order.status)) {
           terminated.push(order.orderId)
         }
-        // Without its fills the row has no filled size, but its terminal status still evicts it.
-        if (tradedSizes === undefined && isFilledSizeAmbiguous(detail.order)) {
-          wsLog.droppedRow(
-            this.providerKey,
-            'order',
-            `${order.orderId}: the fill read failed`
-          )
-          continue
-        }
-        orders.push(order)
       }
       this.emit(key, { channel: 'orderUpdates', data: { orders, terminated } })
     })
