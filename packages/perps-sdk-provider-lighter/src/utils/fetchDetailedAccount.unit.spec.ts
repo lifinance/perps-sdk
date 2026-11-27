@@ -161,6 +161,23 @@ describe('createSharedAccountRead', () => {
     expect(requestSignals).toHaveLength(0)
   })
 
+  it('cancels the only read when its signal aborts during fetch dispatch', async () => {
+    const controller = new AbortController()
+    const reason = new Error('caller aborted during dispatch')
+    let requestSignal: AbortSignal | null | undefined
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      requestSignal = init?.signal
+      controller.abort(reason)
+      return Response.json({ code: 200, accounts: [{ index: 42 }] })
+    }
+    const read = createSharedAccountRead((signal) =>
+      clientWith(fetchImpl, signal)
+    )
+
+    await expect(read(ADDRESS, controller.signal)).rejects.toBe(reason)
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
   it.each([
     { order: 'first', keptJoinsFirst: true },
     { order: 'second', keptJoinsFirst: false },

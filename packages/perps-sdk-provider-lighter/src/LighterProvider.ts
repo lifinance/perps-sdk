@@ -165,10 +165,7 @@ import {
   LighterTokenRevokedError,
 } from './utils/apiClient.js'
 import { isAssetMarginEnabled } from './utils/assetCollateral.js'
-import {
-  createSharedAccountRead,
-  fetchDetailedAccount,
-} from './utils/fetchDetailedAccount.js'
+import { createSharedAccountRead } from './utils/fetchDetailedAccount.js'
 import { fundingPercentToFraction } from './utils/fundingRate.js'
 import {
   LIGHTER_MARKET_SLIPPAGE_PERCENT,
@@ -1506,7 +1503,7 @@ export const createLighterProvider = (
     ): Promise<MarginHealth | undefined> {
       const client = apiClient(opts)
       const [account, assetDetails] = await Promise.all([
-        fetchDetailedAccount(client, params.address),
+        readAccount(params.address, opts?.signal),
         client
           .get<LtAssetDetailsResponse>('/api/v1/assetDetails')
           .then((response) => wireList(response.asset_details)),

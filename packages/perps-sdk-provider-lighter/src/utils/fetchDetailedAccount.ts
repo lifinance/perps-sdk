@@ -80,14 +80,14 @@ export const createSharedAccountRead = (
     const read: PendingAccountRead = {
       controller,
       consumers: 0,
-      account: fetchDetailedAccount(
-        clientFor(controller.signal),
-        address
-      ).finally(() => {
-        if (pending.get(key) === read) {
-          pending.delete(key)
-        }
-      }),
+      // Register the read and its first caller before fetch can abort it.
+      account: Promise.resolve()
+        .then(() => fetchDetailedAccount(clientFor(controller.signal), address))
+        .finally(() => {
+          if (pending.get(key) === read) {
+            pending.delete(key)
+          }
+        }),
     }
     pending.set(key, read)
     return read

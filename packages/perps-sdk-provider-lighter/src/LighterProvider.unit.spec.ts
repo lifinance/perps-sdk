@@ -8033,6 +8033,26 @@ describe('LighterProvider — getMarginHealth', () => {
     ])
   })
 
+  it('shares the pending account request with an account existence check', async () => {
+    stubFetch({
+      assets: [usdc('500')],
+      cross_maintenance_margin_requirement: '100',
+    })
+    const provider = lighterProvider()
+    provider.bind(STUB_CLIENT)
+
+    const [marginHealth, exists] = await Promise.all([
+      provider.getMarginHealth!({ address: ADDRESS }),
+      provider.accountExists({ address: ADDRESS }),
+    ])
+
+    expect(marginHealth?.ratio).toBe('0.2')
+    expect(exists).toBe(true)
+    expect(
+      recorded.filter(({ url }) => url.includes('/api/v1/account?'))
+    ).toHaveLength(1)
+  })
+
   it('values unified margin assets with the asset details of the RH deployment', async () => {
     stubFetch({
       account_trading_mode: LT_ACCOUNT_TRADING_MODE_UNIFIED,
