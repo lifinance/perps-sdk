@@ -92,9 +92,9 @@ and optional `l1Address`. A Hyperliquid ledger row moves a spot asset, and its
 `token` field holds the bare spot symbol. The mapper resolves that symbol in
 the spot asset registry, which the HIP-1 ticker auction keeps unique. The
 registry holds only the tokens of listed spot pairs. The mapper skips a row
-whose symbol is not in the registry and writes one warning. The mapper never
-fabricates an asset. Missing collateral raises a stale or mis-keyed registry
-error.
+whose symbol is not in the registry. It warns once per provider key while the
+warning remains in the cache. The mapper never fabricates an asset. Missing
+collateral raises a stale or mis-keyed registry error.
 
 The fixed-USDC `deposit` and `withdraw` deltas resolve the registry `Asset`
 by reserved spot token index `0`. Their `usdc` field identifies the venue's
@@ -122,7 +122,7 @@ defines token indices and `tokenId`.
 | `liquidation` | Liquidation with resolved positions. |
 | `accountClassTransfer` | `INTERNAL_TRANSFER` between spot and perps. Resolve collateral token index `0` and retain `usdc`. |
 | `vaultCreate` | Excluded: vault creation and capital allocation require a vault activity model. |
-| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. |
+| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. For a query of the vault account, the mapper skips the row. |
 | `vaultDistribution` | Excluded: a vault distribution requires vault identity and investment semantics. |
 | `vaultWithdraw` | USDC transfer from the vault to the user; use `netWithdrawnUsd` and preserve accounting fields in `meta`. |
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
@@ -146,8 +146,10 @@ The mapper excludes a fee or reward row without a string `token` and a string
 
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor
-field. A query for the vault account therefore raises `ValidationError` for that
-row instead of inventing a counterparty. Depositor-account queries map normally.
+field. For a query of the vault account, the mapper skips that row and retains
+the other rows. It warns about the missing depositor once per provider key
+while the warning remains in the cache. Depositor-account queries map normally.
+Portfolio transfer history keeps unavailable coverage for the vault-side row.
 
 `TRANSFER` describes movements between distinct accounts and requires a counterparty.
 The mapper excludes same-account `spotTransfer` rows.

@@ -2,7 +2,6 @@ import {
   type AssetRegistry,
   ExplorerChainId,
   explorerTxUrl,
-  PerpsError,
   safeAddDecimalString,
   safeMultiplyDecimalString,
   safeSubtractDecimalString,
@@ -23,7 +22,7 @@ import type {
   TransferActivity,
   WithdrawalActivity,
 } from '@lifi/perps-types'
-import { ActivityType, PerpsErrorCode } from '@lifi/perps-types'
+import { ActivityType } from '@lifi/perps-types'
 import { zeroHash } from 'viem'
 import type {
   HlBorrowLendOperation,
@@ -326,10 +325,10 @@ export const mapLedgerEntry = (
     const queried = queriedAddress.toLowerCase()
     const vault = delta.vault.toLowerCase()
     if (delta.type === 'vaultDeposit' && queried === vault) {
-      throw new PerpsError(
-        PerpsErrorCode.ValidationError,
-        'Hyperliquid vaultDeposit identifies no depositor for the vault account'
-      )
+      warnSkippedVenueRow(providerKey, 'ledger', 'depositor', undefined, {
+        expected: 'address',
+      })
+      return null
     }
     if (
       delta.type === 'vaultWithdraw' &&

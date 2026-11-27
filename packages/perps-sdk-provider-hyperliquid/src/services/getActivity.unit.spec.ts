@@ -1073,6 +1073,57 @@ describe('getActivity — transfer registry identity', () => {
   })
 })
 
+describe('getActivity — vault account', () => {
+  const DEPOSITOR = '0x2222222222222222222222222222222222222222'
+  afterEach(() => vi.restoreAllMocks())
+
+  it('skips a vault-side deposit and returns the other rows', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    installInfoFetchMock({
+      userNonFundingLedgerUpdates: [
+        {
+          time: 1704067200000,
+          hash: '0xvault-deposit',
+          delta: { type: 'vaultDeposit', vault: ADDRESS, usdc: '20.0' },
+        },
+        {
+          time: 1704067300000,
+          hash: '0xvault-withdraw',
+          delta: {
+            type: 'vaultWithdraw',
+            vault: ADDRESS,
+            user: DEPOSITOR,
+            requestedUsd: '100.0',
+            netWithdrawnUsd: '99.0',
+            commission: '1.0',
+            closingCost: '0.0',
+            basis: '95.0',
+          },
+        },
+        {
+          time: 1704067400000,
+          hash: '0xdeposit',
+          delta: { type: 'deposit', usdc: '12.5' },
+        },
+      ],
+      userFunding: [],
+      userFillsByTime: [],
+    })
+    const result = await getActivity(ctx, { address: ADDRESS, limit: 10 })
+    expect(result.items).toMatchObject([
+      { id: '0xdeposit', type: ActivityType.DEPOSIT, amount: '12.5' },
+      {
+        id: '0xvault-withdraw',
+        type: ActivityType.TRANSFER,
+        direction: 'OUT',
+        counterpartyAddress: DEPOSITOR,
+        amount: '99.0',
+      },
+    ])
+    expect(result.items).toHaveLength(2)
+  })
+})
+
 describe('getActivity — spot transfers with a null nonce', () => {
   const USER = '0x2ba553d9f990a3b66b03b2dc0d030dfc1c061036' as const
   const hype: Asset = {
