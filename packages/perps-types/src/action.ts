@@ -163,7 +163,7 @@ export interface StarkActionStep {
   stark: {
     request: {
       method: 'POST' | 'PATCH' | 'DELETE'
-      /** Venue-relative, e.g. `/user/order`; base URL resolution is provider-side. */
+      /** Venue-relative, e.g. `/api/v1/user/order`; base URL resolution is provider-side. */
       path: string
       /** Large integers are strings, so a JSON round trip keeps them exact. */
       body?: Record<string, unknown>
@@ -716,6 +716,7 @@ export interface ActionParamsMap {
   [ActionType.UPDATE_POSITION_MARGIN]: UpdatePositionMarginParams
   [ActionType.UPDATE_ASSET_COLLATERAL]: UpdateAssetCollateralParams
   [ActionType.REGISTER_API_KEY]: RegisterApiKeyParams
+  [ActionType.REVOKE_API_KEY]: Record<string, never>
   [ActionType.CREATE_ACCOUNT]: Record<string, never>
   [ActionType.APPROVE_READ_ONLY_TOKEN]: ApproveReadOnlyTokenParams
   [ActionType.SIWE_LOGIN]: Record<string, never>

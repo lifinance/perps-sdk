@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { Hex } from '@lifi/perps-types'
+import type { StarkDomain } from '../../src/signing/starkMessageHash.js'
+import type { ExtendedStarkMessage } from '../../src/types/starkMessage.js'
 
 interface StarkSignatureFixture {
   r: Hex
@@ -25,7 +27,7 @@ export interface StarkCaseFixture {
 }
 
 interface ExtendedStarkFixtures {
-  meta: { ethAddress: Hex }
+  meta: { ethAddress: Hex; ethPrivateKey: string; frozenNow: string }
   keyDerivation: {
     network: string
     accountIndex: string
@@ -38,13 +40,20 @@ interface ExtendedStarkFixtures {
     | {
         kind: 'onboard'
         starkMessage: Hex
-        payload: { l2Key: Hex; l2Signature: StarkSignatureFixture }
+        payload: {
+          l1Signature: string
+          l2Key: Hex
+          l2Signature: StarkSignatureFixture
+          accountCreation: Record<string, unknown>
+          referralCode: string | null
+        }
       }
     | { kind: 'subaccount' }
   )[]
+  apiRequestSignature: { path: string; time: string; signature: string }[]
   orders: {
     name: string
-    request: SignedRequestFixture
+    request: SignedRequestFixture & Record<string, unknown>
     hashCalls: HashCallFixture[]
   }[]
   withdrawals: {
@@ -109,3 +118,74 @@ if (mainnetKey === undefined) {
 
 /** The key that signs every order, withdrawal, and transfer fixture. */
 export const signingKey = mainnetKey
+
+type WithoutPath<M> = M extends unknown ? Omit<M, 'signaturePath'> : never
+type FixtureMessage = WithoutPath<ExtendedStarkMessage>
+
+/** The Stark message and the hash inputs that a Python SDK hash call used. */
+export function toStarkMessage({ fn, inputs }: HashCallFixture): {
+  message: FixtureMessage
+  domain: StarkDomain
+  publicKey: Hex
+} {
+  const domain: StarkDomain = {
+    name: inputs.domain_name,
+    version: inputs.domain_version,
+    chainId: inputs.domain_chain_id,
+    revision: inputs.domain_revision,
+  }
+  const publicKey: Hex = `0x${BigInt(inputs.user_public_key).toString(16)}`
+  switch (fn) {
+    case 'get_order_msg_hash':
+      return {
+        domain,
+        publicKey,
+        message: {
+          type: 'order',
+          fields: {
+            positionId: inputs.position_id,
+            baseAssetId: inputs.base_asset_id,
+            baseAmount: inputs.base_amount,
+            quoteAssetId: inputs.quote_asset_id,
+            quoteAmount: inputs.quote_amount,
+            feeAssetId: inputs.fee_asset_id,
+            feeAmount: inputs.fee_amount,
+            expiration: inputs.expiration,
+            salt: inputs.salt,
+          },
+        },
+      }
+    case 'get_transfer_msg_hash':
+      return {
+        domain,
+        publicKey,
+        message: {
+          type: 'transfer',
+          fields: {
+            recipientPositionId: inputs.recipient_position_id,
+            senderPositionId: inputs.sender_position_id,
+            collateralId: inputs.collateral_id,
+            amount: inputs.amount,
+            expiration: inputs.expiration,
+            salt: inputs.salt,
+          },
+        },
+      }
+    case 'get_withdrawal_msg_hash':
+      return {
+        domain,
+        publicKey,
+        message: {
+          type: 'withdrawal',
+          fields: {
+            recipient: inputs.recipient_hex,
+            positionId: inputs.position_id,
+            collateralId: inputs.collateral_id,
+            amount: inputs.amount,
+            expiration: inputs.expiration,
+            salt: inputs.salt,
+          },
+        },
+      }
+  }
+}

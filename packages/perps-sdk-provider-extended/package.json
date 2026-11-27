@@ -66,13 +66,20 @@
   "dependencies": {
     "@lifi/perps-types": "workspace:^",
     "@scure/starknet": "1.1.2",
-    "@x10xchange/stark-crypto-wrapper-wasm": "0.4.0"
+    "@x10xchange/stark-crypto-wrapper-wasm": "0.4.0",
+    "json-custom-numbers": "3.1.1"
+  },
+  "peerDependencies": {
+    "@lifi/perps-sdk": "workspace:^",
+    "viem": "2.57.11 || ^2.57.17"
   },
   "devDependencies": {
+    "@lifi/perps-sdk": "workspace:^",
     "@vitest/coverage-v8": "^5.1.0",
     "madge": "^8.0.0",
     "playwright": "1.65.0",
     "typescript": "^5.9.2",
+    "viem": "^2.58.7",
     "vitest": "^5.1.0"
   },
   "publishConfig": {
