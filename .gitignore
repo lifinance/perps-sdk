@@ -56,3 +56,6 @@ CLAUDE.local.md
 .cursor/**/*.local.*
 .cursor/**/tmp/
 .cursor/**/cache/
+
+# Example credential storage (plaintext agent keys)
+examples/**/.perps-storage.json*

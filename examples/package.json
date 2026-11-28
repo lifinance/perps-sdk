@@ -1,0 +1,14 @@
+{
+  "name": "perps-sdk-examples",
+  "private": true,
+  "description": "Runnable examples for the LI.FI Perps SDK",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@lifi/perps-sdk": "workspace:*",
+    "@lifi/perps-sdk-provider-hyperliquid": "workspace:*",
+    "@lifi/sdk": "4.12.1",
+    "@lifi/sdk-provider-ethereum": "4.2.12",
+    "viem": "2.58.7"
+  }
+}
