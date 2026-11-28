@@ -14,7 +14,7 @@ Hyperliquid provider plugin for the [LI.FI Perps SDK](https://public-perps-docs.
 ## Installation
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.57.11
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.58.7
 ```
 
 ## Quick start
@@ -92,9 +92,9 @@ and optional `l1Address`. A Hyperliquid ledger row moves a spot asset, and its
 `token` field holds the bare spot symbol. The mapper resolves that symbol in
 the spot asset registry, which the HIP-1 ticker auction keeps unique. The
 registry holds only the tokens of listed spot pairs. The mapper skips a row
-whose symbol is not in the registry and writes one warning. The mapper never
-fabricates an asset. Missing collateral raises a stale or mis-keyed registry
-error.
+whose symbol is not in the registry. It warns once per provider key while the
+warning remains in the cache. The mapper never fabricates an asset. Missing
+collateral raises a stale or mis-keyed registry error.
 
 The fixed-USDC `deposit` and `withdraw` deltas resolve the registry `Asset`
 by reserved spot token index `0`. Their `usdc` field identifies the venue's
@@ -114,7 +114,7 @@ defines token indices and `tokenId`.
 | Delta | Activity or explicit exclusion |
 | --- | --- |
 | `spotTransfer` | Transfer between distinct accounts. Resolve the bare token symbol. |
-| `send` | Transfer between distinct accounts. Resolve the bare token symbol. |
+| `send` | Transfer between distinct accounts. Resolve the bare token symbol. A same-account move between spot and perps is an `INTERNAL_TRANSFER`. |
 | `internalTransfer` | USDC transfer between distinct accounts; resolve token index `0`. |
 | `subAccountTransfer` | USDC transfer between master and subaccount addresses; resolve token index `0`. |
 | `deposit` | Deposit with the USDC registry asset at token index `0`. |
@@ -122,7 +122,7 @@ defines token indices and `tokenId`.
 | `liquidation` | Liquidation with resolved positions. |
 | `accountClassTransfer` | `INTERNAL_TRANSFER` between spot and perps. Resolve collateral token index `0` and retain `usdc`. |
 | `vaultCreate` | Excluded: vault creation and capital allocation require a vault activity model. |
-| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. |
+| `vaultDeposit` | Outbound USDC transfer to the vault; resolve token index `0` and use `usdc`. For a query of the vault account, the mapper skips the row. |
 | `vaultDistribution` | Excluded: a vault distribution requires vault identity and investment semantics. |
 | `vaultWithdraw` | USDC transfer from the vault to the user; use `netWithdrawnUsd` and preserve accounting fields in `meta`. |
 | `vaultLeaderCommission` | Excluded: commission income is not a transfer instruction and lacks a source counterparty. |
@@ -146,11 +146,14 @@ The mapper excludes a fee or reward row without a string `token` and a string
 
 Vault withdrawal direction follows the queried account: inbound for the user,
 outbound for the vault. The documented `vaultDeposit` payload has no depositor
-field. A query for the vault account therefore raises `ValidationError` for that
-row instead of inventing a counterparty. Depositor-account queries map normally.
+field. For a query of the vault account, the mapper skips that row and retains
+the other rows. It warns about the missing depositor once per provider key
+while the warning remains in the cache. Depositor-account queries map normally.
+Portfolio transfer history keeps unavailable coverage for the vault-side row.
 
 `TRANSFER` describes movements between distinct accounts and requires a counterparty.
-The mapper excludes same-account `send` and `spotTransfer` rows.
+The mapper excludes same-account `spotTransfer` rows.
+It also excludes a same-account `send` row unless the row moves value between spot and perps.
 `INTERNAL_TRANSFER` describes movements between balances of the queried account, without a counterparty or `IN`/`OUT` direction.
 Its balance identifiers are not trading-category identifiers.
 
@@ -164,6 +167,12 @@ Its balance identifiers are not trading-category identifiers.
 | `borrowLend`, `operation: 'repay'` | `spot` | `borrowLend` |
 | `accountClassTransfer`, `toPerp: true` | `spot` | `perps` |
 | `accountClassTransfer`, `toPerp: false` | `perps` | `spot` |
+| Same-account `send`, `sourceDex: 'spot'`, any other `destinationDex` | `spot` | `perps` |
+| Same-account `send`, `destinationDex: 'spot'`, any other `sourceDex` | `perps` | `spot` |
+
+A `send` names the main perp dex `""`, spot `"spot"`, and another perp dex by its name.
+Thus, a move between two perp dexes, a move from spot to spot, and a row without a string dex produce no row.
+A same-account `send` row keeps `meta.sourceDex` and `meta.destinationDex`.
 
 All internal rows preserve `meta.transferType`.
 The balance pair determines direction. The amount retains the venue decimal string, including its sign and precision.

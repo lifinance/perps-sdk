@@ -20,6 +20,7 @@ import {
   ActionType,
   acceptTermsTypeFields,
   createReferralCodeTypeFields,
+  DepositStatus,
   MarginMode,
   META_PROVIDER,
   OrderSide,
@@ -1928,6 +1929,87 @@ describe('PerpsClient', () => {
       })
       await expect(
         noProviderClient.getDepositFlow({ provider, address: userAddress })
+      ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
+    })
+  })
+
+  describe('getDepositStatus', () => {
+    const chainId = 42161
+    const txHash =
+      '0x9b2f4c1e7a3d5b6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f'
+
+    const clientWith = (
+      getDepositStatus: PerpsProviderPlugin['getDepositStatus']
+    ): PerpsClient =>
+      new PerpsClient({
+        providers: [
+          createTestAgentProvider({ type: provider, getDepositStatus }),
+        ],
+      })
+
+    it('delegates the address, chain and transaction to the plugin and returns its status', async () => {
+      const getDepositStatus = vi.fn(async () => DepositStatus.CREDITED)
+      const options = { signal: new AbortController().signal }
+      await expect(
+        clientWith(getDepositStatus).getDepositStatus(
+          { provider, address: userAddress, chainId, txHash },
+          options
+        )
+      ).resolves.toBe(DepositStatus.CREDITED)
+      expect(getDepositStatus).toHaveBeenCalledWith(
+        { address: userAddress, chainId, txHash },
+        options
+      )
+    })
+
+    it('resolves undefined when the venue has no record of the transaction', async () => {
+      await expect(
+        clientWith(async () => undefined).getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('resolves undefined when the plugin does not implement the read', async () => {
+      await expect(
+        client.getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('propagates the plugin error', async () => {
+      const getDepositStatus = vi.fn(async () => {
+        throw new PerpsError(PerpsErrorCode.ServerError, 'upstream down')
+      })
+      await expect(
+        clientWith(getDepositStatus).getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
+      ).rejects.toMatchObject({ code: PerpsErrorCode.ServerError })
+    })
+
+    it('throws when no plugin is registered for the provider', async () => {
+      const noProviderClient = new PerpsClient({
+        integrator: 'test-app',
+        apiKey: 'test-key',
+      })
+      await expect(
+        noProviderClient.getDepositStatus({
+          provider,
+          address: userAddress,
+          chainId,
+          txHash,
+        })
       ).rejects.toThrow(/Provider plugin not registered: 'hyperliquid'/)
     })
   })

@@ -23,12 +23,11 @@ Core of the [LI.FI Perps SDK](https://public-perps-docs.mintlify.app/) — a Typ
 Install the core SDK plus the provider plugin(s) for the DEX(es) you target:
 
 ```bash
-pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.57.11
+pnpm add @lifi/perps-sdk @lifi/perps-sdk-provider-hyperliquid viem@2.58.7
 ```
 
-`viem` is a peer dependency of each SDK package, so your app installs the one
-`viem` copy that the SDK uses. The packages accept only `viem` 2.57.11, because
-`viem` 2.57.12 and later reject the Hyperliquid EIP-712 type names.
+`viem` is a peer dependency of each SDK package. The host app supplies the
+`viem` copy that the SDK uses. The peer dependency range is `2.57.11 || ^2.57.17`.
 
 | Package | Install for |
 | --- | --- |
@@ -298,6 +297,14 @@ fast-withdraw limits. Without a Lighter API key, or when a fast-withdraw read
 fails, Lighter offers `STANDARD` only. The client removes each option whose
 `max` is below the asset's `minWithdrawalAmount`. The client resolves
 `undefined` for Hyperliquid and Ondo.
+
+`getDepositStatus()` reads the status of one deposit as a `DepositStatus`:
+`PENDING`, `CREDITED`, or `FAILED`. Pass the `address`, and the `chainId` and
+`txHash` of the source-chain transaction that funded the deposit. The read gives
+`undefined` when the venue has no record of the transaction yet. Treat
+`undefined` as not yet credited. Hyperliquid, Lighter, and Ondo do not
+implement the read, so the client resolves `undefined` for them. A
+`DepositActivity` row carries `txHash` and `status` when the venue reports them.
 
 ```ts
 import { PerpsClient, isTwapOrder } from '@lifi/perps-sdk'

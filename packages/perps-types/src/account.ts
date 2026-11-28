@@ -3,6 +3,7 @@ import type { DecimalString } from './decimal.js'
 import type {
   ActionType,
   ActivityType,
+  DepositStatus,
   FillClassification,
   LiquidationMethod,
   LiquidityRole,
@@ -459,8 +460,8 @@ export interface BaseActivity {
 }
 
 /**
- * Account activity representing a completed deposit. `amount` is a decimal
- * string in `asset`'s units.
+ * Account activity representing a deposit. `amount` is a decimal string in
+ * `asset`'s units.
  *
  * @public
  */
@@ -475,6 +476,13 @@ export interface DepositActivity extends BaseActivity {
   counterpartyAddress?: string
   /** Fully-resolved block-explorer URL for the on-chain deposit tx. */
   explorerLink?: string
+  /**
+   * Source-chain transaction that funded the deposit, as the venue reports it.
+   * Absent when the venue reports none.
+   */
+  txHash?: string
+  /** Absent when the venue reports no status. */
+  status?: DepositStatus
 }
 
 /**

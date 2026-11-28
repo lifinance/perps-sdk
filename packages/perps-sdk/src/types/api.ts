@@ -143,9 +143,10 @@ export interface PlaceOrderParams {
   /** Optional leverage multiplier; provider defaults apply when omitted. */
   leverage?: number
   /**
-   * Margin mode the order trades under; omitted falls to the venue's cross
-   * default. Lighter's order tx carries the mode directly; Hyperliquid
-   * applies it via a prepended leverage update (requires `leverage`).
+   * Margin mode of the prepended leverage update. No venue order carries one.
+   * Hyperliquid requires `leverage` and sends an omitted mode as isolated.
+   * Lighter applies it only with `leverage` or `initialMarginFractionBps`,
+   * and sends an omitted mode as cross. Ondo rejects isolated.
    */
   marginMode?: MarginMode
   /** Whether the order may only reduce an existing position. */
@@ -272,6 +273,20 @@ export interface GetSetupParams {
 export interface GetDepositFlowParams {
   provider: string
   address: Address
+}
+
+/**
+ * Parameters for {@link PerpsClient.getDepositStatus}.
+ *
+ * @public
+ */
+export interface GetDepositStatusParams {
+  provider: string
+  address: Address
+  /** Chain of the source-chain transaction `txHash`. */
+  chainId: number
+  /** Source-chain transaction that funded the deposit. */
+  txHash: string
 }
 
 /**

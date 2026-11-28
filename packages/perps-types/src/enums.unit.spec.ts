@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ActionType,
+  DepositStatus,
   PerpsErrorCode,
   SigningMethod,
   WithdrawalType,
@@ -288,6 +289,16 @@ describe('WithdrawalType wire values', () => {
       ['STANDARD', 'STANDARD'],
       ['NATIVE', 'NATIVE'],
       ['BRIDGE', 'BRIDGE'],
+    ])
+  })
+})
+
+describe('DepositStatus wire values', () => {
+  it('carries each member name as its value', () => {
+    expect(Object.entries(DepositStatus)).toEqual([
+      ['PENDING', 'PENDING'],
+      ['CREDITED', 'CREDITED'],
+      ['FAILED', 'FAILED'],
     ])
   })
 })

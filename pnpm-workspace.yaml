@@ -12,4 +12,3 @@ minimumReleaseAgeExclude:
   - playwright@1.65.0
 overrides:
   ws@8: 8.21.1
-  viem: 2.57.11
